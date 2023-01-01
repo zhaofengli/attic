@@ -200,5 +200,5 @@ Take a look at `~/.config/attic/server.toml` to see what you can configure!
 
 While it's easy to get started by running `atticd` in monolithic mode, for production use it's best to run different components of `atticd` separately with `--mode`:
 
-- `worker`: Stateless and can be replicated.
+- `api-server`: Stateless and can be replicated.
 - `garbage-collector`: Performs periodic garbage collection. Cannot be replicated.
