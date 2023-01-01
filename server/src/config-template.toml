@@ -1,0 +1,105 @@
+# Socket address to listen on
+listen = "[::]:8080"
+
+# Allowed `Host` headers
+#
+# This _must_ be configured for production use. If unconfigured or the
+# list is empty, all `Host` headers are allowed.
+allowed-hosts = []
+
+# The canonical API endpoint of this server
+#
+# This is the endpoint exposed to clients in `cache-config` responses.
+#
+# This _must_ be configured for production use. If not configured, the
+# API endpoint is synthesized from the client's `Host` header which may
+# be insecure.
+#
+# The API endpoint _must_ end with a slash (e.g., `https://domain.tld/attic/`
+# not `https://domain.tld/attic`).
+#api-endpoint = "https://your.domain.tld/"
+
+# Whether to soft-delete caches
+#
+# If this is enabled, caches are soft-deleted instead of actually
+# removed from the database. Note that soft-deleted caches cannot
+# have their names reused as long as the original database records
+# are there.
+#soft-delete-caches = false
+
+# JWT signing token
+#
+# Set this to the Base64 encoding of some random data.
+token-hs256-secret-base64 = "%token_hs256_secret_base64%"
+
+# Database connection
+[database]
+# Connection URL
+#
+# For production use it's recommended to use PostgreSQL.
+url = "%database_url%"
+
+# Whether to enable sending on periodic heartbeat queries
+#
+# If enabled, a heartbeat query will be sent every minute
+#heartbeat = false
+
+# File storage configuration
+[storage]
+# Storage type
+#
+# Can be "local" or "s3".
+type = "local"
+
+# ## Local storage
+
+# The directory to store all files under
+path = "%storage_path%"
+
+# ## S3 Storage (set type to "s3" and uncomment below)
+
+# The AWS region
+#region = "us-east-1"
+
+# The name of the bucket
+#bucket = "some-bucket"
+
+# Custom S3 endpoint
+#
+# Set this if you are using an S3-compatible object storage (e.g., Minio).
+#endpoint = "https://xxx.r2.cloudflarestorage.com"
+
+# Credentials
+#
+# If unset, the credentials are read from the `AWS_ACCESS_KEY_ID` and
+# `AWS_SECRET_ACCESS_KEY` environment variables.
+#[storage.credentials]
+#  access_key_id = ""
+#  secret_access_key = ""
+ 
+# Compression
+[compression]
+# Compression type
+#
+# Can be "none", "brotli", "zstd", or "xz"
+type = "zstd"
+
+# Compression level
+#level = 8
+
+# Garbage collection
+[garbage-collection]
+# The frequency to run garbage collection at
+#
+# By default it's 12 hours. You can use natural language
+# to specify the interval, like "1 day".
+#
+# If zero, automatic garbage collection is disabled, but
+# it can still be run manually with `atticd --mode garbage-collector-once`.
+interval = "12 hours"
+
+# Default retention period
+#
+# Zero (default) means time-based garbage-collection is
+# disabled by default. You can enable it on a per-cache basis.
+#default-retention-period = "6 months"

@@ -1,0 +1,46 @@
+name: Deploy Book
+
+on:
+  push:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy-unstable:
+    name: Deploy
+
+    runs-on: ubuntu-latest
+    if: github.repository == 'zhaofengli/attic'
+
+    steps:
+      - uses: actions/checkout@v3.0.2
+
+      - name: Obtain current username
+        run: |
+          echo ACTION_USER=$USER >> $GITHUB_ENV
+
+      - uses: DeterminateSystems/nix-installer@main
+        with:
+          extra-conf: |
+            trusted-users = root ${{ env.ACTION_USER }}
+            substituters = https://staging.attic.rs/attic-ci https://cache.nixos.org
+            trusted-public-keys = attic-ci:U5Sey4mUxwBXM3iFapmP0/ogODXywKLRNgRPQpEXxbo= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+
+      # == Manual
+      - name: Build book
+        run: nix build .#book -L
+
+      - name: Copy book artifact
+        run: |
+          cp --recursive --dereference --no-preserve=mode,ownership result public
+
+      - name: Upload book artifact
+        uses: actions/upload-pages-artifact@v1.0.7
+        with:
+          path: public
+
+      - name: Deploy book
+        uses: actions/deploy-pages@v1.2.3

@@ -1,0 +1,10 @@
+[book]
+authors = ["Zhaofeng Li"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Attic"
+
+[output.html]
+git-repository-url = "https://github.com/zhaofengli/attic"
+edit-url-template = "https://github.com/zhaofengli/attic/edit/main/book/{path}"

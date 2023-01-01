@@ -1,0 +1,39 @@
+[package]
+name = "attic-client"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "attic"
+path = "src/main.rs"
+
+[dependencies]
+attic = { path = "../attic" }
+
+anyhow = "1.0.68"
+bytes = "1.3.0"
+clap = { version = "4.0", features = ["derive"] }
+clap_complete = "4.0.2"
+const_format = "0.2.30"
+dialoguer = "0.10.2"
+displaydoc = "0.2.3"
+enum-as-inner = "0.5.1"
+futures = "0.3.25"
+humantime = "2.1.0"
+indicatif = "0.17.2"
+lazy_static = "1.4.0"
+regex = "1.7.0"
+reqwest = { version = "0.11.13", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1.0.151", features = ["derive"] }
+serde_json = "1.0.91"
+toml = "0.5.10"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
+xdg = "2.4.1"
+
+[dependencies.tokio]
+version = "1.23.0"
+features = [
+	"full"
+]

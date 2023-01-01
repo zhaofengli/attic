@@ -1,0 +1,11 @@
+[workspace]
+
+members = [
+	"attic",
+	"client",
+	"server",
+]
+
+[profile.dev]
+opt-level = 2
+incremental = true
