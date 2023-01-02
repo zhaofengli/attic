@@ -52,12 +52,12 @@ We use the hash of the _uncompressed NAR_ to perform global deduplication.
                                                 └───────►File Size
 ```
 
-At first glance, performing compression on the client and deduplicating the result may sound appealing, but has problems:
+At first glance, performing compression on the client and deduplicating the result may sound appealing, but this approach isn't without problems:
 
 1. Different compression algorithms and levels naturally lead to different results which can't be deduplicated
 2. Even with the same compression algorithm, the results are often non-deterministic (number of compression threads, library version, etc.)
 
-When we do the compression on the server and use the hashes of uncompressed NARs for lookups, the problem of non-determinism is no longer a problem since we only compress once.
+When we perform compression on the server and use the hashes of uncompressed NARs for lookups, non-determinism of compression is no longer a problem since we only compress once.
 
 On the other hand, performing compression on the server leads to additional CPU usage, increasing compute costs and the need to scale.
 Such design decisions are to be revisited later.
