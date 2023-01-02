@@ -37,6 +37,10 @@ pub struct Push {
     /// Ignore the upstream cache filter.
     #[clap(long)]
     ignore_upstream_cache_filter: bool,
+
+    /// The maximum number of parallel upload processes.
+    #[clap(short = 'j', long, default_value = "10")]
+    jobs: usize,
 }
 
 struct PushPlan {
@@ -154,6 +158,10 @@ pub async fn upload_path(
 
 pub async fn run(opts: Opts) -> Result<()> {
     let sub = opts.command.as_push().unwrap();
+    if sub.jobs == 0 {
+        return Err(anyhow!("The number of jobs cannot be 0"));
+    }
+
     let config = Config::load()?;
 
     let store = Arc::new(NixStore::connect()?);
@@ -200,7 +208,7 @@ pub async fn run(opts: Opts) -> Result<()> {
     }
 
     let mp = MultiProgress::new();
-    let upload_limit = Arc::new(Semaphore::new(10)); // FIXME
+    let upload_limit = Arc::new(Semaphore::new(sub.jobs));
     let futures = plan
         .store_path_map
         .into_iter()
