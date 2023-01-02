@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    utils.url = "github:numtide/flake-utils";
+    flake-utils.url = "github:numtide/flake-utils";
 
     flake-compat = {
       url = "github:edolstra/flake-compat";
@@ -11,9 +11,9 @@
     };
   };
 
-  outputs = { self, nixpkgs, utils, ... }: let
-    supportedSystems = utils.lib.defaultSystems;
-  in utils.lib.eachSystem supportedSystems (system: let
+  outputs = { self, nixpkgs, flake-utils, ... }: let
+    supportedSystems = flake-utils.lib.defaultSystems;
+  in flake-utils.lib.eachSystem supportedSystems (system: let
     pkgs = import nixpkgs { inherit system; };
 
     inherit (pkgs) lib;
