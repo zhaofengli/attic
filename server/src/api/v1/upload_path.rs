@@ -41,9 +41,9 @@ type CompressorFn<C> = Box<dyn FnOnce(C) -> Box<dyn AsyncRead + Unpin + Send> + 
 
 /// Applies compression to a stream, computing hashes along the way.
 ///
-/// Our strategy is to stream into a temporary file on S3, performing compression
-/// and computing the hashes along the way. We delete the temporary file on S3
-/// if the hashes do not match.
+/// Our strategy is to stream directly onto a UUID-keyed file on the
+/// storage backend, performing compression and computing the hashes
+/// along the way. We delete the file if the hashes do not match.
 ///
 /// ```text
 ///                    ┌───────────────────────────────────►NAR Hash
@@ -76,7 +76,7 @@ trait UploadPathNarInfoExt {
 /// the `holders_count` of one `nar` row with same NAR hash. If rows were
 /// updated, it means the NAR exists in the global cache and we can deduplicate
 /// after confirming the NAR hash ("Deduplicate" case). Otherwise, we perform
-/// a new upload to S3 ("New NAR" case).
+/// a new upload to the storage backend ("New NAR" case).
 #[instrument(skip_all)]
 #[axum_macros::debug_handler]
 pub(crate) async fn upload_path(
@@ -259,7 +259,7 @@ async fn upload_path_new(
 
     let mut stream = CompressionStream::new(stream, compressor);
 
-    // Stream the object to S3
+    // Stream the object to the storage backend
     backend
         .upload_file(key, stream.stream())
         .await

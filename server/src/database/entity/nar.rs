@@ -90,10 +90,6 @@ pub struct Model {
     pub compression: String,
 
     /// The remote file backing this NAR.
-    ///
-    /// Currently we only support S3-compatible providers, though it
-    /// should be easy to add in support for other forms of object storage
-    /// or even local storage.
     pub remote_file: Json<RemoteFile>,
 
     /// Unique string identifying the remote file.
@@ -104,7 +100,7 @@ pub struct Model {
     ///
     /// This is for preventing garbage collection of NARs when
     /// there is a pending upload that can be deduplicated and
-    /// there is no existing object references.
+    /// there are no existing object references.
     pub holders_count: i32,
 
     /// Timestamp when the NAR is created.
