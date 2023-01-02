@@ -5,35 +5,35 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
 
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-compat.follows = "flake-compat";
+      inputs.flake-utils.follows = "flake-utils";
+    };
+
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }: let
+  outputs = { self, nixpkgs, flake-utils, crane, ... }: let
     supportedSystems = flake-utils.lib.defaultSystems;
   in flake-utils.lib.eachSystem supportedSystems (system: let
     pkgs = import nixpkgs { inherit system; };
+
+    craneLib = crane.lib.${system};
+    cranePkgs = pkgs.callPackage ./crane.nix { inherit craneLib; };
 
     inherit (pkgs) lib;
   in rec {
     packages = {
       default = packages.attic;
 
-      attic = pkgs.callPackage ./package.nix { };
-      attic-client = packages.attic.override { clientOnly = true; };
+      inherit (cranePkgs) attic attic-client attic-server attic-tests;
 
-      attic-server = let
-        attic-server = pkgs.callPackage ./package.nix {
-          crates = [ "attic-server" ];
-        };
-      in attic-server.overrideAttrs (old: {
-        pname = "attic-server";
-
-        CARGO_PROFILE_RELEASE_LTO = "fat";
-        CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "1";
-      });
+      attic-nixpkgs = pkgs.callPackage ./package.nix { };
 
       attic-server-image = pkgs.dockerTools.buildImage {
         name = "attic-server";

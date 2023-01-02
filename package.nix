@@ -1,3 +1,9 @@
+# This is an alternative package expression of Attic in a nixpkgs-acceptable
+# form. It will be submitted when the Attic API is considered stable.
+#
+# For the expression used for CI as well as distribution from this repo, see
+# `crane.nix`.
+
 { lib, stdenv, rustPlatform
 , pkg-config
 , installShellFiles

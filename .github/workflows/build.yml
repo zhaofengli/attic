@@ -24,4 +24,7 @@ jobs:
             substituters = https://staging.attic.rs/attic-ci https://cache.nixos.org
             trusted-public-keys = attic-ci:U5Sey4mUxwBXM3iFapmP0/ogODXywKLRNgRPQpEXxbo= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
 
-      - run: nix develop --command -- cargo test
+      - name: Build and run tests
+        run: |
+          tests=$(nix build .#attic-tests --no-link --print-out-paths -L)
+          find "$tests/bin" -exec {} \;
