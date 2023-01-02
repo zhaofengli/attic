@@ -34,8 +34,9 @@ async fn main() -> Result<()> {
     let opts = Opts::parse();
     let config = if let Some(config_path) = &opts.config {
         config::load_config_from_path(config_path)
-    } else if let Ok(config_env) = env::var("ATTIC_SERVER_CONFIG") {
-        config::load_config_from_str(&config_env)
+    } else if let Ok(config_env) = env::var("ATTIC_SERVER_CONFIG_BASE64") {
+        let decoded = String::from_utf8(base64::decode(config_env.as_bytes())?)?;
+        config::load_config_from_str(&decoded)
     } else {
         config::load_config_from_path(&config::get_xdg_config_path()?)
     };
