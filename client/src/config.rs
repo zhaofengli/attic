@@ -5,8 +5,10 @@
 //! experience (e.g., `attic login`).
 
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, OpenOptions, Permissions};
+use std::io::Write;
 use std::ops::{Deref, DerefMut};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
@@ -19,6 +21,9 @@ use crate::cache::{CacheName, CacheRef, ServerName};
 ///
 /// This will be concatenated into `$XDG_CONFIG_HOME/attic`.
 const XDG_PREFIX: &str = "attic";
+
+/// The permission the configuration file should have.
+const FILE_MODE: u32 = 0o600;
 
 /// Configuration loader.
 #[derive(Debug)]
@@ -77,7 +82,21 @@ impl Config {
     pub fn save(&self) -> Result<()> {
         if let Some(path) = &self.path {
             let serialized = toml::to_string(&self.data)?;
-            fs::write(path, serialized.as_bytes())?;
+
+            // This isn't atomic, so some other process might chmod it
+            // to something else before we write. We don't handle this case.
+            if path.exists() {
+                let permissions = Permissions::from_mode(FILE_MODE);
+                fs::set_permissions(path, permissions)?;
+            }
+
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .mode(FILE_MODE)
+                .open(path)?;
+
+            file.write_all(serialized.as_bytes())?;
 
             tracing::debug!("Saved modified configuration to {:?}", path);
         }
