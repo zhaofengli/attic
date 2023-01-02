@@ -61,6 +61,8 @@
       default = pkgs.mkShell {
         inputsFrom = with packages; [ attic book ];
         nativeBuildInputs = with pkgs; [
+          rustc
+
           rustfmt clippy
           cargo-expand cargo-outdated cargo-edit
 
