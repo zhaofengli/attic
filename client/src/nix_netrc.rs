@@ -8,11 +8,17 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::fs::Permissions;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
-use tokio::fs;
+use tokio::fs::{self, OpenOptions};
+use tokio::io::AsyncWriteExt;
 use xdg::BaseDirectories;
+
+/// The permission the configuration file should have.
+const FILE_MODE: u32 = 0o600;
 
 #[derive(Debug)]
 pub struct NixNetrc {
@@ -64,7 +70,21 @@ impl NixNetrc {
         if let Some(path) = &self.path {
             let mut content = String::new();
             serialize_machines(&mut content, &self.machines)?;
-            fs::write(path, content).await?;
+
+            // This isn't atomic, so some other process might chmod it
+            // to something else before we write. We don't handle this case.
+            if path.exists() {
+                let permissions = Permissions::from_mode(FILE_MODE);
+                fs::set_permissions(path, permissions).await?;
+            }
+
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .mode(FILE_MODE)
+                .open(path).await?;
+
+            file.write_all(content.as_bytes()).await?;
             Ok(())
         } else {
             Err(anyhow!("Don't know how to save the netrc"))
