@@ -16,6 +16,10 @@ pub struct Login {
 
     /// Access token.
     token: Option<String>,
+
+    /// Set the server as the default.
+    #[clap(long)]
+    set_default: bool,
 }
 
 pub async fn run(opts: Opts) -> Result<()> {
@@ -43,7 +47,7 @@ pub async fn run(opts: Opts) -> Result<()> {
         );
     }
 
-    if config_m.servers.len() == 1 {
+    if sub.set_default || config_m.servers.len() == 1 {
         config_m.default_server = Some(sub.name.to_owned());
     }
 
