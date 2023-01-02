@@ -56,7 +56,7 @@ in rustPlatform.buildRustPackage rec {
   meta = with lib; {
     description = "Multi-tenant Nix binary cache system";
     homepage = "https://github.com/zhaofengli/attic";
-    license = licenses.agpl3Plus;
+    license = licenses.asl20;
     maintainers = with maintainers; [ zhaofengli ];
     platforms = platforms.linux ++ platforms.darwin;
   };
