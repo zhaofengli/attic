@@ -1,5 +1,7 @@
 # FAQs
 
+<!-- TODO: Write more about design decisions in a separate section -->
+
 ## Does it replace [Cachix](https://www.cachix.org)?
 
 No, it does not.
@@ -28,6 +30,37 @@ Path metadata (store path, references, deriver, etc.) are associated with the lo
 Authentication is done via signed JWTs containing the allowed permissions.
 Each instance of `atticd --mode api-server` is stateless.
 This design may be revisited later, with option for a more stateful method of authentication.
+
+## How is compression handled?
+
+Uploaded NARs are compressed on the server before being streamed to the storage backend.
+We use the hash of the _uncompressed NAR_ to perform global deduplication.
+
+```
+                    ┌───────────────────────────────────►NAR Hash
+                    │
+                    │
+                    ├───────────────────────────────────►NAR Size
+                    │
+              ┌─────┴────┐  ┌──────────┐  ┌───────────┐
+ NAR Stream──►│NAR Hasher├─►│Compressor├─►│File Hasher├─►File Stream─►S3
+              └──────────┘  └──────────┘  └─────┬─────┘
+                                                │
+                                                ├───────►File Hash
+                                                │
+                                                │
+                                                └───────►File Size
+```
+
+At first glance, performing compression on the client and deduplicating the result may sound appealing, but has problems:
+
+1. Different compression algorithms and levels naturally lead to different results which can't be deduplicated
+2. Even with the same compression algorithm, the results are often non-deterministic (number of compression threads, library version, etc.)
+
+When we do the compression on the server and use the hashes of uncompressed NARs for lookups, the problem of non-determinism is no longer a problem since we only compress once.
+
+On the other hand, performing compression on the server leads to additional CPU usage, increasing compute costs and the need to scale.
+Such design decisions are to be revisited later.
 
 ## On what granularity is deduplication done?
 
