@@ -44,6 +44,9 @@ enum ServerMode {
 
     /// Run garbage collection then exit.
     GarbageCollectorOnce,
+
+    /// Check the configuration then exit.
+    CheckConfig,
 }
 
 #[tokio::main]
@@ -94,6 +97,9 @@ async fn main() -> Result<()> {
         }
         ServerMode::GarbageCollectorOnce => {
             attic_server::gc::run_garbage_collection_once(config).await?;
+        }
+        ServerMode::CheckConfig => {
+            // config is valid, let's just exit :)
         }
     }
 
