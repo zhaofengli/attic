@@ -27,7 +27,10 @@ pub async fn run(opts: Opts) -> Result<()> {
         eprintln!("✍️ Overwriting server \"{}\"", sub.name.as_str());
 
         server.endpoint = sub.endpoint.to_owned();
-        server.token = sub.token.to_owned();
+
+        if sub.token.is_some() {
+            server.token = sub.token.to_owned();
+        }
     } else {
         eprintln!("✍️ Configuring server \"{}\"", sub.name.as_str());
 
