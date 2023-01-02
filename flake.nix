@@ -38,6 +38,11 @@
       attic-server-image = pkgs.dockerTools.buildImage {
         name = "attic-server";
         tag = "main";
+        copyToRoot = [
+          # Minimal `/bin/sh` for `fly ssh console`
+          pkgs.busybox-sandbox-shell
+          packages.attic-server
+        ];
         config = {
           Entrypoint = [ "${packages.attic-server}/bin/atticd" ];
           Cmd = [ "--mode" "api-server" ];
