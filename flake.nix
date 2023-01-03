@@ -35,6 +35,10 @@
 
       attic-nixpkgs = pkgs.callPackage ./package.nix { };
 
+      attic-ci-installer = pkgs.callPackage ./ci-installer.nix {
+        inherit self;
+      };
+
       attic-server-image = pkgs.dockerTools.buildImage {
         name = "attic-server";
         tag = "main";
