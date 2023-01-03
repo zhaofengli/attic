@@ -32,6 +32,7 @@ jobs:
 
       - name: Configure Attic
         run: |
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           attic login staging https://staging.attic.rs/ "$ATTIC_TOKEN"
           attic use attic-ci
         env:
@@ -55,6 +56,7 @@ jobs:
       # TODO: Just take a diff of the list of store paths, also abstract all of this out
       - name: Push build artifacts
         run: |
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           if [ -n "$ATTIC_TOKEN" ]; then
             nix build .#book --no-link --print-out-paths -L | \
               xargs attic push attic-ci
