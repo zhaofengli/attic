@@ -156,7 +156,10 @@ impl From<super::access::Error> for ServerError {
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
-        tracing::warn!("{:?}", self);
+        // TODO: Better logging control
+        if matches!(self, Self::DatabaseError(_) | Self::RemoteFileError(_) | Self::ManifestSerializationError(_) | Self::AtticError(_)) {
+            tracing::error!("{:?}", self);
+        }
 
         // TODO: don't sanitize in dev mode
         let sanitized = self.into_clients();
