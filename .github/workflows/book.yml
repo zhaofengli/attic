@@ -26,10 +26,17 @@ jobs:
         with:
           extra-conf: |
             trusted-users = root ${{ env.ACTION_USER }}
-            substituters = https://staging.attic.rs/attic-ci https://cache.nixos.org
-            trusted-public-keys = attic-ci:U5Sey4mUxwBXM3iFapmP0/ogODXywKLRNgRPQpEXxbo= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
 
-      # == Manual
+      - name: Install Attic
+        run: ./.github/install-attic-ci.sh
+
+      - name: Configure Attic
+        run: |
+          attic login staging https://staging.attic.rs/ "$ATTIC_TOKEN"
+          attic use attic-ci
+        env:
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+
       - name: Build book
         run: nix build .#book -L
 
@@ -44,3 +51,13 @@ jobs:
 
       - name: Deploy book
         uses: actions/deploy-pages@v1.2.3
+
+      # TODO: Just take a diff of the list of store paths, also abstract all of this out
+      - name: Push build artifacts
+        run: |
+          if [ -n "$ATTIC_TOKEN" ]; then
+            nix build .#book --no-link --print-out-paths -L | \
+              xargs attic push attic-ci
+          fi
+        env:
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}

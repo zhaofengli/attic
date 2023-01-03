@@ -21,10 +21,32 @@ jobs:
         with:
           extra-conf: |
             trusted-users = root ${{ env.ACTION_USER }}
-            substituters = https://staging.attic.rs/attic-ci https://cache.nixos.org
-            trusted-public-keys = attic-ci:U5Sey4mUxwBXM3iFapmP0/ogODXywKLRNgRPQpEXxbo= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+
+      - name: Install Attic
+        run: ./.github/install-attic-ci.sh
+
+      - name: Configure Attic
+        run: |
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          attic login staging https://staging.attic.rs/ "$ATTIC_TOKEN"
+          attic use attic-ci
+        env:
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
 
       - name: Build and run tests
         run: |
-          tests=$(nix build .#attic-tests --no-link --print-out-paths -L)
+          system=$(nix-instantiate --eval -E 'builtins.currentSystem')
+          echo system=$system >>$GITHUB_ENV
+          tests=$(nix build .#internal."$system".attic-tests --no-link --print-out-paths -L)
           find "$tests/bin" -exec {} \;
+
+      # TODO: Just take a diff of the list of store paths, also abstract all of this out
+      - name: Push build artifacts
+        run: |
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          if [ -n "$ATTIC_TOKEN" ]; then
+            nix build .#internal."$system".attic-tests .#internal."$system".cargoArtifacts --no-link --print-out-paths -L | \
+              xargs attic push attic-ci
+          fi
+        env:
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}

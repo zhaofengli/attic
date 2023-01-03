@@ -31,7 +31,7 @@
     packages = {
       default = packages.attic;
 
-      inherit (cranePkgs) attic attic-client attic-server attic-tests;
+      inherit (cranePkgs) attic attic-client attic-server;
 
       attic-nixpkgs = pkgs.callPackage ./package.nix { };
 
@@ -59,6 +59,10 @@
       book = pkgs.callPackage ./book {
         attic = packages.attic;
       };
+    };
+
+    internal = {
+      inherit (cranePkgs) attic-tests cargoArtifacts;
     };
 
     devShells = {
