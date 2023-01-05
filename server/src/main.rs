@@ -119,8 +119,7 @@ async fn main() -> Result<()> {
 
 fn init_logging(tokio_console: bool) {
     let env_filter = EnvFilter::from_default_env();
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_filter(env_filter);
+    let fmt_layer = tracing_subscriber::fmt::layer().with_filter(env_filter);
 
     let error_layer = ErrorLayer::default();
 

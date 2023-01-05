@@ -133,7 +133,13 @@ impl StdError for ServerError {}
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         // TODO: Better logging control
-        if matches!(self.kind, ErrorKind::DatabaseError(_) | ErrorKind::StorageError(_) | ErrorKind::ManifestSerializationError(_) | ErrorKind::AtticError(_)) {
+        if matches!(
+            self.kind,
+            ErrorKind::DatabaseError(_)
+                | ErrorKind::StorageError(_)
+                | ErrorKind::ManifestSerializationError(_)
+                | ErrorKind::AtticError(_)
+        ) {
             tracing::error!("{}", self);
         }
 

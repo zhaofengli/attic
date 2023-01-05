@@ -82,7 +82,8 @@ impl NixNetrc {
                 .create(true)
                 .write(true)
                 .mode(FILE_MODE)
-                .open(path).await?;
+                .open(path)
+                .await?;
 
             file.write_all(content.as_bytes()).await?;
             Ok(())

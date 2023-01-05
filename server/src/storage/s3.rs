@@ -5,8 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use aws_sdk_s3::{
     config::Builder as S3ConfigBuilder, model::CompletedMultipartUpload, model::CompletedPart,
-    presigning::config::PresigningConfig, Client, Credentials, Endpoint,
-    Region,
+    presigning::config::PresigningConfig, Client, Credentials, Endpoint, Region,
 };
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
@@ -74,7 +73,8 @@ pub struct S3RemoteFile {
 
 impl S3Backend {
     pub async fn new(config: S3StorageConfig) -> ServerResult<Self> {
-        let s3_config = Self::config_builder(&config).await?
+        let s3_config = Self::config_builder(&config)
+            .await?
             .region(Region::new(config.region.to_owned()))
             .build();
 
@@ -115,7 +115,8 @@ impl S3Backend {
         } else {
             return Err(ErrorKind::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
-            )).into());
+            ))
+            .into());
         };
 
         // FIXME: Ugly
@@ -123,7 +124,8 @@ impl S3Backend {
             self.client.clone()
         } else {
             // FIXME: Cache the client instance
-            let s3_conf = Self::config_builder(&self.config).await?
+            let s3_conf = Self::config_builder(&self.config)
+                .await?
                 .region(Region::new(file.region.to_owned()))
                 .build();
             Client::from_conf(s3_conf)
@@ -356,10 +358,7 @@ async fn read_chunk_async<S: AsyncRead + Unpin + Send>(stream: &mut S) -> Server
 
     while cursor < CHUNK_SIZE {
         let buf = &mut chunk[cursor..];
-        let read = stream
-            .read(buf)
-            .await
-            .map_err(ServerError::storage_error)?;
+        let read = stream.read(buf).await.map_err(ServerError::storage_error)?;
 
         if read == 0 {
             break;

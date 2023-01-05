@@ -114,9 +114,10 @@ pub(crate) async fn configure_cache(
                 update.retention_period = Set(None);
             }
             RetentionPeriodConfig::Period(period) => {
-                update.retention_period = Set(Some(period.try_into().map_err(|_| {
-                    ErrorKind::RequestError(anyhow!("Invalid retention period"))
-                })?));
+                update.retention_period =
+                    Set(Some(period.try_into().map_err(|_| {
+                        ErrorKind::RequestError(anyhow!("Invalid retention period"))
+                    })?));
             }
         }
 
@@ -131,9 +132,7 @@ pub(crate) async fn configure_cache(
 
         Ok(())
     } else {
-        Err(ErrorKind::RequestError(anyhow!(
-            "No modifiable fields were set."
-        )).into())
+        Err(ErrorKind::RequestError(anyhow!("No modifiable fields were set.")).into())
     }
 }
 

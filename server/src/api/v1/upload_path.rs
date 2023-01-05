@@ -107,8 +107,7 @@ pub(crate) async fn upload_path(
         stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
     );
 
-    let username = req_state.auth.username()
-        .map(str::to_string);
+    let username = req_state.auth.username().map(str::to_string);
 
     // Try to acquire a lock on an existing NAR
     let existing_nar = database.find_and_lock_nar(&upload_info.nar_hash).await?;

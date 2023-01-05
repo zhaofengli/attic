@@ -76,7 +76,8 @@ impl StorageBackend for LocalBackend {
         } else {
             return Err(ErrorKind::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
-            )).into());
+            ))
+            .into());
         };
 
         fs::remove_file(self.get_path(&file.name))
@@ -100,7 +101,8 @@ impl StorageBackend for LocalBackend {
         } else {
             return Err(ErrorKind::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
-            )).into());
+            ))
+            .into());
         };
 
         let file = File::open(self.get_path(&file.name))

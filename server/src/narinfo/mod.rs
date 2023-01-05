@@ -254,7 +254,8 @@ impl FromStr for Compression {
             "zstd" => Ok(Self::Zstd),
             _ => Err(ErrorKind::InvalidCompressionType {
                 name: s.to_string(),
-            }.into()),
+            }
+            .into()),
         }
     }
 }
