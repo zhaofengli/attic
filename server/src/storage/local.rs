@@ -34,7 +34,7 @@ impl LocalBackend {
     pub async fn new(config: LocalStorageConfig) -> ServerResult<Self> {
         fs::create_dir_all(&config.path)
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(Self { config })
     }
@@ -53,11 +53,11 @@ impl StorageBackend for LocalBackend {
     ) -> ServerResult<RemoteFile> {
         let mut file = File::create(self.get_path(&name))
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         io::copy(&mut stream, &mut file)
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(RemoteFile::Local(LocalRemoteFile { name }))
     }
@@ -65,7 +65,7 @@ impl StorageBackend for LocalBackend {
     async fn delete_file(&self, name: String) -> ServerResult<()> {
         fs::remove_file(self.get_path(&name))
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(())
     }
@@ -74,14 +74,14 @@ impl StorageBackend for LocalBackend {
         let file = if let RemoteFile::Local(file) = file {
             file
         } else {
-            return Err(ServerError::RemoteFileError(anyhow::anyhow!(
+            return Err(ServerError::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
             )));
         };
 
         fs::remove_file(self.get_path(&file.name))
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(())
     }
@@ -89,7 +89,7 @@ impl StorageBackend for LocalBackend {
     async fn download_file(&self, name: String) -> ServerResult<Download> {
         let file = File::open(self.get_path(&name))
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(Download::Stream(Box::new(file)))
     }
@@ -98,14 +98,14 @@ impl StorageBackend for LocalBackend {
         let file = if let RemoteFile::Local(file) = file {
             file
         } else {
-            return Err(ServerError::RemoteFileError(anyhow::anyhow!(
+            return Err(ServerError::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
             )));
         };
 
         let file = File::open(self.get_path(&file.name))
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(Download::Stream(Box::new(file)))
     }

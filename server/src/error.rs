@@ -42,8 +42,8 @@ pub enum ServerError {
     /// Database error: {0}
     DatabaseError(AnyError),
 
-    /// Remote file error: {0}
-    RemoteFileError(AnyError),
+    /// Storage error: {0}
+    StorageError(AnyError),
 
     /// Manifest serialization error: {0}
     ManifestSerializationError(super::nix_manifest::Error),
@@ -70,8 +70,8 @@ impl ServerError {
         Self::DatabaseError(AnyError::new(error))
     }
 
-    pub fn remote_file_error(error: impl StdError + Send + Sync + 'static) -> Self {
-        Self::RemoteFileError(AnyError::new(error))
+    pub fn storage_error(error: impl StdError + Send + Sync + 'static) -> Self {
+        Self::StorageError(AnyError::new(error))
     }
 
     pub fn request_error(error: impl StdError + Send + Sync + 'static) -> Self {
@@ -90,7 +90,7 @@ impl ServerError {
             Self::InvalidCompressionType { .. } => "InvalidCompressionType",
             Self::AtticError(e) => e.name(),
             Self::DatabaseError(_) => "DatabaseError",
-            Self::RemoteFileError(_) => "RemoteFileError",
+            Self::StorageError(_) => "StorageError",
             Self::ManifestSerializationError(_) => "ManifestSerializationError",
             Self::AccessError(_) => "AccessError",
             Self::RequestError(_) => "RequestError",
@@ -115,7 +115,7 @@ impl ServerError {
             Self::AccessError(super::access::Error::NoDiscoveryPermission) => Self::Unauthorized,
 
             Self::DatabaseError(_) => Self::InternalServerError,
-            Self::RemoteFileError(_) => Self::InternalServerError,
+            Self::StorageError(_) => Self::InternalServerError,
             Self::ManifestSerializationError(_) => Self::InternalServerError,
 
             _ => self,
@@ -157,7 +157,7 @@ impl From<super::access::Error> for ServerError {
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         // TODO: Better logging control
-        if matches!(self, Self::DatabaseError(_) | Self::RemoteFileError(_) | Self::ManifestSerializationError(_) | Self::AtticError(_)) {
+        if matches!(self, Self::DatabaseError(_) | Self::StorageError(_) | Self::ManifestSerializationError(_) | Self::AtticError(_)) {
             tracing::error!("{:?}", self);
         }
 

@@ -99,7 +99,7 @@ impl S3Backend {
         }
 
         if let Some(endpoint) = &config.endpoint {
-            let endpoint = Endpoint::immutable(endpoint).map_err(ServerError::remote_file_error)?;
+            let endpoint = Endpoint::immutable(endpoint).map_err(ServerError::storage_error)?;
             builder = builder.endpoint_resolver(endpoint);
         }
 
@@ -113,7 +113,7 @@ impl S3Backend {
         let file = if let RemoteFile::S3(file) = file {
             file
         } else {
-            return Err(ServerError::RemoteFileError(anyhow::anyhow!(
+            return Err(ServerError::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
             )));
         };
@@ -152,7 +152,7 @@ impl StorageBackend for S3Backend {
                 .body(first_chunk.into())
                 .send()
                 .await
-                .map_err(ServerError::remote_file_error)?;
+                .map_err(ServerError::storage_error)?;
 
             tracing::debug!("put_object -> {:#?}", put_object);
 
@@ -170,7 +170,7 @@ impl StorageBackend for S3Backend {
             .key(&name)
             .send()
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         let upload_id = multipart.upload_id().unwrap();
 
@@ -233,7 +233,7 @@ impl StorageBackend for S3Backend {
             .into_iter()
             .map(|join_result| join_result.unwrap())
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(ServerError::remote_file_error)?
+            .map_err(ServerError::storage_error)?
             .into_iter()
             .enumerate()
             .map(|(idx, part)| {
@@ -262,7 +262,7 @@ impl StorageBackend for S3Backend {
             .multipart_upload(completed_multipart_upload)
             .send()
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         tracing::debug!("complete_multipart_upload -> {:#?}", completion);
 
@@ -283,7 +283,7 @@ impl StorageBackend for S3Backend {
             .key(&name)
             .send()
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         tracing::debug!("delete_file -> {:#?}", deletion);
 
@@ -299,7 +299,7 @@ impl StorageBackend for S3Backend {
             .key(&file.key)
             .send()
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         tracing::debug!("delete_file -> {:#?}", deletion);
 
@@ -309,7 +309,7 @@ impl StorageBackend for S3Backend {
     async fn download_file(&self, name: String) -> ServerResult<Download> {
         // FIXME: Configurable expiration
         let presign_config = PresigningConfig::expires_in(Duration::from_secs(10))
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         let presigned = self
             .client
@@ -318,7 +318,7 @@ impl StorageBackend for S3Backend {
             .key(&name)
             .presigned(presign_config)
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(Download::Redirect(presigned.uri().to_string()))
     }
@@ -327,7 +327,7 @@ impl StorageBackend for S3Backend {
         let (client, file) = self.get_client_from_db_ref(file).await?;
 
         let presign_config = PresigningConfig::expires_in(Duration::from_secs(600))
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         let presigned = client
             .get_object()
@@ -335,7 +335,7 @@ impl StorageBackend for S3Backend {
             .key(&file.key)
             .presigned(presign_config)
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         Ok(Download::Redirect(presigned.uri().to_string()))
     }
@@ -359,7 +359,7 @@ async fn read_chunk_async<S: AsyncRead + Unpin + Send>(stream: &mut S) -> Server
         let read = stream
             .read(buf)
             .await
-            .map_err(ServerError::remote_file_error)?;
+            .map_err(ServerError::storage_error)?;
 
         if read == 0 {
             break;

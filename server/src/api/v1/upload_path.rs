@@ -269,7 +269,7 @@ async fn upload_path_new(
     backend
         .upload_file(key, stream.stream())
         .await
-        .map_err(ServerError::remote_file_error)?;
+        .map_err(ServerError::storage_error)?;
 
     // Confirm that the NAR Hash and Size are correct
     // FIXME: errors
