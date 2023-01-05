@@ -64,6 +64,15 @@ pub struct Config {
     #[serde(default = "default_soft_delete_caches")]
     pub soft_delete_caches: bool,
 
+    /// Whether to require fully uploading a NAR if it exists in the global cache.
+    ///
+    /// If set to false, simply knowing the NAR hash is enough for
+    /// an uploader to gain access to an existing NAR in the global
+    /// cache.
+    #[serde(rename = "require-proof-of-possession")]
+    #[serde(default = "default_require_proof_of_possession")]
+    pub require_proof_of_possession: bool,
+
     /// Database connection.
     pub database: DatabaseConfig,
 
@@ -236,6 +245,10 @@ fn default_db_heartbeat() -> bool {
 
 fn default_soft_delete_caches() -> bool {
     false
+}
+
+fn default_require_proof_of_possession() -> bool {
+    true
 }
 
 fn default_gc_interval() -> Duration {

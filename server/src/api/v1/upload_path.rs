@@ -114,7 +114,7 @@ pub(crate) async fn upload_path(
     match existing_nar {
         Some(existing_nar) => {
             // Deduplicate
-            upload_path_dedup(username, cache, upload_info, stream, existing_nar, database).await
+            upload_path_dedup(username, cache, upload_info, stream, database, &state, existing_nar).await
         }
         None => {
             // New NAR
@@ -129,24 +129,27 @@ async fn upload_path_dedup(
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
     stream: impl AsyncRead + Unpin,
-    existing_nar: NarGuard,
     database: &DatabaseConnection,
+    state: &State,
+    existing_nar: NarGuard,
 ) -> ServerResult<String> {
-    let (mut stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
-    tokio::io::copy(&mut stream, &mut tokio::io::sink())
-        .await
-        .map_err(ServerError::request_error)?;
+    if state.config.require_proof_of_possession {
+        let (mut stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+        tokio::io::copy(&mut stream, &mut tokio::io::sink())
+            .await
+            .map_err(ServerError::request_error)?;
 
-    // FIXME: errors
-    let (nar_hash, nar_size) = nar_compute.get().unwrap();
-    let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
+        // FIXME: errors
+        let (nar_hash, nar_size) = nar_compute.get().unwrap();
+        let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
 
-    // Confirm that the NAR Hash and Size are correct
-    if nar_hash.to_typed_base16() != existing_nar.nar_hash
-        || *nar_size != upload_info.nar_size
-        || *nar_size != existing_nar.nar_size as usize
-    {
-        return Err(ErrorKind::RequestError(anyhow!("Bad NAR Hash or Size")).into());
+        // Confirm that the NAR Hash and Size are correct
+        if nar_hash.to_typed_base16() != existing_nar.nar_hash
+            || *nar_size != upload_info.nar_size
+            || *nar_size != existing_nar.nar_size as usize
+        {
+            return Err(ErrorKind::RequestError(anyhow!("Bad NAR Hash or Size")).into());
+        }
     }
 
     // Finally...

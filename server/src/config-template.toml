@@ -27,6 +27,13 @@ allowed-hosts = []
 # are there.
 #soft-delete-caches = false
 
+# Whether to require fully uploading a NAR if it exists in the global cache.
+#
+# If set to false, simply knowing the NAR hash is enough for
+# an uploader to gain access to an existing NAR in the global
+# cache.
+#require-proof-of-possession = true
+
 # JWT signing token
 #
 # Set this to the Base64 encoding of some random data.
