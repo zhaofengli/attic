@@ -5,7 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use aws_sdk_s3::{
     config::Builder as S3ConfigBuilder, model::CompletedMultipartUpload, model::CompletedPart,
-    presigning::config::PresigningConfig, Client, Config as S3Config, Credentials, Endpoint,
+    presigning::config::PresigningConfig, Client, Credentials, Endpoint,
     Region,
 };
 use futures::future::join_all;
@@ -73,8 +73,8 @@ pub struct S3RemoteFile {
 }
 
 impl S3Backend {
-    pub fn new(config: S3StorageConfig) -> ServerResult<Self> {
-        let s3_config = Self::config_builder(&config)?
+    pub async fn new(config: S3StorageConfig) -> ServerResult<Self> {
+        let s3_config = Self::config_builder(&config).await?
             .region(Region::new(config.region.to_owned()))
             .build();
 
@@ -84,8 +84,9 @@ impl S3Backend {
         })
     }
 
-    fn config_builder(config: &S3StorageConfig) -> ServerResult<S3ConfigBuilder> {
-        let mut builder = S3Config::builder();
+    async fn config_builder(config: &S3StorageConfig) -> ServerResult<S3ConfigBuilder> {
+        let shared_config = aws_config::load_from_env().await;
+        let mut builder = S3ConfigBuilder::from(&shared_config);
 
         if let Some(credentials) = &config.credentials {
             builder = builder.credentials_provider(Credentials::new(
@@ -105,7 +106,7 @@ impl S3Backend {
         Ok(builder)
     }
 
-    fn get_client_from_db_ref<'a>(
+    async fn get_client_from_db_ref<'a>(
         &self,
         file: &'a RemoteFile,
     ) -> ServerResult<(Client, &'a S3RemoteFile)> {
@@ -122,7 +123,7 @@ impl S3Backend {
             self.client.clone()
         } else {
             // FIXME: Cache the client instance
-            let s3_conf = Self::config_builder(&self.config)?
+            let s3_conf = Self::config_builder(&self.config).await?
                 .region(Region::new(file.region.to_owned()))
                 .build();
             Client::from_conf(s3_conf)
@@ -290,7 +291,7 @@ impl StorageBackend for S3Backend {
     }
 
     async fn delete_file_db(&self, file: &RemoteFile) -> ServerResult<()> {
-        let (client, file) = self.get_client_from_db_ref(file)?;
+        let (client, file) = self.get_client_from_db_ref(file).await?;
 
         let deletion = client
             .delete_object()
@@ -323,7 +324,7 @@ impl StorageBackend for S3Backend {
     }
 
     async fn download_file_db(&self, file: &RemoteFile) -> ServerResult<Download> {
-        let (client, file) = self.get_client_from_db_ref(file)?;
+        let (client, file) = self.get_client_from_db_ref(file).await?;
 
         let presign_config = PresigningConfig::expires_in(Duration::from_secs(600))
             .map_err(ServerError::remote_file_error)?;

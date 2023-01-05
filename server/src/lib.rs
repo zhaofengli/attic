@@ -111,7 +111,7 @@ impl StateInner {
                         Ok(Arc::new(boxed))
                     }
                     StorageConfig::S3(s3_config) => {
-                        let s3 = S3Backend::new(s3_config.clone())?;
+                        let s3 = S3Backend::new(s3_config.clone()).await?;
                         let boxed: Box<dyn StorageBackend> = Box::new(s3);
                         Ok(Arc::new(boxed))
                     }
