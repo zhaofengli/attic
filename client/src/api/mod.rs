@@ -16,7 +16,7 @@ use crate::config::ServerConfig;
 use crate::version::ATTIC_DISTRIBUTOR;
 use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
-use attic::api::v1::upload_path::UploadPathNarInfo;
+use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult};
 use attic::cache::CacheName;
 use attic::nix_store::StorePathHash;
 
@@ -155,7 +155,11 @@ impl ApiClient {
     }
 
     /// Uploads a path.
-    pub async fn upload_path<S>(&self, nar_info: UploadPathNarInfo, stream: S) -> Result<()>
+    pub async fn upload_path<S>(
+        &self,
+        nar_info: UploadPathNarInfo,
+        stream: S,
+    ) -> Result<Option<UploadPathResult>>
     where
         S: TryStream + Send + Sync + 'static,
         S::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -177,7 +181,10 @@ impl ApiClient {
             .await?;
 
         if res.status().is_success() {
-            Ok(())
+            match res.json().await {
+                Ok(r) => Ok(Some(r)),
+                Err(_) => Ok(None),
+            }
         } else {
             let api_error = ApiError::try_from_response(res).await?;
             Err(api_error.into())

@@ -17,7 +17,7 @@ use crate::api::ApiClient;
 use crate::cache::{CacheName, CacheRef};
 use crate::cli::Opts;
 use crate::config::Config;
-use attic::api::v1::upload_path::UploadPathNarInfo;
+use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResultKind};
 use attic::error::AtticResult;
 use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
 
@@ -131,19 +131,39 @@ pub async fn upload_path(
 
     let start = Instant::now();
     match api.upload_path(upload_info, nar_stream).await {
-        Ok(_) => {
-            let elapsed = start.elapsed();
-            let seconds = elapsed.as_secs_f64();
-            let speed = (path_info.nar_size as f64 / seconds) as u64;
+        Ok(r) => {
+            if r.is_none() {
+                mp.suspend(|| {
+                    eprintln!("Warning: Please update your server. Compatibility will be removed in the first stable release.");
+                })
+            }
 
-            mp.suspend(|| {
-                eprintln!(
-                    "✅ {} ({}/s)",
-                    path.as_os_str().to_string_lossy(),
-                    HumanBytes(speed)
-                );
-            });
-            bar.finish_and_clear();
+            let deduplicated = if let Some(r) = r {
+                r.kind == UploadPathResultKind::Deduplicated
+            } else {
+                false
+            };
+
+            if deduplicated {
+                mp.suspend(|| {
+                    eprintln!("✅ {} (deduplicated)", path.as_os_str().to_string_lossy());
+                });
+                bar.finish_and_clear();
+            } else {
+                let elapsed = start.elapsed();
+                let seconds = elapsed.as_secs_f64();
+                let speed = (path_info.nar_size as f64 / seconds) as u64;
+
+                mp.suspend(|| {
+                    eprintln!(
+                        "✅ {} ({}/s)",
+                        path.as_os_str().to_string_lossy(),
+                        HumanBytes(speed)
+                    );
+                });
+                bar.finish_and_clear();
+            }
+
             Ok(())
         }
         Err(e) => {

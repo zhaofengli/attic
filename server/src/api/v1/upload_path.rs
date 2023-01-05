@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdEncoder};
 use axum::{
-    extract::{BodyStream, Extension},
+    extract::{BodyStream, Extension, Json},
     http::HeaderMap,
 };
 use chrono::Utc;
@@ -26,7 +26,7 @@ use crate::config::CompressionType;
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
 use crate::{RequestState, State};
-use attic::api::v1::upload_path::UploadPathNarInfo;
+use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
 use attic::hash::Hash;
 use attic::stream::StreamHasher;
 use attic::util::Finally;
@@ -34,7 +34,7 @@ use attic::util::Finally;
 use crate::database::entity::cache;
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object};
-use crate::database::entity::Json;
+use crate::database::entity::Json as DbJson;
 use crate::database::{AtticDatabase, NarGuard};
 
 type CompressorFn<C> = Box<dyn FnOnce(C) -> Box<dyn AsyncRead + Unpin + Send> + Send>;
@@ -84,7 +84,7 @@ pub(crate) async fn upload_path(
     Extension(req_state): Extension<RequestState>,
     headers: HeaderMap,
     stream: BodyStream,
-) -> ServerResult<String> {
+) -> ServerResult<Json<UploadPathResult>> {
     let upload_info: UploadPathNarInfo = {
         let header = headers
             .get("X-Attic-Nar-Info")
@@ -114,7 +114,16 @@ pub(crate) async fn upload_path(
     match existing_nar {
         Some(existing_nar) => {
             // Deduplicate
-            upload_path_dedup(username, cache, upload_info, stream, database, &state, existing_nar).await
+            upload_path_dedup(
+                username,
+                cache,
+                upload_info,
+                stream,
+                database,
+                &state,
+                existing_nar,
+            )
+            .await
         }
         None => {
             // New NAR
@@ -132,7 +141,7 @@ async fn upload_path_dedup(
     database: &DatabaseConnection,
     state: &State,
     existing_nar: NarGuard,
-) -> ServerResult<String> {
+) -> ServerResult<Json<UploadPathResult>> {
     if state.config.require_proof_of_possession {
         let (mut stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
         tokio::io::copy(&mut stream, &mut tokio::io::sink())
@@ -182,8 +191,9 @@ async fn upload_path_dedup(
     // Ensure it's not unlocked earlier
     drop(existing_nar);
 
-    // TODO
-    Ok("Success".to_string())
+    Ok(Json(UploadPathResult {
+        kind: UploadPathResultKind::Deduplicated,
+    }))
 }
 
 /// Uploads a path when there is no matching NAR in the global cache.
@@ -198,7 +208,7 @@ async fn upload_path_new(
     stream: impl AsyncRead + Send + Unpin + 'static,
     database: &DatabaseConnection,
     state: &State,
-) -> ServerResult<String> {
+) -> ServerResult<Json<UploadPathResult>> {
     let compression_config = &state.config.compression;
     let compression: Compression = compression_config.r#type.into();
     let level = compression_config.level();
@@ -228,7 +238,7 @@ async fn upload_path_new(
             nar_hash: Set(upload_info.nar_hash.to_typed_base16()),
             nar_size: Set(nar_size_db),
 
-            remote_file: Set(Json(remote_file)),
+            remote_file: Set(DbJson(remote_file)),
             remote_file_id: Set(remote_file_id),
 
             created_at: Set(Utc::now()),
@@ -327,8 +337,9 @@ async fn upload_path_new(
 
     cleanup.cancel();
 
-    // TODO
-    Ok("Success".to_string())
+    Ok(Json(UploadPathResult {
+        kind: UploadPathResultKind::Uploaded,
+    }))
 }
 
 impl CompressionStream {
@@ -379,9 +390,9 @@ impl UploadPathNarInfoExt for UploadPathNarInfo {
         object::ActiveModel {
             store_path_hash: Set(self.store_path_hash.to_string()),
             store_path: Set(self.store_path.clone()),
-            references: Set(Json(self.references.clone())),
+            references: Set(DbJson(self.references.clone())),
             deriver: Set(self.deriver.clone()),
-            sigs: Set(Json(self.sigs.clone())),
+            sigs: Set(DbJson(self.sigs.clone())),
             ca: Set(self.ca.clone()),
             ..Default::default()
         }

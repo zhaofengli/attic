@@ -17,6 +17,7 @@ nix-base32 = { git = "https://github.com/zhaofengli/nix-base32.git", rev = "b850
 regex = "1.7.0"
 serde = { version = "1.0.151", features = ["derive"] }
 serde_yaml = "0.9.16"
+serde_with = "2.1.0"
 sha2 = "0.10.6"
 tempfile = "3"
 wildmatch = "2.1.1"

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DefaultOnError};
 
 use crate::cache::CacheName;
 use crate::hash::Hash;
@@ -49,4 +50,27 @@ pub struct UploadPathNarInfo {
 
     /// The size of the NAR.
     pub nar_size: usize,
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UploadPathResult {
+    #[serde_as(deserialize_as = "DefaultOnError")]
+    pub kind: UploadPathResultKind,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum UploadPathResultKind {
+    /// The path was uploaded.
+    Uploaded,
+
+    /// The path was globally deduplicated.
+    Deduplicated,
+}
+
+impl Default for UploadPathResultKind {
+    fn default() -> Self {
+        Self::Uploaded
+    }
 }
