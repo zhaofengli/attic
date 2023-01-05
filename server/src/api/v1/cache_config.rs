@@ -10,7 +10,7 @@ use tracing::instrument;
 
 use crate::database::entity::cache::{self, Entity as Cache};
 use crate::database::entity::Json as DbJson;
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::{RequestState, State};
 use attic::api::v1::cache_config::{
     CacheConfig, CreateCacheRequest, KeypairConfig, RetentionPeriodConfig,
@@ -115,7 +115,7 @@ pub(crate) async fn configure_cache(
             }
             RetentionPeriodConfig::Period(period) => {
                 update.retention_period = Set(Some(period.try_into().map_err(|_| {
-                    ServerError::RequestError(anyhow!("Invalid retention period"))
+                    ErrorKind::RequestError(anyhow!("Invalid retention period"))
                 })?));
             }
         }
@@ -131,9 +131,9 @@ pub(crate) async fn configure_cache(
 
         Ok(())
     } else {
-        Err(ServerError::RequestError(anyhow!(
+        Err(ErrorKind::RequestError(anyhow!(
             "No modifiable fields were set."
-        )))
+        )).into())
     }
 }
 
@@ -164,7 +164,7 @@ pub(crate) async fn destroy_cache(
 
         if deletion.rows_affected == 0 {
             // Someone raced to (soft) delete the cache before us
-            Err(ServerError::NoSuchCache)
+            Err(ErrorKind::NoSuchCache.into())
         } else {
             Ok(())
         }
@@ -179,7 +179,7 @@ pub(crate) async fn destroy_cache(
 
         if deletion.rows_affected == 0 {
             // Someone raced to (soft) delete the cache before us
-            Err(ServerError::NoSuchCache)
+            Err(ErrorKind::NoSuchCache.into())
         } else {
             Ok(())
         }
@@ -224,7 +224,7 @@ pub(crate) async fn create_cache(
 
     if num_inserted == 0 {
         // The cache already exists
-        Err(ServerError::CacheAlreadyExists)
+        Err(ErrorKind::CacheAlreadyExists.into())
     } else {
         Ok(())
     }

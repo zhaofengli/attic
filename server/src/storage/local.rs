@@ -8,7 +8,7 @@ use tokio::fs::{self, File};
 use tokio::io::{self, AsyncRead};
 
 use super::{Download, RemoteFile, StorageBackend};
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerError, ServerResult};
 
 #[derive(Debug)]
 pub struct LocalBackend {
@@ -74,9 +74,9 @@ impl StorageBackend for LocalBackend {
         let file = if let RemoteFile::Local(file) = file {
             file
         } else {
-            return Err(ServerError::StorageError(anyhow::anyhow!(
+            return Err(ErrorKind::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
-            )));
+            )).into());
         };
 
         fs::remove_file(self.get_path(&file.name))
@@ -98,9 +98,9 @@ impl StorageBackend for LocalBackend {
         let file = if let RemoteFile::Local(file) = file {
             file
         } else {
-            return Err(ServerError::StorageError(anyhow::anyhow!(
+            return Err(ErrorKind::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
-            )));
+            )).into());
         };
 
         let file = File::open(self.get_path(&file.name))

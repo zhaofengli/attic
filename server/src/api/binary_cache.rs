@@ -19,7 +19,7 @@ use tokio_util::io::ReaderStream;
 use tracing::instrument;
 
 use crate::database::AtticDatabase;
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerResult};
 use crate::narinfo::NarInfo;
 use crate::nix_manifest;
 use crate::storage::Download;
@@ -101,6 +101,7 @@ async fn get_nix_cache_info(
 /// - HEAD `/:cache/{storePathHash}.narinfo`
 /// - GET `/:cache/{storePathHash}.ls` (not implemented)
 #[instrument(skip_all, fields(cache_name, path))]
+#[axum_macros::debug_handler]
 async fn get_store_path_info(
     Extension(state): Extension<State>,
     Extension(req_state): Extension<RequestState>,
@@ -109,12 +110,12 @@ async fn get_store_path_info(
     let components: Vec<&str> = path.splitn(2, '.').collect();
 
     if components.len() != 2 {
-        return Err(ServerError::NotFound);
+        return Err(ErrorKind::NotFound.into());
     }
 
     // TODO: Other endpoints
     if components[1] != "narinfo" {
-        return Err(ServerError::NotFound);
+        return Err(ErrorKind::NotFound.into());
     }
 
     let store_path_hash = StorePathHash::new(components[0].to_string())?;
@@ -162,11 +163,11 @@ async fn get_nar(
     let components: Vec<&str> = path.splitn(2, '.').collect();
 
     if components.len() != 2 {
-        return Err(ServerError::NotFound);
+        return Err(ErrorKind::NotFound.into());
     }
 
     if components[1] != "nar" {
-        return Err(ServerError::NotFound);
+        return Err(ErrorKind::NotFound.into());
     }
 
     let store_path_hash = StorePathHash::new(components[0].to_string())?;

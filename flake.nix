@@ -73,12 +73,15 @@
 
           rustfmt clippy
           cargo-expand cargo-outdated cargo-edit
+          tokio-console
 
           sqlite-interactive
 
           editorconfig-checker
 
           flyctl
+
+          wrk
         ] ++ (lib.optionals pkgs.stdenv.isLinux [
           linuxPackages.perf
         ]);

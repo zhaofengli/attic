@@ -48,7 +48,7 @@ use serde::de;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::nix_manifest::{self, SpaceDelimitedList};
 use attic::hash::Hash;
 use attic::mime;
@@ -252,9 +252,9 @@ impl FromStr for Compression {
             "bzip2" => Ok(Self::Bzip2),
             "br" => Ok(Self::Brotli),
             "zstd" => Ok(Self::Zstd),
-            _ => Err(ServerError::InvalidCompressionType {
+            _ => Err(ErrorKind::InvalidCompressionType {
                 name: s.to_string(),
-            }),
+            }.into()),
         }
     }
 }

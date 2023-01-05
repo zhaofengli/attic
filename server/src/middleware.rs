@@ -9,7 +9,7 @@ use axum::{
 };
 
 use super::{AuthState, RequestStateInner, State};
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerResult};
 
 /// Initializes per-request state.
 pub async fn init_request_state<B>(
@@ -50,7 +50,7 @@ pub async fn restrict_host<B>(
     let allowed_hosts = &state.config.allowed_hosts;
 
     if !allowed_hosts.is_empty() && !allowed_hosts.iter().any(|h| h.as_str() == host) {
-        return Err(ServerError::RequestError(anyhow!("Bad Host")));
+        return Err(ErrorKind::RequestError(anyhow!("Bad Host")).into());
     }
 
     Ok(next.run(req).await)

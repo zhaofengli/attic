@@ -12,7 +12,7 @@ use sea_orm::sea_query::{Expr, LockBehavior, LockType, Query, Value};
 use sea_orm::{ActiveValue::Set, ConnectionTrait, DatabaseConnection, FromQueryResult};
 use tokio::task;
 
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerError, ServerResult};
 use attic::cache::CacheName;
 use attic::hash::Hash;
 use attic::nix_store::StorePathHash;
@@ -88,7 +88,7 @@ impl AtticDatabase for DatabaseConnection {
             .query_one(stmt)
             .await
             .map_err(ServerError::database_error)?
-            .ok_or(ServerError::NoSuchObject)?;
+            .ok_or(ErrorKind::NoSuchObject)?;
 
         let object = object::Model::from_query_result(&result, SELECT_OBJECT)
             .map_err(ServerError::database_error)?;
@@ -107,7 +107,7 @@ impl AtticDatabase for DatabaseConnection {
             .one(self)
             .await
             .map_err(ServerError::database_error)?
-            .ok_or(ServerError::NoSuchCache)
+            .ok_or_else(|| ErrorKind::NoSuchCache.into())
     }
 
     async fn find_and_lock_nar(&self, nar_hash: &Hash) -> ServerResult<Option<NarGuard>> {

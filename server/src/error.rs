@@ -1,6 +1,7 @@
 //! Error handling.
 
 use std::error::Error as StdError;
+use std::fmt;
 
 use anyhow::Error as AnyError;
 use axum::http::StatusCode;
@@ -8,14 +9,28 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use displaydoc::Display;
 use serde::Serialize;
+use tracing_error::SpanTrace;
 
 use attic::error::AtticError;
 
 pub type ServerResult<T> = Result<T, ServerError>;
 
-/// An error.
+/// A server error.
+#[derive(Debug)]
+pub struct ServerError {
+    /// The kind of the error.
+    kind: ErrorKind,
+
+    /// Whether the client that caused the error has discovery permissions.
+    discovery_permission: bool,
+
+    /// Context of where the error occurred.
+    context: SpanTrace,
+}
+
+/// The kind of an error.
 #[derive(Debug, Display)]
-pub enum ServerError {
+pub enum ErrorKind {
     // Generic responses
     /// The URL you requested was not found.
     NotFound,
@@ -67,17 +82,82 @@ pub struct ErrorResponse {
 
 impl ServerError {
     pub fn database_error(error: impl StdError + Send + Sync + 'static) -> Self {
-        Self::DatabaseError(AnyError::new(error))
+        ErrorKind::DatabaseError(AnyError::new(error)).into()
     }
 
     pub fn storage_error(error: impl StdError + Send + Sync + 'static) -> Self {
-        Self::StorageError(AnyError::new(error))
+        ErrorKind::StorageError(AnyError::new(error)).into()
     }
 
     pub fn request_error(error: impl StdError + Send + Sync + 'static) -> Self {
-        Self::RequestError(AnyError::new(error))
+        ErrorKind::RequestError(AnyError::new(error)).into()
     }
 
+    pub fn set_discovery_permission(&mut self, perm: bool) {
+        self.discovery_permission = perm;
+    }
+}
+
+impl fmt::Display for ServerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.kind)?;
+        self.context.fmt(f)?;
+        Ok(())
+    }
+}
+
+impl From<ErrorKind> for ServerError {
+    fn from(kind: ErrorKind) -> Self {
+        Self {
+            kind,
+            discovery_permission: true,
+            context: SpanTrace::capture(),
+        }
+    }
+}
+
+impl From<AtticError> for ServerError {
+    fn from(error: AtticError) -> Self {
+        ErrorKind::AtticError(error).into()
+    }
+}
+
+impl From<super::access::Error> for ServerError {
+    fn from(error: super::access::Error) -> Self {
+        ErrorKind::AccessError(error).into()
+    }
+}
+
+impl StdError for ServerError {}
+
+impl IntoResponse for ServerError {
+    fn into_response(self) -> Response {
+        // TODO: Better logging control
+        if matches!(self.kind, ErrorKind::DatabaseError(_) | ErrorKind::StorageError(_) | ErrorKind::ManifestSerializationError(_) | ErrorKind::AtticError(_)) {
+            tracing::error!("{}", self);
+        }
+
+        let kind = if self.discovery_permission {
+            self.kind
+        } else {
+            self.kind.into_no_discovery_permissions()
+        };
+
+        // TODO: don't sanitize in dev mode
+        let sanitized = kind.into_clients();
+
+        let status_code = sanitized.http_status_code();
+        let error_response = ErrorResponse {
+            code: status_code.as_u16(),
+            message: sanitized.to_string(),
+            error: sanitized.name().to_string(),
+        };
+
+        (status_code, Json(error_response)).into_response()
+    }
+}
+
+impl ErrorKind {
     fn name(&self) -> &'static str {
         match self {
             Self::NotFound => "NotFound",
@@ -99,7 +179,7 @@ impl ServerError {
 
     /// Returns a more restricted version of this error for a client without discovery
     /// permissions.
-    pub fn into_no_discovery_permissions(self) -> Self {
+    fn into_no_discovery_permissions(self) -> Self {
         match self {
             Self::NoSuchCache => Self::Unauthorized,
             Self::NoSuchObject => Self::Unauthorized,
@@ -137,40 +217,5 @@ impl ServerError {
             Self::InvalidCompressionType { .. } => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
-    }
-}
-
-impl StdError for ServerError {}
-
-impl From<AtticError> for ServerError {
-    fn from(error: AtticError) -> Self {
-        Self::AtticError(error)
-    }
-}
-
-impl From<super::access::Error> for ServerError {
-    fn from(error: super::access::Error) -> Self {
-        Self::AccessError(error)
-    }
-}
-
-impl IntoResponse for ServerError {
-    fn into_response(self) -> Response {
-        // TODO: Better logging control
-        if matches!(self, Self::DatabaseError(_) | Self::StorageError(_) | Self::ManifestSerializationError(_) | Self::AtticError(_)) {
-            tracing::error!("{:?}", self);
-        }
-
-        // TODO: don't sanitize in dev mode
-        let sanitized = self.into_clients();
-
-        let status_code = sanitized.http_status_code();
-        let error_response = ErrorResponse {
-            code: status_code.as_u16(),
-            message: sanitized.to_string(),
-            error: sanitized.name().to_string(),
-        };
-
-        (status_code, Json(error_response)).into_response()
     }
 }

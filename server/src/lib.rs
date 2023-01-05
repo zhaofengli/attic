@@ -39,12 +39,13 @@ use sea_orm::{query::Statement, ConnectionTrait, Database, DatabaseConnection};
 use tokio::sync::OnceCell;
 use tokio::time;
 use tower_http::catch_panic::CatchPanicLayer;
+use tower_http::trace::TraceLayer;
 
 use access::http::{apply_auth, AuthState};
 use attic::cache::CacheName;
 use config::{Config, StorageConfig};
 use database::migration::{Migrator, MigratorTrait};
-use error::{ServerError, ServerResult};
+use error::{ErrorKind, ServerError, ServerResult};
 use middleware::{init_request_state, restrict_host};
 use storage::{LocalBackend, S3Backend, StorageBackend};
 
@@ -171,7 +172,7 @@ impl RequestStateInner {
 /// The fallback route.
 #[axum_macros::debug_handler]
 async fn fallback(_: Uri) -> ServerResult<()> {
-    Err(ServerError::NotFound)
+    Err(ErrorKind::NotFound.into())
 }
 
 /// Runs the API server.
@@ -194,6 +195,7 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
         .layer(axum::middleware::from_fn(init_request_state))
         .layer(axum::middleware::from_fn(restrict_host))
         .layer(Extension(state.clone()))
+        .layer(TraceLayer::new_for_http())
         .layer(CatchPanicLayer::new());
 
     eprintln!("Listening on {:?}...", listen);

@@ -31,7 +31,7 @@ use displaydoc::Display;
 use serde::{de, ser, Deserialize, Serialize};
 use serde_with::{formats::SpaceSeparator, StringWithSeparator};
 
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerResult};
 use deserializer::Deserializer;
 use serializer::Serializer;
 
@@ -42,7 +42,7 @@ where
     T: for<'de> Deserialize<'de>,
 {
     let mut deserializer = Deserializer::from_str(s);
-    T::deserialize(&mut deserializer).map_err(ServerError::ManifestSerializationError)
+    T::deserialize(&mut deserializer).map_err(|e| ErrorKind::ManifestSerializationError(e).into())
 
     // FIXME: Reject extra output??
 }
@@ -54,7 +54,7 @@ where
     let mut serializer = Serializer::new();
     value
         .serialize(&mut serializer)
-        .map_err(ServerError::ManifestSerializationError)?;
+        .map_err(ErrorKind::ManifestSerializationError)?;
 
     Ok(serializer.into_output())
 }

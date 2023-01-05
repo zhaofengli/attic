@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::{Download, RemoteFile, StorageBackend};
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerError, ServerResult};
 use attic::util::Finally;
 
 /// The chunk size for each part in a multipart upload.
@@ -113,9 +113,9 @@ impl S3Backend {
         let file = if let RemoteFile::S3(file) = file {
             file
         } else {
-            return Err(ServerError::StorageError(anyhow::anyhow!(
+            return Err(ErrorKind::StorageError(anyhow::anyhow!(
                 "Does not understand the remote file reference"
-            )));
+            )).into());
         };
 
         // FIXME: Ugly

@@ -5,6 +5,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use tokio::join;
+use tokio::task::spawn;
+use tracing_error::ErrorLayer;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 use attic_server::config;
 
@@ -26,6 +30,12 @@ struct Opts {
     /// Mode to run.
     #[clap(long, default_value = "monolithic")]
     mode: ServerMode,
+
+    /// Whether to enable tokio-console.
+    ///
+    /// The console server will listen on its default port.
+    #[clap(long)]
+    tokio_console: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -51,10 +61,11 @@ enum ServerMode {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    let opts = Opts::parse();
+
+    init_logging(opts.tokio_console);
     dump_version();
 
-    let opts = Opts::parse();
     let config = if let Some(config_path) = opts.config {
         config::load_config_from_path(&config_path)
     } else if let Ok(config_env) = env::var("ATTIC_SERVER_CONFIG_BASE64") {
@@ -106,12 +117,30 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn init_logging() {
-    #[cfg(not(feature = "tokio-console"))]
-    tracing_subscriber::fmt::init();
+fn init_logging(tokio_console: bool) {
+    let env_filter = EnvFilter::from_default_env();
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_filter(env_filter);
 
-    #[cfg(feature = "tokio-console")]
-    console_subscriber::init();
+    let error_layer = ErrorLayer::default();
+
+    let console_layer = if tokio_console {
+        let (layer, server) = console_subscriber::ConsoleLayer::new();
+        spawn(server.serve());
+        Some(layer)
+    } else {
+        None
+    };
+
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(error_layer)
+        .with(console_layer)
+        .init();
+
+    if tokio_console {
+        eprintln!("Note: tokio-console is enabled");
+    }
 }
 
 fn dump_version() {

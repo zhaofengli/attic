@@ -23,7 +23,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::config::CompressionType;
-use crate::error::{ServerError, ServerResult};
+use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
 use crate::{RequestState, State};
 use attic::api::v1::upload_path::UploadPathNarInfo;
@@ -88,7 +88,7 @@ pub(crate) async fn upload_path(
     let upload_info: UploadPathNarInfo = {
         let header = headers
             .get("X-Attic-Nar-Info")
-            .ok_or_else(|| ServerError::RequestError(anyhow!("X-Attic-Nar-Info must be set")))?;
+            .ok_or_else(|| ErrorKind::RequestError(anyhow!("X-Attic-Nar-Info must be set")))?;
 
         serde_json::from_slice(header.as_bytes()).map_err(ServerError::request_error)?
     };
@@ -147,7 +147,7 @@ async fn upload_path_dedup(
         || *nar_size != upload_info.nar_size
         || *nar_size != existing_nar.nar_size as usize
     {
-        return Err(ServerError::RequestError(anyhow!("Bad NAR Hash or Size")));
+        return Err(ErrorKind::RequestError(anyhow!("Bad NAR Hash or Size")).into());
     }
 
     // Finally...
@@ -280,7 +280,7 @@ async fn upload_path_new(
     let file_hash = Hash::Sha256(file_hash.as_slice().try_into().unwrap());
 
     if nar_hash != upload_info.nar_hash || *nar_size != upload_info.nar_size {
-        return Err(ServerError::RequestError(anyhow!("Bad NAR Hash or Size")));
+        return Err(ErrorKind::RequestError(anyhow!("Bad NAR Hash or Size")).into());
     }
 
     // Finally...

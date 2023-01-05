@@ -65,23 +65,17 @@ impl AuthState {
 
                 d
             }
-            Err(e) => {
-                if permission.can_discover() {
-                    return Err(e);
-                } else {
-                    return Err(e.into_no_discovery_permissions());
-                }
+            Err(mut e) => {
+                e.set_discovery_permission(permission.can_discover());
+                return Err(e);
             }
         };
 
         match f(cache, &mut permission) {
             Ok(t) => Ok(t),
-            Err(e) => {
-                if permission.can_discover() {
-                    Err(e)
-                } else {
-                    Err(e.into_no_discovery_permissions())
-                }
+            Err(mut e) => {
+                e.set_discovery_permission(permission.can_discover());
+                Err(e)
             }
         }
     }
