@@ -232,6 +232,11 @@ impl Token {
             .map_err(|e| Error::TokenError(e).into())
     }
 
+    /// Returns the subject of the token.
+    pub fn sub(&self) -> &str {
+        self.0.claims.sub.as_str()
+    }
+
     /// Returns the claims as a serializable value.
     pub fn opaque_claims(&self) -> &impl Serialize {
         &self.0.claims

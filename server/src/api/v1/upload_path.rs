@@ -107,22 +107,26 @@ pub(crate) async fn upload_path(
         stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
     );
 
+    let username = req_state.auth.username()
+        .map(str::to_string);
+
     // Try to acquire a lock on an existing NAR
     let existing_nar = database.find_and_lock_nar(&upload_info.nar_hash).await?;
     match existing_nar {
         Some(existing_nar) => {
             // Deduplicate
-            upload_path_dedup(cache, upload_info, stream, existing_nar, database).await
+            upload_path_dedup(username, cache, upload_info, stream, existing_nar, database).await
         }
         None => {
             // New NAR
-            upload_path_new(cache, upload_info, stream, database, &state).await
+            upload_path_new(username, cache, upload_info, stream, database, &state).await
         }
     }
 }
 
 /// Uploads a path when there is already a matching NAR in the global cache.
 async fn upload_path_dedup(
+    username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
     stream: impl AsyncRead + Unpin,
@@ -164,6 +168,7 @@ async fn upload_path_dedup(
         new_object.cache_id = Set(cache.id);
         new_object.nar_id = Set(existing_nar.id);
         new_object.created_at = Set(Utc::now());
+        new_object.created_by = Set(username);
         new_object
     })
     .exec(&txn)
@@ -185,6 +190,7 @@ async fn upload_path_dedup(
 /// us. The `nar` table can hold duplicate NARs which can be deduplicated
 /// in a background process.
 async fn upload_path_new(
+    username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
     stream: impl AsyncRead + Send + Unpin + 'static,
@@ -308,6 +314,7 @@ async fn upload_path_new(
         new_object.cache_id = Set(cache.id);
         new_object.nar_id = Set(nar_id);
         new_object.created_at = Set(Utc::now());
+        new_object.created_by = Set(username);
         new_object
     })
     .exec(&txn)

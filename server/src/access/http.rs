@@ -34,6 +34,13 @@ impl AuthState {
         }
     }
 
+    /// Returns the username if it exists.
+    ///
+    /// Currently it's the `sub` claim of the JWT.
+    pub fn username(&self) -> Option<&str> {
+        self.token.get().map(|token| token.sub())
+    }
+
     /// Finds and performs authorization for a cache.
     pub async fn auth_cache<F, T>(
         &self,

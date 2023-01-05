@@ -62,6 +62,12 @@ pub struct Model {
 
     /// Timestamp when the object is last accessed.
     pub last_accessed_at: Option<ChronoDateTimeUtc>,
+
+    /// The uploader of the object.
+    ///
+    /// This is a "username." Currently, it's set to the `sub` claim in
+    /// the client's JWT.
+    pub created_by: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
