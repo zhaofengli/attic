@@ -43,8 +43,8 @@
         name = "attic-server";
         tag = "main";
         copyToRoot = [
-          # Minimal `/bin/sh` for `fly ssh console`
-          pkgs.busybox-sandbox-shell
+          # Debugging utilities for `fly ssh console`
+          pkgs.busybox
           packages.attic-server
         ];
         config = {
