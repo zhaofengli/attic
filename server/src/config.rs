@@ -25,6 +25,9 @@ const XDG_PREFIX: &str = "attic";
 /// This is useful for deploying to certain application platforms like Fly.io
 const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 
+/// Environment variable storing the Base64-encoded HS256 JWT secret.
+const ENV_TOKEN_HS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64";
+
 #[derive(Clone)]
 pub struct JwtKeys {
     pub decoding: JwtDecodingKey,
@@ -100,6 +103,7 @@ pub struct Config {
     /// Set this to the base64 encoding of a randomly generated secret.
     #[serde(rename = "token-hs256-secret-base64")]
     #[serde(deserialize_with = "deserialize_base64_jwt_secret")]
+    #[serde(default = "JwtKeys::load_from_env")]
     #[derivative(Debug = "ignore")]
     pub token_hs256_secret: JwtKeys,
 }
@@ -183,6 +187,20 @@ pub struct GarbageCollectionConfig {
     #[serde(rename = "default-retention-period")]
     #[serde(with = "humantime_serde", default = "default_default_retention_period")]
     pub default_retention_period: Duration,
+}
+
+impl JwtKeys {
+    fn load_from_env() -> Self {
+        let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64)
+            .expect("The HS256 secret must be specified in either token_hs256_secret or the ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 environment.");
+
+        let decoding = JwtDecodingKey::from_base64_secret(&s)
+            .expect("Failed to load as decoding key");
+        let encoding = JwtEncodingKey::from_base64_secret(&s)
+            .expect("Failed to load as decoding key");
+
+        Self { decoding, encoding }
+    }
 }
 
 impl CompressionConfig {
