@@ -137,7 +137,7 @@ async fn run_reap_orphan_nars(state: &State) -> Result<()> {
         .and_where(object::Column::Id.is_null())
         .and_where(nar::Column::State.eq(NarState::Valid))
         .and_where(nar::Column::HoldersCount.eq(0))
-        .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
+        .lock_with_tables_behavior(LockType::Update, [Nar], LockBehavior::SkipLocked)
         .to_owned();
 
     // ... and transition their state to Deleted
