@@ -24,7 +24,7 @@
 let
   version = "0.1.0";
 
-  ignoredPaths = [ ".github" "target" "book" "nixos" ];
+  ignoredPaths = [ ".github" "target" "book" "nixos" "integration-tests" ];
 
   src = lib.cleanSourceWith {
     filter = name: type: !(type == "directory" && builtins.elem (baseNameOf name) ignoredPaths);

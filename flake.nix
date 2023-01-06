@@ -25,7 +25,10 @@
       craneLib = crane.mkLib pkgs;
     in pkgs.callPackage ./crane.nix { inherit craneLib; };
   in flake-utils.lib.eachSystem supportedSystems (system: let
-    pkgs = import nixpkgs { inherit system; };
+    pkgs = import nixpkgs {
+      inherit system;
+      overlays = [];
+    };
     cranePkgs = makeCranePkgs pkgs;
 
     inherit (pkgs) lib;
@@ -107,6 +110,14 @@
     internal = {
       inherit (cranePkgs) attic-tests cargoArtifacts;
     };
+
+    checks = lib.optionalAttrs pkgs.stdenv.isLinux (import ./integration-tests {
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ self.overlays.default ];
+      };
+      flake = self;
+    });
   }) // {
     overlays = {
       default = final: prev: let
