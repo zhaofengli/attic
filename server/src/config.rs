@@ -1,9 +1,11 @@
 //! Server configuration.
 
+use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use anyhow::Result;
 use async_compression::Level as CompressionLevel;
 use derivative::Derivative;
 use serde::{de, Deserialize};
@@ -17,6 +19,11 @@ use crate::storage::{LocalStorageConfig, S3StorageConfig};
 ///
 /// This will be concatenated into `$XDG_CONFIG_HOME/attic`.
 const XDG_PREFIX: &str = "attic";
+
+/// Environment variable storing the Base64-encoded TOML configuration.
+///
+/// This is useful for deploying to certain application platforms like Fly.io
+const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 
 #[derive(Clone)]
 pub struct JwtKeys {
@@ -259,16 +266,36 @@ fn default_default_retention_period() -> Duration {
     Duration::ZERO
 }
 
-pub fn load_config_from_path(path: &Path) -> Config {
+fn load_config_from_path(path: &Path) -> Result<Config> {
     tracing::info!("Using configurations: {:?}", path);
 
-    let config = std::fs::read_to_string(path).expect("Failed to read configuration file");
-    toml::from_str(&config).expect("Invalid configuration file")
+    let config = std::fs::read_to_string(path)?;
+    Ok(toml::from_str(&config)?)
 }
 
-pub fn load_config_from_str(s: &str) -> Config {
+fn load_config_from_str(s: &str) -> Result<Config> {
     tracing::info!("Using configurations from environment variable");
-    toml::from_str(s).expect("Invalid configuration file")
+    Ok(toml::from_str(s)?)
+}
+
+/// Loads the configuration in the standard order.
+pub async fn load_config(config_path: Option<&Path>, allow_oobe: bool) -> Result<Config> {
+    if let Some(config_path) = config_path {
+        load_config_from_path(&config_path)
+    } else if let Ok(config_env) = env::var(ENV_CONFIG_BASE64) {
+        let decoded = String::from_utf8(base64::decode(config_env.as_bytes())?)?;
+        load_config_from_str(&decoded)
+    } else {
+        // Config from XDG
+        let config_path = get_xdg_config_path()?;
+
+        if allow_oobe {
+            // Special OOBE sequence
+            crate::oobe::run_oobe().await?;
+        }
+
+        load_config_from_path(&config_path)
+    }
 }
 
 pub fn get_xdg_config_path() -> anyhow::Result<PathBuf> {

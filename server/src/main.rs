@@ -66,25 +66,7 @@ async fn main() -> Result<()> {
     init_logging(opts.tokio_console);
     dump_version();
 
-    let config = if let Some(config_path) = opts.config {
-        config::load_config_from_path(&config_path)
-    } else if let Ok(config_env) = env::var("ATTIC_SERVER_CONFIG_BASE64") {
-        let decoded = String::from_utf8(base64::decode(config_env.as_bytes())?)?;
-        config::load_config_from_str(&decoded)
-    } else {
-        // Config from XDG
-        let config_path = config::get_xdg_config_path()?;
-
-        if opts.mode == ServerMode::Monolithic {
-            // Special OOBE sequence
-            attic_server::oobe::run_oobe().await?;
-        } else if !config_path.exists() {
-            eprintln!("You haven't specified a config file (--config/-f), and the XDG config file doesn't exist.");
-            eprintln!("Hint: To automatically set up Attic, run `atticd` without any arguments.");
-        }
-
-        config::load_config_from_path(&config_path)
-    };
+    let config = config::load_config(opts.config.as_deref(), opts.mode == ServerMode::Monolithic).await?;
 
     match opts.mode {
         ServerMode::Monolithic => {
