@@ -115,5 +115,19 @@
         inherit (cranePkgs) attic attic-client attic-server;
       };
     };
+
+    nixosModules = {
+      atticd = {
+        imports = [
+          ./nixos/atticd.nix
+        ];
+
+        services.atticd.useFlakeCompatOverlay = false;
+
+        nixpkgs.overlays = [
+          self.overlays.default
+        ];
+      };
+    };
   };
 }
