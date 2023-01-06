@@ -20,11 +20,13 @@
 
   outputs = { self, nixpkgs, flake-utils, crane, ... }: let
     supportedSystems = flake-utils.lib.defaultSystems;
+
+    makeCranePkgs = pkgs: let
+      craneLib = crane.mkLib pkgs;
+    in pkgs.callPackage ./crane.nix { inherit craneLib; };
   in flake-utils.lib.eachSystem supportedSystems (system: let
     pkgs = import nixpkgs { inherit system; };
-
-    craneLib = crane.lib.${system};
-    cranePkgs = pkgs.callPackage ./crane.nix { inherit craneLib; };
+    cranePkgs = makeCranePkgs pkgs;
 
     inherit (pkgs) lib;
   in rec {
@@ -39,6 +41,10 @@
         inherit self;
       };
 
+      book = pkgs.callPackage ./book {
+        attic = packages.attic;
+      };
+    } // (lib.optionalAttrs pkgs.stdenv.isLinux {
       attic-server-image = pkgs.dockerTools.buildImage {
         name = "attic-server";
         tag = "main";
@@ -55,15 +61,7 @@
           ];
         };
       };
-
-      book = pkgs.callPackage ./book {
-        attic = packages.attic;
-      };
-    };
-
-    internal = {
-      inherit (cranePkgs) attic-tests cargoArtifacts;
-    };
+    });
 
     devShells = {
       default = pkgs.mkShell {
@@ -105,5 +103,17 @@
       };
     };
     devShell = devShells.default;
-  });
+
+    internal = {
+      inherit (cranePkgs) attic-tests cargoArtifacts;
+    };
+  }) // {
+    overlays = {
+      default = final: prev: let
+        cranePkgs = makeCranePkgs final;
+      in {
+        inherit (cranePkgs) attic attic-client attic-server;
+      };
+    };
+  };
 }
