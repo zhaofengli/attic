@@ -18,6 +18,7 @@ jobs:
           echo ACTION_USER=$USER >> $GITHUB_ENV
 
       - uses: DeterminateSystems/nix-installer@main
+        continue-on-error: true # Self-hosted runners already have Nix installed
         with:
           extra-conf: |
             trusted-users = root ${{ env.ACTION_USER }}
