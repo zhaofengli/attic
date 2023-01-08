@@ -1,11 +1,11 @@
 //! Access control.
 //!
 //! Access control in Attic is simple and stateless [0] - The server validates
-//! the JWT against a trusted public key and allows access based on the
-//! `x-attic-access` claim.
+//! the JWT against a HS256 key and allows access based on the `https://jwt.attic.rs/v1`
+//! claim.
 //!
 //! One primary goal of the Attic Server is easy scalability. It's designed
-//! to be deployed to serverless platforms like AWS Lambda and have fast
+//! to be deployed to serverless platforms like fly.io and have fast
 //! cold-start times. Instances are created and destoyed rapidly in response
 //! to requests.
 //!
