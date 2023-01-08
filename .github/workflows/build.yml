@@ -11,7 +11,7 @@ jobs:
           - macos-11
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2.3.5
+      - uses: actions/checkout@v3.3.0
 
       - name: Obtain current username
         run: |
