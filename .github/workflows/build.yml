@@ -24,14 +24,22 @@ jobs:
             trusted-users = root ${{ env.ACTION_USER }}
 
       - name: Install Attic
-        run: ./.github/install-attic-ci.sh
+        run: |
+          if ! command -v attic &> /dev/null; then
+            ./.github/install-attic-ci.sh
+          fi
 
       - name: Configure Attic
         run: |
+          : "${ATTIC_SERVER:=https://staging.attic.rs/}"
+          : "${ATTIC_CACHE:=attic-ci}"
+          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
-          attic login staging https://staging.attic.rs/ "$ATTIC_TOKEN"
-          attic use attic-ci
+          attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
+          attic use "$ATTIC_CACHE"
         env:
+          ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
+          ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
           ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
 
       - name: Build and run tests
@@ -47,7 +55,5 @@ jobs:
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           if [ -n "$ATTIC_TOKEN" ]; then
             nix build .#internal."$system".attic-tests .#internal."$system".cargoArtifacts --no-link --print-out-paths -L | \
-              xargs attic push attic-ci
+              xargs attic push "ci:$ATTIC_CACHE"
           fi
-        env:
-          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
