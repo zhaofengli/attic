@@ -194,10 +194,10 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
 
-    let api = ApiClient::from_server_config(server.clone())?;
+    let mut api = ApiClient::from_server_config(server.clone())?;
     let plan = PushPlan::plan(
         store.clone(),
-        &api,
+        &mut api,
         cache,
         roots,
         sub.no_closure,
@@ -261,7 +261,7 @@ impl PushPlan {
     /// Creates a plan.
     async fn plan(
         store: Arc<NixStore>,
-        api: &ApiClient,
+        api: &mut ApiClient,
         cache: &CacheName,
         roots: Vec<StorePath>,
         no_closure: bool,
@@ -306,6 +306,11 @@ impl PushPlan {
 
         // Confirm remote cache validity, query cache config
         let cache_config = api.get_cache_config(cache).await?;
+
+        if let Some(api_endpoint) = &cache_config.api_endpoint {
+            // Use delegated API endpoint
+            api.set_endpoint(api_endpoint)?;
+        }
 
         if !ignore_upstream_filter {
             // Filter out paths signed by upstream caches

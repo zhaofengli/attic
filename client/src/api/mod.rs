@@ -62,6 +62,12 @@ impl ApiClient {
         })
     }
 
+    /// Sets the API endpoint of this client.
+    pub fn set_endpoint(&mut self, endpoint: &str) -> Result<()> {
+        self.endpoint = Url::parse(endpoint)?;
+        Ok(())
+    }
+
     /// Returns the configuration of a cache.
     pub async fn get_cache_config(&self, cache: &CacheName) -> Result<CacheConfig> {
         let endpoint = self
