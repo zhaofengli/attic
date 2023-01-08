@@ -85,6 +85,8 @@ async fn get_nix_cache_info(
         })
         .await?;
 
+    req_state.set_public_cache(cache.is_public);
+
     let info = NixCacheInfo {
         want_mass_query: true,
         store_dir: cache.store_dir.into(),
@@ -137,6 +139,8 @@ async fn get_store_path_info(
         .get_permission_for_cache(&cache_name, cache.is_public);
     permission.require_pull()?;
 
+    req_state.set_public_cache(cache.is_public);
+
     let mut narinfo = object.to_nar_info(&nar)?;
 
     if narinfo.signature().is_none() {
@@ -188,6 +192,8 @@ async fn get_nar(
         .auth
         .get_permission_for_cache(&cache_name, cache.is_public);
     permission.require_pull()?;
+
+    req_state.set_public_cache(cache.is_public);
 
     database.bump_object_last_accessed(object.id).await?;
 

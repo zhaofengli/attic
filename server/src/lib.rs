@@ -26,6 +26,7 @@ pub mod oobe;
 mod storage;
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -46,7 +47,7 @@ use attic::cache::CacheName;
 use config::{Config, StorageConfig};
 use database::migration::{Migrator, MigratorTrait};
 use error::{ErrorKind, ServerError, ServerResult};
-use middleware::{init_request_state, restrict_host};
+use middleware::{init_request_state, restrict_host, set_visibility_header};
 use storage::{LocalBackend, S3Backend, StorageBackend};
 
 type State = Arc<StateInner>;
@@ -79,6 +80,12 @@ struct RequestStateInner {
 
     /// Whether the client claims the connection is HTTPS or not.
     client_claims_https: bool,
+
+    /// Whether the cache the client's interacting with is public.
+    ///
+    /// This is purely informational and used to add the `X-Attic-Cache-Visibility`.
+    /// header in responses.
+    public_cache: AtomicBool,
 }
 
 impl StateInner {
@@ -167,6 +174,11 @@ impl RequestStateInner {
     fn substituter_endpoint(&self, cache: CacheName) -> ServerResult<String> {
         Ok(format!("{}{}", self.api_endpoint()?, cache.as_str()))
     }
+
+    /// Indicates whether the cache the client is interacting with is public.
+    fn set_public_cache(&self, public: bool) {
+        self.public_cache.store(public, Ordering::Relaxed);
+    }
 }
 
 /// The fallback route.
@@ -192,6 +204,7 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
         .fallback(fallback)
         // middlewares
         .layer(axum::middleware::from_fn(apply_auth))
+        .layer(axum::middleware::from_fn(set_visibility_header))
         .layer(axum::middleware::from_fn(init_request_state))
         .layer(axum::middleware::from_fn(restrict_host))
         .layer(Extension(state.clone()))

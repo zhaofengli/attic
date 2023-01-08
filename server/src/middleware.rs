@@ -1,15 +1,17 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use axum::{
     extract::{Extension, Host},
-    http::Request,
+    http::{HeaderValue, Request},
     middleware::Next,
     response::Response,
 };
 
-use super::{AuthState, RequestStateInner, State};
+use super::{AuthState, RequestState, RequestStateInner, State};
 use crate::error::{ErrorKind, ServerResult};
+use attic::api::binary_cache::ATTIC_CACHE_VISIBILITY;
 
 /// Initializes per-request state.
 pub async fn init_request_state<B>(
@@ -31,6 +33,7 @@ pub async fn init_request_state<B>(
         api_endpoint: state.config.api_endpoint.to_owned(),
         host,
         client_claims_https,
+        public_cache: AtomicBool::new(false),
     });
 
     req.extensions_mut().insert(req_state);
@@ -54,4 +57,21 @@ pub async fn restrict_host<B>(
     }
 
     Ok(next.run(req).await)
+}
+
+/// Sets the `X-Attic-Cache-Visibility` header in responses.
+pub(crate) async fn set_visibility_header<B>(
+    Extension(req_state): Extension<RequestState>,
+    req: Request<B>,
+    next: Next<B>,
+) -> ServerResult<Response> {
+    let mut response = next.run(req).await;
+
+    if req_state.public_cache.load(Ordering::Relaxed) {
+        response
+            .headers_mut()
+            .append(ATTIC_CACHE_VISIBILITY, HeaderValue::from_static("public"));
+    }
+
+    Ok(response)
 }
