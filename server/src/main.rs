@@ -66,7 +66,8 @@ async fn main() -> Result<()> {
     init_logging(opts.tokio_console);
     dump_version();
 
-    let config = config::load_config(opts.config.as_deref(), opts.mode == ServerMode::Monolithic).await?;
+    let config =
+        config::load_config(opts.config.as_deref(), opts.mode == ServerMode::Monolithic).await?;
 
     match opts.mode {
         ServerMode::Monolithic => {
