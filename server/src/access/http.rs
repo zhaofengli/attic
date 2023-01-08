@@ -30,7 +30,7 @@ impl AuthState {
     ///
     /// Currently it's the `sub` claim of the JWT.
     pub fn username(&self) -> Option<&str> {
-        self.token.get().map(|token| token.sub())
+        self.token.get().and_then(|token| token.sub())
     }
 
     /// Finds and performs authorization for a cache.
@@ -101,7 +101,7 @@ pub async fn apply_auth<B>(req: Request<B>, next: Next<B>) -> Response {
         .and_then(parse_authorization_header)
         .and_then(|jwt| {
             let state = req.extensions().get::<State>().unwrap();
-            let res_token = Token::from_jwt(&jwt, &state.config.token_hs256_secret.decoding);
+            let res_token = Token::from_jwt(&jwt, &state.config.token_hs256_secret);
             if let Err(e) = &res_token {
                 tracing::debug!("Ignoring bad JWT token: {}", e);
             }

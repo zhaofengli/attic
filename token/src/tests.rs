@@ -13,8 +13,7 @@ fn test_basic() {
     // "very secure secret"
     let base64_secret = "dmVyeSBzZWN1cmUgc2VjcmV0";
 
-    let dec_key =
-        JwtDecodingKey::from_base64_secret(base64_secret).expect("Could not import decoding key");
+    let dec_key = decode_token_hs256_secret_base64(base64_secret).unwrap();
 
     /*
       {

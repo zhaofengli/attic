@@ -11,7 +11,7 @@ use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
 
-use crate::access::{JwtDecodingKey, JwtEncodingKey};
+use crate::access::{decode_token_hs256_secret_base64, HS256Key};
 use crate::narinfo::Compression as NixCompression;
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
 
@@ -27,12 +27,6 @@ const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 
 /// Environment variable storing the Base64-encoded HS256 JWT secret.
 const ENV_TOKEN_HS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64";
-
-#[derive(Clone)]
-pub struct JwtKeys {
-    pub decoding: JwtDecodingKey,
-    pub encoding: JwtEncodingKey,
-}
 
 /// Configuration for the Attic Server.
 #[derive(Clone, Derivative, Deserialize)]
@@ -102,10 +96,10 @@ pub struct Config {
     ///
     /// Set this to the base64 encoding of a randomly generated secret.
     #[serde(rename = "token-hs256-secret-base64")]
-    #[serde(deserialize_with = "deserialize_base64_jwt_secret")]
-    #[serde(default = "JwtKeys::load_from_env")]
+    #[serde(deserialize_with = "deserialize_token_hs256_secret_base64")]
+    #[serde(default = "load_token_hs256_secret_from_env")]
     #[derivative(Debug = "ignore")]
-    pub token_hs256_secret: JwtKeys,
+    pub token_hs256_secret: HS256Key,
 }
 
 /// Database connection configuration.
@@ -189,18 +183,11 @@ pub struct GarbageCollectionConfig {
     pub default_retention_period: Duration,
 }
 
-impl JwtKeys {
-    fn load_from_env() -> Self {
-        let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64)
-            .expect("The HS256 secret must be specified in either token_hs256_secret or the ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 environment.");
+fn load_token_hs256_secret_from_env() -> HS256Key {
+    let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64)
+        .expect("The HS256 secret must be specified in either token_hs256_secret or the ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 environment.");
 
-        let decoding = JwtDecodingKey::from_base64_secret(&s)
-            .expect("Failed to load as decoding key");
-        let encoding = JwtEncodingKey::from_base64_secret(&s)
-            .expect("Failed to load as decoding key");
-
-        Self { decoding, encoding }
-    }
+    decode_token_hs256_secret_base64(&s).expect("Failed to load as decoding key")
 }
 
 impl CompressionConfig {
@@ -247,17 +234,16 @@ impl Default for GarbageCollectionConfig {
     }
 }
 
-fn deserialize_base64_jwt_secret<'de, D>(deserializer: D) -> Result<JwtKeys, D::Error>
+fn deserialize_token_hs256_secret_base64<'de, D>(deserializer: D) -> Result<HS256Key, D::Error>
 where
     D: de::Deserializer<'de>,
 {
     use de::Error;
 
     let s = String::deserialize(deserializer)?;
-    let decoding = JwtDecodingKey::from_base64_secret(&s).map_err(Error::custom)?;
-    let encoding = JwtEncodingKey::from_base64_secret(&s).map_err(Error::custom)?;
+    let key = decode_token_hs256_secret_base64(&s).map_err(Error::custom)?;
 
-    Ok(JwtKeys { decoding, encoding })
+    Ok(key)
 }
 
 fn default_listen_address() -> SocketAddr {

@@ -73,9 +73,10 @@ use std::error::Error as StdError;
 
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
-pub use jsonwebtoken::{
-    Algorithm as JwtAlgorithm, DecodingKey as JwtDecodingKey, EncodingKey as JwtEncodingKey,
-    Header as JwtHeader, Validation as JwtValidation,
+pub use jwt_simple::{
+    algorithms::{HS256Key, MACLike},
+    claims::{Claims, JWTClaims},
+    prelude::UnixTimeStamp,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, BoolFromInt};
@@ -111,17 +112,11 @@ macro_rules! require_permission_function {
 
 /// A validated JSON Web Token.
 #[derive(Debug)]
-pub struct Token(jsonwebtoken::TokenData<TokenClaims>);
+pub struct Token(JWTClaims<TokenClaims>);
 
 /// Claims of a JSON Web Token.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct TokenClaims {
-    /// Subject.
-    sub: String,
-
-    /// Expiration timestamp.
-    exp: usize,
-
     /// Attic namespace.
     #[serde(rename = "https://jwt.attic.rs/v1")]
     attic_ns: AtticAccess,
@@ -208,14 +203,16 @@ pub enum Error {
     PermissionDenied,
 
     /// JWT error: {0}
-    TokenError(jsonwebtoken::errors::Error),
+    TokenError(jwt_simple::Error),
+
+    /// Base64 decode error: {0}
+    Base64Error(base64::DecodeError),
 }
 
 impl Token {
     /// Verifies and decodes a token.
-    pub fn from_jwt(token: &str, key: &JwtDecodingKey) -> Result<Self> {
-        let validation = JwtValidation::default();
-        jsonwebtoken::decode::<TokenClaims>(token, key, &validation)
+    pub fn from_jwt(token: &str, key: &HS256Key) -> Result<Self> {
+        key.verify_token(token, None)
             .map_err(|e| Error::TokenError(e))
             .map(Token)
     }
@@ -223,31 +220,38 @@ impl Token {
     /// Creates a new token with an expiration timestamp.
     pub fn new(sub: String, exp: &DateTime<Utc>) -> Self {
         let claims = TokenClaims {
-            sub,
-            exp: exp.timestamp() as usize,
             attic_ns: Default::default(),
         };
 
-        Self(jsonwebtoken::TokenData {
-            header: JwtHeader::new(JwtAlgorithm::HS256),
-            claims,
+        Self(JWTClaims {
+            issued_at: None,
+            expires_at: Some(UnixTimeStamp::from_secs(
+                exp.timestamp().try_into().unwrap(),
+            )),
+            invalid_before: None,
+            issuer: None,
+            subject: Some(sub),
+            audiences: None,
+            jwt_id: None,
+            nonce: None,
+            custom: claims,
         })
     }
 
     /// Encodes the token.
-    pub fn encode(&self, key: &JwtEncodingKey) -> Result<String> {
-        jsonwebtoken::encode(&self.0.header, &self.0.claims, key)
+    pub fn encode(&self, key: &HS256Key) -> Result<String> {
+        key.authenticate(self.0.clone())
             .map_err(|e| Error::TokenError(e))
     }
 
     /// Returns the subject of the token.
-    pub fn sub(&self) -> &str {
-        self.0.claims.sub.as_str()
+    pub fn sub(&self) -> Option<&str> {
+        self.0.subject.as_deref()
     }
 
     /// Returns the claims as a serializable value.
     pub fn opaque_claims(&self) -> &impl Serialize {
-        &self.0.claims
+        &self.0
     }
 
     /// Returns a mutable reference to a permission entry.
@@ -283,11 +287,11 @@ impl Token {
     }
 
     fn attic_access(&self) -> &AtticAccess {
-        &self.0.claims.attic_ns
+        &self.0.custom.attic_ns
     }
 
     fn attic_access_mut(&mut self) -> &mut AtticAccess {
-        &mut self.0.claims.attic_ns
+        &mut self.0.custom.attic_ns
     }
 }
 
@@ -355,6 +359,11 @@ impl Default for CachePermission {
 }
 
 impl StdError for Error {}
+
+pub fn decode_token_hs256_secret_base64(s: &str) -> Result<HS256Key> {
+    let secret = base64::decode(s).map_err(Error::Base64Error)?;
+    Ok(HS256Key::from_bytes(&secret))
+}
 
 // bruh
 fn is_false(b: &bool) -> bool {

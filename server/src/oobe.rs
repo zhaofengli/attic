@@ -17,7 +17,7 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use tokio::fs::{self, OpenOptions};
 
-use crate::access::{JwtEncodingKey, Token};
+use crate::access::{decode_token_hs256_secret_base64, Token};
 use crate::config;
 use attic::cache::CacheNamePattern;
 
@@ -75,8 +75,8 @@ pub async fn run_oobe() -> Result<()> {
         perm.configure_cache_retention = true;
         perm.destroy_cache = true;
 
-        let encoding_key = JwtEncodingKey::from_base64_secret(&hs256_secret_base64)?;
-        token.encode(&encoding_key)?
+        let key = decode_token_hs256_secret_base64(&hs256_secret_base64).unwrap();
+        token.encode(&key)?
     };
 
     eprintln!();
