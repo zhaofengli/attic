@@ -47,6 +47,7 @@ mod bindings;
 mod nix_store;
 
 use std::ffi::OsStr;
+#[cfg(target_family = "unix")]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
@@ -187,6 +188,7 @@ impl StorePath {
     }
 
     /// Gets the hash portion of the store path.
+    #[cfg(target_family = "unix")]
     pub fn to_hash(&self) -> StorePathHash {
         // Safety: We have already validated the format of the base name,
         // including the hash part. The name is guaranteed valid UTF-8.
@@ -199,6 +201,7 @@ impl StorePath {
     }
 
     /// Returns the human-readable name.
+    #[cfg(target_family = "unix")]
     pub fn name(&self) -> String {
         // Safety: Already checked
         #[allow(unsafe_code)]
@@ -213,6 +216,7 @@ impl StorePath {
     }
 
     #[cfg_attr(not(feature = "nix_store"), allow(dead_code))]
+    #[cfg(target_family = "unix")]
     fn as_base_name_bytes(&self) -> &[u8] {
         self.base_name.as_os_str().as_bytes()
     }
