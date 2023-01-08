@@ -1486,7 +1486,7 @@ checksum = "a604f7a68fbf8103337523b1fadc8ade7361ee3f112f7c680ad179651616aed5"
 dependencies = [
  "futures-core",
  "lock_api",
- "parking_lot 0.11.2",
+ "parking_lot",
 ]
 
 [[package]]
@@ -2222,17 +2222,7 @@ checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
 dependencies = [
  "instant",
  "lock_api",
- "parking_lot_core 0.8.6",
-]
-
-[[package]]
-name = "parking_lot"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3742b2c103b9f06bc9fff0a37ff4912935851bee6d36f3c02bcc755bcfec228f"
-dependencies = [
- "lock_api",
- "parking_lot_core 0.9.5",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -2247,19 +2237,6 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "winapi",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ff9f3fef3968a3ec5945535ed654cb38ff72d7495a25619e2247fb15a2ed9ba"
-dependencies = [
- "cfg-if",
- "libc",
- "redox_syscall",
- "smallvec",
- "windows-sys 0.42.0",
 ]
 
 [[package]]
@@ -3421,7 +3398,6 @@ dependencies = [
  "memchr",
  "mio",
  "num_cpus",
- "parking_lot 0.12.1",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
