@@ -15,7 +15,7 @@
 , clientOnly ? false
 
 # Only build certain crates
-, crates ? if clientOnly then [ "attic-client" ] else []
+, crates ? if clientOnly then [ "attic-client" ] else [ "attic-client" "attic-server" ]
 }:
 
 let

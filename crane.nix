@@ -66,6 +66,8 @@ let
     # See comment in `attic-tests`
     doCheck = false;
 
+    cargoExtraArgs = "-p attic-client -p attic-server";
+
     postInstall = lib.optionalString (stdenv.hostPlatform == stdenv.buildPlatform) ''
       if [[ -f $out/bin/attic ]]; then
         installShellCompletion --cmd attic \
@@ -78,7 +80,7 @@ let
 
   # Client-only package.
   attic-client = attic.overrideAttrs (old: {
-    cargoExtraArgs = (old.cargoExtraArgs or "") + " -p attic-client";
+    cargoExtraArgs = " -p attic-client";
   });
 
   # Server-only package with fat LTO enabled.
