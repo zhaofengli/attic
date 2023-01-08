@@ -20,6 +20,7 @@ doc = false
 
 [dependencies]
 attic = { path = "../attic", default-features = false }
+attic-token = { path = "../token" }
 
 anyhow = "1.0.68"
 async-trait = "0.1.60"
@@ -41,7 +42,6 @@ humantime = "2.1.0"
 humantime-serde = "1.1.1"
 itoa = "1.0.5"
 jsonwebtoken = "8.2.0"
-lazy_static = "1.4.0"
 maybe-owned = "0.3.4"
 rand = "0.8.5"
 regex = "1.7.0"

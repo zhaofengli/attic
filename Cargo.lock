@@ -199,6 +199,7 @@ dependencies = [
  "async-compression",
  "async-trait",
  "attic",
+ "attic-token",
  "aws-config",
  "aws-sdk-s3",
  "axum",
@@ -218,7 +219,6 @@ dependencies = [
  "humantime-serde",
  "itoa",
  "jsonwebtoken",
- "lazy_static",
  "maybe-owned",
  "rand",
  "regex",
@@ -238,6 +238,22 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "xdg",
+]
+
+[[package]]
+name = "attic-token"
+version = "0.1.0"
+dependencies = [
+ "attic",
+ "base64 0.20.0",
+ "chrono",
+ "displaydoc",
+ "jsonwebtoken",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_with",
+ "tracing",
 ]
 
 [[package]]

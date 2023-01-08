@@ -1,0 +1,19 @@
+[package]
+name = "attic-token"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+attic = { path = "../attic", default-features = false }
+
+base64 = "0.20.0"
+chrono = "0.4.23"
+displaydoc = "0.2.3"
+jsonwebtoken = "8.2.0"
+lazy_static = "1.4.0"
+regex = "1.7.0"
+serde = "1.0.151"
+serde_with = "2.1.0"
+tracing = "0.1.37"

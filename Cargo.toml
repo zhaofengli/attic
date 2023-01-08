@@ -4,4 +4,5 @@ members = [
 	"attic",
 	"client",
 	"server",
+	"token",
 ]
