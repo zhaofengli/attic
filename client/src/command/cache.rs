@@ -253,7 +253,7 @@ async fn destroy_cache(sub: Destroy) -> Result<()> {
     if !sub.no_confirm {
         eprintln!("When you destory a cache:");
         eprintln!();
-        eprintln!("1. Everyone will immediately lose access.");
+        eprintln!("1. Everyone will lose access.");
         eprintln!("2. The underlying data won't be deleted immediately.");
         eprintln!("3. You may not be able to create a cache of the same name.");
         eprintln!();
