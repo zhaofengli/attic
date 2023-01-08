@@ -22,8 +22,10 @@ pub mod hash;
 pub mod mime;
 pub mod nix_store;
 pub mod signing;
+#[cfg(feature = "tokio")]
 pub mod stream;
 pub mod testing;
+#[cfg(feature = "tokio")]
 pub mod util;
 
 pub use error::{AtticError, AtticResult};
