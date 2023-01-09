@@ -31,6 +31,7 @@ pub async fn init_request_state<B>(
     let req_state = Arc::new(RequestStateInner {
         auth: AuthState::new(),
         api_endpoint: state.config.api_endpoint.to_owned(),
+        substituter_endpoint: state.config.substituter_endpoint.to_owned(),
         host,
         client_claims_https,
         public_cache: AtomicBool::new(false),

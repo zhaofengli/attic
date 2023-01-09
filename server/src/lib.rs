@@ -75,6 +75,9 @@ struct RequestStateInner {
     /// The canonical API endpoint.
     api_endpoint: Option<String>,
 
+    /// The canonical substituter endpoint.
+    substituter_endpoint: Option<String>,
+
     /// The potentially-invalid Host header supplied by the client.
     host: String,
 
@@ -172,7 +175,11 @@ impl RequestStateInner {
     /// The binary cache endpoint may live on another host than
     /// the canonical API endpoint.
     fn substituter_endpoint(&self, cache: CacheName) -> ServerResult<String> {
-        Ok(format!("{}{}", self.api_endpoint()?, cache.as_str()))
+        if let Some(substituter_endpoint) = &self.substituter_endpoint {
+            Ok(format!("{}{}", substituter_endpoint, cache.as_str()))
+        } else {
+            Ok(format!("{}{}", self.api_endpoint()?, cache.as_str()))
+        }
     }
 
     /// Indicates whether the cache the client is interacting with is public.

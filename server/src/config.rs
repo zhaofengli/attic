@@ -58,6 +58,15 @@ pub struct Config {
     #[serde(rename = "api-endpoint")]
     pub api_endpoint: Option<String>,
 
+    /// The canonical Nix Binary Cache endpoint of this server.
+    ///
+    /// This is usually the same as `api_endpoint` but can be configured
+    /// to a different value.
+    ///
+    /// If unconfigured, it's assumed to be the same as `api_endpoint`.
+    #[serde(rename = "substituter-endpoint")]
+    pub substituter_endpoint: Option<String>,
+
     /// Whether to soft-delete caches.
     ///
     /// If this is enabled, caches are soft-deleted instead of actually
