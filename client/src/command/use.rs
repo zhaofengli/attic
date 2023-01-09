@@ -50,7 +50,7 @@ pub async fn run(opts: Opts) -> Result<()> {
         eprintln!("+ Access Token");
 
         let mut nix_netrc = NixNetrc::load().await?;
-        let host = Url::parse(&server.endpoint)?
+        let host = Url::parse(&substituter)?
             .host()
             .map(|h| h.to_string())
             .unwrap();
