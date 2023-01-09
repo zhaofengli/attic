@@ -76,6 +76,14 @@ let
           --fish <($out/bin/attic gen-completions fish)
       fi
     '';
+
+    meta = with lib; {
+      description = "Multi-tenant Nix binary cache system";
+      homepage = "https://github.com/zhaofengli/attic";
+      license = licenses.asl20;
+      maintainers = with maintainers; [ zhaofengli ];
+      platforms = platforms.linux ++ platforms.darwin;
+    };
   };
 
   # Client-only package.
