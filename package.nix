@@ -42,7 +42,7 @@ in rustPlatform.buildRustPackage rec {
     SystemConfiguration
   ]);
 
-  cargoHash = "sha256-FpA7dbK/3+cW53bSP27ylxBZSIUzBNXpuEBz4mJNZ8g=";
+  cargoHash = "sha256-DXKmIWiQpFoHUrYR2q7FuWVQNgao1JJBp31Ktk/E4vM=";
   cargoBuildFlags = lib.concatMapStrings (c: "-p ${c} ") crates;
 
   ATTIC_DISTRIBUTOR = "attic";
