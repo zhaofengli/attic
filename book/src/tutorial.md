@@ -174,10 +174,11 @@ Binary Cache Endpoint: http://localhost:8080/hello
      Retention Period: Global Default
 ```
 
-Because of Attic's global deduplication, garbage collection actually happens on two levels:
+Because of Attic's global deduplication, garbage collection actually happens on three levels:
 
 1. **Local Cache**: When an object is garbage collected, only the mapping between the metadata in the local cache and the NAR in the global cache gets deleted. The local cache loses access to the NAR, but the storage isn't freed.
-2. **Global Cache**: Orphan NARs not referenced by any local cache then become eligible for deletion. This time the storage space is actually freed and subsequent uploads of the same NAR will actually trigger an upload to the storage backend.
+2. **Global NAR Store**: Orphan NARs not referenced by any local cache then become eligible for deletion.
+3. **Global Chunk Store**: Finally, orphan chunks not referenced by any NAR become eligible for deletion. This time the storage space is actually freed and subsequent uploads of the same chunk will actually trigger an upload to the storage backend.
 
 ## Summary
 
