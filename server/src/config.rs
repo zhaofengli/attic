@@ -28,6 +28,9 @@ const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 /// Environment variable storing the Base64-encoded HS256 JWT secret.
 const ENV_TOKEN_HS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64";
 
+/// Environment variable storing the database connection string.
+const ENV_DATABASE_URL: &str = "ATTIC_SERVER_DATABASE_URL";
+
 /// Configuration for the Attic Server.
 #[derive(Clone, Derivative, Deserialize)]
 #[derivative(Debug)]
@@ -118,6 +121,7 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 pub struct DatabaseConfig {
     /// Connection URL.
+    #[serde(default = "load_database_url_from_env")]
     pub url: String,
 
     /// Whether to enable sending of periodic heartbeat queries.
@@ -240,6 +244,11 @@ fn load_token_hs256_secret_from_env() -> HS256Key {
         .expect("The HS256 secret must be specified in either token_hs256_secret or the ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 environment.");
 
     decode_token_hs256_secret_base64(&s).expect("Failed to load as decoding key")
+}
+
+fn load_database_url_from_env() -> String {
+    env::var(ENV_DATABASE_URL)
+        .expect("Database URL must be specified in either database.url or the ATTIC_SERVER_DATABASE_URL environment.")
 }
 
 impl CompressionConfig {

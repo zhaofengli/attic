@@ -17,6 +17,7 @@ let
     cat $configFile
 
     export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
+    export ATTIC_SERVER_DATABASE_URL="sqlite://:memory:"
     ${cfg.package}/bin/atticd --mode check-config -f $configFile
     cat <$configFile >$out
   '';
@@ -36,7 +37,7 @@ let
   '';
 
   hasLocalPostgresDB = let
-    url = cfg.settings.database.url;
+    url = cfg.settings.database.url or "";
     localStrings = [ "localhost" "127.0.0.1" "/run/postgresql" ];
     hasLocalStrings = lib.any (lib.flip lib.hasInfix url) localStrings;
   in config.services.postgresql.enable && lib.hasPrefix "postgresql://" url && hasLocalStrings;
