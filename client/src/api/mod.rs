@@ -174,7 +174,7 @@ impl ApiClient {
         let endpoint = self.endpoint.join("_api/v1/upload-path")?;
         let upload_info_json = serde_json::to_string(&nar_info)?;
 
-        let res = self
+        let req = self
             .client
             .put(endpoint)
             .header(
@@ -182,9 +182,9 @@ impl ApiClient {
                 HeaderValue::from_str(&upload_info_json)?,
             )
             .header(USER_AGENT, HeaderValue::from_str(ATTIC_USER_AGENT)?)
-            .body(Body::wrap_stream(stream))
-            .send()
-            .await?;
+            .body(Body::wrap_stream(stream));
+
+        let res = req.send().await?;
 
         if res.status().is_success() {
             match res.json().await {
