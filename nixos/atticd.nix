@@ -64,9 +64,10 @@ in
           variables:
 
           - ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64: The Base64-encoded version of the
-            HS256 JWT secret.
+            HS256 JWT secret. Generate it with `openssl rand 64 | base64 -w0`.
         '';
-        type = types.path;
+        type = types.nullOr types.path;
+        default = null;
       };
       settings = lib.mkOption {
         description = ''
@@ -100,6 +101,18 @@ in
   config = lib.mkIf (cfg.enable) (lib.mkMerge [
     {
       assertions = [
+        {
+          assertion = cfg.credentialsFile != null;
+          message = ''
+            <option>services.atticd.credentialsFile</option> is not set.
+
+            Run `openssl rand 64 | base64 -w0` and create a file with the following contents:
+
+            ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="output from command"
+
+            Then, set `services.atticd.credentialsFile` to the quoted absolute path of the file.
+          '';
+        }
         {
           assertion = !lib.isStorePath cfg.credentialsFile;
           message = ''
