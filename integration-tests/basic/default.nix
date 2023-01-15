@@ -126,6 +126,13 @@ in {
           credentialsFile = "/etc/atticd.env";
           settings = {
             listen = "[::]:8080";
+
+            chunking = {
+              nar-size-threshold = 1;
+              min-size = 64 * 1024;
+              avg-size = 128 * 1024;
+              max-size = 256 * 1024;
+            };
           };
         };
 
@@ -195,6 +202,13 @@ in {
           time.sleep(2)
           server.succeed("${cmd.atticd} --mode garbage-collector-once")
           client.fail(f"curl -sL --fail-with-body http://server:8080/test/{test_file_hash}.narinfo")
+
+      ${lib.optionalString (config.storage == "local") ''
+      with subtest("Check that all chunks are actually deleted after GC"):
+          files = server.succeed("find /var/lib/atticd/storage -type f")
+          print(f"Remaining files: {files}")
+          assert files.strip() == ""
+      ''}
 
       with subtest("Check that we can destroy the cache"):
           client.succeed("attic cache info test")

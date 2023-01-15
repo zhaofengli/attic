@@ -1,13 +1,19 @@
 //! Stream utilities.
 
+use std::collections::VecDeque;
+use std::future::Future;
 use std::marker::Unpin;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use async_stream::try_stream;
+use bytes::Bytes;
 use digest::{Digest, Output as DigestOutput};
+use futures::stream::{BoxStream, Stream, StreamExt};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio::sync::OnceCell;
+use tokio::task::spawn;
 
 /// Stream filter that hashes the bytes that have been read.
 ///
@@ -17,6 +23,79 @@ pub struct StreamHasher<R: AsyncRead + Unpin, D: Digest + Unpin> {
     digest: Option<D>,
     bytes_read: usize,
     finalized: Arc<OnceCell<(DigestOutput<D>, usize)>>,
+}
+
+/// Merge chunks lazily into a continuous stream.
+///
+/// For each chunk, a function is called to transform it into a
+/// `Stream<Item = Result<Bytes>>`. This function does something like
+/// opening the local file or sending a request to S3.
+///
+/// We call this function some time before the start of the chunk
+/// is reached to eliminate delays between chunks so the merged
+/// stream is smooth. We don't want to start streaming all chunks
+/// at once as it's a waste of resources.
+///
+/// ```text
+/// | S3 GET | Chunk | S3 GET | ... | S3 GET | Chunk
+/// ```
+///
+/// ```text
+/// | S3 GET | Chunk | Chunk | Chunk | Chunk
+/// | S3 GET |-----------^       ^       ^
+///              | S3 GET |------|       |
+///              | S3 GET |--------------|
+///
+/// ```
+///
+/// TODO: Support range requests so we can have seekable NARs.
+pub fn merge_chunks<C, F, S, Fut, E>(
+    mut chunks: VecDeque<C>,
+    streamer: F,
+    streamer_arg: S,
+    num_prefetch: usize,
+) -> Pin<Box<impl Stream<Item = Result<Bytes, E>>>>
+where
+    F: Fn(C, S) -> Fut,
+    S: Clone,
+    Fut: Future<Output = Result<BoxStream<'static, Result<Bytes, E>>, E>> + Send + 'static,
+    E: Send + 'static,
+{
+    let s = try_stream! {
+        let mut streams = VecDeque::new(); // a queue of JoinHandles
+
+        // otherwise type inference gets confused :/
+        if false {
+            let chunk = chunks.pop_front().unwrap();
+            let stream = spawn(streamer(chunk, streamer_arg.clone()));
+            streams.push_back(stream);
+        }
+
+        loop {
+            if let Some(stream) = streams.pop_front() {
+                let mut stream = stream.await.unwrap()?;
+                while let Some(item) = stream.next().await {
+                    let item = item?;
+                    yield item;
+                }
+            }
+
+            while streams.len() < num_prefetch {
+                if let Some(chunk) = chunks.pop_front() {
+                    let stream = spawn(streamer(chunk, streamer_arg.clone()));
+                    streams.push_back(stream);
+                } else {
+                    break;
+                }
+            }
+
+            if chunks.is_empty() && streams.is_empty() {
+                // we are done!
+                break;
+            }
+        }
+    };
+    Box::pin(s)
 }
 
 impl<R: AsyncRead + Unpin, D: Digest + Unpin> StreamHasher<R, D> {
@@ -105,6 +184,9 @@ pub async fn read_chunk_async<S: AsyncRead + Unpin + Send>(
 mod tests {
     use super::*;
 
+    use async_stream::stream;
+    use bytes::{BufMut, BytesMut};
+    use futures::future;
     use tokio::io::AsyncReadExt;
     use tokio_test::block_on;
 
@@ -134,5 +216,46 @@ mod tests {
         assert_eq!(expected_sha256.as_slice(), hash.as_slice());
         assert_eq!(expected.len(), *count);
         eprintln!("finalized = {:x?}", finalized);
+    }
+
+    #[test]
+    fn test_merge_chunks() {
+        let chunk_a: BoxStream<Result<Bytes, ()>> = {
+            let s = stream! {
+                yield Ok(Bytes::from_static(b"Hello"));
+            };
+            Box::pin(s)
+        };
+
+        let chunk_b: BoxStream<Result<Bytes, ()>> = {
+            let s = stream! {
+                yield Ok(Bytes::from_static(b", "));
+                yield Ok(Bytes::from_static(b"world"));
+            };
+            Box::pin(s)
+        };
+
+        let chunk_c: BoxStream<Result<Bytes, ()>> = {
+            let s = stream! {
+                yield Ok(Bytes::from_static(b"!"));
+            };
+            Box::pin(s)
+        };
+
+        let chunks: VecDeque<BoxStream<'static, Result<Bytes, ()>>> =
+            [chunk_a, chunk_b, chunk_c].into_iter().collect();
+
+        let streamer = |c, _| future::ok(c);
+        let mut merged = merge_chunks(chunks, streamer, (), 2);
+
+        let bytes = block_on(async move {
+            let mut bytes = BytesMut::with_capacity(100);
+            while let Some(item) = merged.next().await {
+                bytes.put(item.unwrap());
+            }
+            bytes.freeze()
+        });
+
+        assert_eq!(&*bytes, b"Hello, world!");
     }
 }

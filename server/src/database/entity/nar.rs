@@ -2,9 +2,6 @@
 
 use sea_orm::entity::prelude::*;
 
-use super::Json;
-use crate::storage::RemoteFile;
-
 pub type NarModel = Model;
 
 /// The state of a NAR.
@@ -35,6 +32,7 @@ pub enum NarState {
     /// The NAR is being deleted.
     ///
     /// This row will be deleted shortly.
+    /// This variant is no longer used since the actual storage is managed as chunks.
     #[sea_orm(string_value = "D")]
     Deleted,
 }
@@ -44,6 +42,27 @@ pub enum NarState {
 /// A NAR without `nix-store --export` metadata is context-free,
 /// meaning that it's not associated with a store path and only
 /// depends on its contents.
+///
+/// ## NAR Repair
+///
+/// After a NAR is transitioned into the `Valid` state, its list
+/// of constituent chunks in `chunkref` is immutable. When a client
+/// uploads an existing NAR and the NAR has unavailable chunks,
+/// a new `nar` entry is created and all dependent `object` rows
+/// will have the `nar_id` updated. The old `nar` entry will
+/// be garbage-collected.
+///
+/// Why don't we just fill in the missing chunks in the existing
+/// `nar`? Because the NAR stream from the client _might_ be chunked
+/// differently. This is not supposed to happen since FastCDC
+/// has a deterministic lookup table for cut-point judgment, however
+/// we want the system to tolerate different chunking behavior because
+/// of table changes, for example.
+///
+/// However, when a chunk is added, all broken `chunkref`s with
+/// the same `chunk_hash` _are_ repaired. In other words, by
+/// re-uploading a broken NAR you are helping other NARs with
+/// the same broken chunk.
 #[derive(Debug, Clone, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "nar")]
 pub struct Model {
@@ -70,31 +89,24 @@ pub struct Model {
     /// The size of the NAR archive.
     pub nar_size: i64,
 
-    /// The hash of the compressed file.
-    ///
-    /// This always begins with "sha256:" with the hash in the
-    /// hexadecimal format.
-    ///
-    /// This field may not be available if the file hashes aren't
-    /// confirmed.
-    pub file_hash: Option<String>,
-
-    /// The size of the compressed file.
-    ///
-    /// This field may not be available if the file hashes aren't
-    /// confirmed.
-    pub file_size: Option<i64>,
-
     /// The type of compression in use.
     #[sea_orm(column_type = "String(Some(10))")]
     pub compression: String,
 
-    /// The remote file backing this NAR.
-    pub remote_file: Json<RemoteFile>,
+    /// Number of chunks that make up this NAR.
+    pub num_chunks: i32,
 
-    /// Unique string identifying the remote file.
-    #[sea_orm(unique)]
-    pub remote_file_id: String,
+    /// Hint indicating whether all chunks making up this NAR are available.
+    ///
+    /// This is used by the `get-missing-paths` endpoint to
+    /// also return store paths that are inaccessible due to
+    /// missing chunks in the associated NARs. They can then be
+    /// repaired by any client uploading.
+    ///
+    /// This flag may be outdated, but it's okay since when a client
+    /// tries to upload the same NAR, it will be immediately deduplicated
+    /// if all chunks are present and the flag will be updated.
+    pub completeness_hint: bool,
 
     /// Number of processes holding this NAR.
     ///
@@ -111,6 +123,9 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::object::Entity")]
     Object,
+
+    #[sea_orm(has_many = "super::chunkref::Entity")]
+    ChunkRef,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

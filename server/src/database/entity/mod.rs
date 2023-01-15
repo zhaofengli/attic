@@ -3,6 +3,8 @@
 //! We use SeaORM and target PostgreSQL (production) and SQLite (development).
 
 pub mod cache;
+pub mod chunk;
+pub mod chunkref;
 pub mod nar;
 pub mod object;
 

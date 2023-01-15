@@ -4,7 +4,10 @@
 //!
 //! The implementation is based on the specifications at <https://github.com/fzakaria/nix-http-binary-cache-api-spec>.
 
+use std::collections::VecDeque;
+use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use axum::{
     body::StreamBody,
@@ -14,19 +17,22 @@ use axum::{
     routing::get,
     Router,
 };
+use futures::stream::BoxStream;
 use serde::Serialize;
 use tokio_util::io::ReaderStream;
 use tracing::instrument;
 
+use crate::database::entity::chunk::ChunkModel;
 use crate::database::AtticDatabase;
 use crate::error::{ErrorKind, ServerResult};
 use crate::narinfo::NarInfo;
 use crate::nix_manifest;
-use crate::storage::Download;
+use crate::storage::{Download, StorageBackend};
 use crate::{RequestState, State};
 use attic::cache::CacheName;
 use attic::mime;
 use attic::nix_store::StorePathHash;
+use attic::stream::merge_chunks;
 
 /// Nix cache information.
 ///
@@ -128,10 +134,10 @@ async fn get_store_path_info(
         cache_name
     );
 
-    let (object, cache, nar) = state
+    let (object, cache, nar, chunks) = state
         .database()
         .await?
-        .find_object_by_store_path_hash(&cache_name, &store_path_hash)
+        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash)
         .await?;
 
     let permission = req_state
@@ -140,6 +146,11 @@ async fn get_store_path_info(
     permission.require_pull()?;
 
     req_state.set_public_cache(cache.is_public);
+
+    if chunks.iter().any(Option::is_none) {
+        // at least one of the chunks is missing :(
+        return Err(ErrorKind::IncompleteNar.into());
+    }
 
     let mut narinfo = object.to_nar_info(&nar)?;
 
@@ -184,8 +195,8 @@ async fn get_nar(
 
     let database = state.database().await?;
 
-    let (object, cache, nar) = database
-        .find_object_by_store_path_hash(&cache_name, &store_path_hash)
+    let (object, cache, _nar, chunks) = database
+        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash)
         .await?;
 
     let permission = req_state
@@ -195,18 +206,62 @@ async fn get_nar(
 
     req_state.set_public_cache(cache.is_public);
 
+    if chunks.iter().any(Option::is_none) {
+        // at least one of the chunks is missing :(
+        return Err(ErrorKind::IncompleteNar.into());
+    }
+
     database.bump_object_last_accessed(object.id).await?;
 
-    let remote_file = nar.remote_file.0;
-    let backend = state.storage().await?;
-    match backend.download_file_db(&remote_file).await? {
-        Download::Redirect(uri) => Ok(Redirect::temporary(&uri).into_response()),
-        Download::Stream(stream) => {
-            let stream = ReaderStream::new(stream);
-            let body = StreamBody::new(stream);
-
-            Ok(body.into_response())
+    if chunks.len() == 1 {
+        // single chunk
+        let chunk = chunks[0].as_ref().unwrap();
+        let remote_file = &chunk.remote_file.0;
+        let storage = state.storage().await?;
+        match storage.download_file_db(remote_file, false).await? {
+            Download::Url(url) => Ok(Redirect::temporary(&url).into_response()),
+            Download::Stream(stream) => {
+                let body = StreamBody::new(stream);
+                Ok(body.into_response())
+            }
+            Download::AsyncRead(stream) => {
+                let stream = ReaderStream::new(stream);
+                let body = StreamBody::new(stream);
+                Ok(body.into_response())
+            }
         }
+    } else {
+        // reassemble NAR
+        fn io_error<E: std::error::Error + Send + Sync + 'static>(e: E) -> IoError {
+            IoError::new(IoErrorKind::Other, e)
+        }
+
+        let streamer = |chunk: ChunkModel, storage: Arc<Box<dyn StorageBackend + 'static>>| async move {
+            match storage
+                .download_file_db(&chunk.remote_file.0, true)
+                .await
+                .map_err(io_error)?
+            {
+                Download::Url(_) => Err(IoError::new(
+                    IoErrorKind::Other,
+                    "URLs not supported for NAR reassembly",
+                )),
+                Download::Stream(stream) => Ok(stream),
+                Download::AsyncRead(stream) => {
+                    let stream: BoxStream<_> = Box::pin(ReaderStream::new(stream));
+                    Ok(stream)
+                }
+            }
+        };
+
+        let chunks: VecDeque<_> = chunks.into_iter().map(Option::unwrap).collect();
+        let storage = state.storage().await?.clone();
+
+        // TODO: Make num_prefetch configurable
+        // The ideal size depends on the average chunk size
+        let merged = merge_chunks(chunks, streamer, storage, 2);
+        let body = StreamBody::new(merged);
+        Ok(body.into_response())
     }
 }
 

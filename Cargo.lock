@@ -137,8 +137,10 @@ dependencies = [
 name = "attic"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "base64 0.20.0",
  "bindgen",
+ "bytes",
  "cxx",
  "cxx-build",
  "digest",
@@ -197,6 +199,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-compression",
+ "async-stream",
  "async-trait",
  "attic",
  "attic-token",
@@ -213,6 +216,7 @@ dependencies = [
  "digest",
  "displaydoc",
  "enum-as-inner",
+ "fastcdc",
  "futures",
  "hex",
  "humantime",
@@ -229,6 +233,7 @@ dependencies = [
  "serde_with",
  "sha2",
  "tokio",
+ "tokio-test",
  "tokio-util",
  "toml",
  "tower-http",
@@ -1482,6 +1487,12 @@ name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
+
+[[package]]
+name = "fastcdc"
+version = "1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3f1596230ad22715a97a82deba0403ece9e4a458d008fd2511518d72a115bef"
 
 [[package]]
 name = "fastrand"

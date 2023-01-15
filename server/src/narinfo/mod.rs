@@ -86,12 +86,18 @@ pub struct NarInfo {
     pub compression: Compression,
 
     /// The hash of the compressed file.
+    ///
+    /// We don't know the file hash if it's chunked.
     #[serde(rename = "FileHash")]
-    pub file_hash: Hash,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_hash: Option<Hash>,
 
     /// The size of the compressed file.
+    ///
+    /// We may not know the file size if it's chunked.
     #[serde(rename = "FileSize")]
-    pub file_size: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size: Option<usize>,
 
     /// The hash of the NAR archive.
     ///
@@ -242,6 +248,18 @@ impl IntoResponse for NarInfo {
     }
 }
 
+impl Compression {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Xz => "xz",
+            Self::Bzip2 => "bzip2",
+            Self::Brotli => "br",
+            Self::Zstd => "zstd",
+        }
+    }
+}
+
 impl FromStr for Compression {
     type Err = ServerError;
 
@@ -262,13 +280,7 @@ impl FromStr for Compression {
 
 impl ToString for Compression {
     fn to_string(&self) -> String {
-        String::from(match self {
-            Self::None => "none",
-            Self::Xz => "xz",
-            Self::Bzip2 => "bzip2",
-            Self::Brotli => "br",
-            Self::Zstd => "zstd",
-        })
+        String::from(self.as_str())
     }
 }
 

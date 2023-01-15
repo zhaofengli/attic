@@ -3,6 +3,8 @@
 mod local;
 mod s3;
 
+use bytes::Bytes;
+use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
@@ -33,11 +35,14 @@ pub enum RemoteFile {
 
 /// Way to download a file.
 pub enum Download {
-    /// A redirect to a (possibly ephemeral) URL.
-    Redirect(String),
+    /// A possibly ephemeral URL.
+    Url(String),
 
     /// A stream.
-    Stream(Box<dyn AsyncRead + Unpin + Send>),
+    Stream(BoxStream<'static, std::io::Result<Bytes>>),
+
+    /// An AsyncRead.
+    AsyncRead(Box<dyn AsyncRead + Unpin + Send>),
 }
 
 // TODO: Maybe make RemoteFile the one true reference instead of having two sets of APIs?
@@ -58,10 +63,14 @@ pub trait StorageBackend: Send + Sync + std::fmt::Debug {
     async fn delete_file_db(&self, file: &RemoteFile) -> ServerResult<()>;
 
     /// Downloads a file using the current configuration.
-    async fn download_file(&self, name: String) -> ServerResult<Download>;
+    async fn download_file(&self, name: String, prefer_stream: bool) -> ServerResult<Download>;
 
     /// Downloads a file using a database reference.
-    async fn download_file_db(&self, file: &RemoteFile) -> ServerResult<Download>;
+    async fn download_file_db(
+        &self,
+        file: &RemoteFile,
+        prefer_stream: bool,
+    ) -> ServerResult<Download>;
 
     /// Creates a database reference for a file.
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile>;

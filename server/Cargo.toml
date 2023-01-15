@@ -23,6 +23,7 @@ attic = { path = "../attic", default-features = false, features = [ "tokio" ] }
 attic-token = { path = "../token" }
 
 anyhow = "1.0.68"
+async-stream = "0.3.3"
 async-trait = "0.1.60"
 aws-config = "0.52.0"
 aws-sdk-s3 = "0.22.0"
@@ -36,6 +37,7 @@ derivative = "2.2.0"
 digest = "0.10.6"
 displaydoc = "0.2.3"
 enum-as-inner = "0.5.1"
+fastcdc = "1.0.7"
 futures = "0.3.25"
 hex = "0.4.3"
 humantime = "2.1.0"
@@ -92,3 +94,6 @@ features = [
 	"rt-multi-thread",
 	"sync",
 ]
+
+[dev-dependencies]
+tokio-test = "0.4.2"

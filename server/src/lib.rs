@@ -15,9 +15,10 @@
 
 pub mod access;
 mod api;
+mod chunking;
 pub mod config;
 pub mod database;
-mod error;
+pub mod error;
 pub mod gc;
 mod middleware;
 mod narinfo;

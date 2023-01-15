@@ -92,6 +92,9 @@ pub struct Config {
     /// Storage.
     pub storage: StorageConfig,
 
+    /// Data chunking.
+    pub chunking: ChunkingConfig,
+
     /// Compression.
     #[serde(default = "Default::default")]
     pub compression: CompressionConfig,
@@ -135,6 +138,46 @@ pub enum StorageConfig {
     /// S3 storage.
     #[serde(rename = "s3")]
     S3(S3StorageConfig),
+}
+
+/// Data chunking.
+///
+/// This must be set, but a default set of values is provided
+/// through the OOBE sequence. The reason is that this allows
+/// us to provide a new set of recommended "defaults" for newer
+/// deployments without affecting existing ones.
+///
+/// Warning: If you change any of the values here, it will be
+/// difficult to reuse existing chunks for newly-uploaded NARs
+/// since the cutpoints will be different. As a result, the
+/// deduplication ratio will suffer for a while after the change.
+///
+/// `atticadm test-chunking` provides a way to test chunking
+/// on a set of files so you can fine-tune the values.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChunkingConfig {
+    /// The minimum NAR size to trigger chunking.
+    ///
+    /// If 0, chunking is disabled entirely for newly-uploaded
+    /// NARs.
+    ///
+    /// If 1, all newly-uploaded NARs are chunked.
+    ///
+    /// By default, the threshold is 128KB.
+    #[serde(rename = "nar-size-threshold")]
+    pub nar_size_threshold: usize,
+
+    /// The preferred minimum size of a chunk, in bytes.
+    #[serde(rename = "min-size")]
+    pub min_size: usize,
+
+    /// The preferred average size of a chunk, in bytes.
+    #[serde(rename = "avg-size")]
+    pub avg_size: usize,
+
+    /// The preferred maximum size of a chunk, in bytes.
+    #[serde(rename = "max-size")]
+    pub max_size: usize,
 }
 
 /// Compression configuration.
@@ -294,7 +337,7 @@ fn load_config_from_str(s: &str) -> Result<Config> {
 /// Loads the configuration in the standard order.
 pub async fn load_config(config_path: Option<&Path>, allow_oobe: bool) -> Result<Config> {
     if let Some(config_path) = config_path {
-        load_config_from_path(&config_path)
+        load_config_from_path(config_path)
     } else if let Ok(config_env) = env::var(ENV_CONFIG_BASE64) {
         let decoded = String::from_utf8(base64::decode(config_env.as_bytes())?)?;
         load_config_from_str(&decoded)

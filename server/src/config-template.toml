@@ -86,6 +86,28 @@ path = "%storage_path%"
 #  access_key_id = ""
 #  secret_access_key = ""
  
+# Data chunking
+#
+# Warning: If you change any of the values here, it will be
+# difficult to reuse existing chunks for newly-uploaded NARs
+# since the cutpoints will be different. As a result, the
+# deduplication ratio will suffer for a while after the change.
+[chunking]
+# The minimum NAR size to trigger chunking
+#
+# If 0, chunking is disabled entirely for newly-uploaded NARs.
+# If 1, all NARs are chunked.
+nar-size-threshold = 65536 # chunk files that are 64 KiB or larger
+
+# The preferred minimum size of a chunk, in bytes
+min-size = 16384            # 16 KiB
+
+# The preferred average size of a chunk, in bytes
+avg-size = 65536            # 64 KiB
+
+# The preferred maximum size of a chunk, in bytes
+max-size = 262144           # 256 KiB
+
 # Compression
 [compression]
 # Compression type

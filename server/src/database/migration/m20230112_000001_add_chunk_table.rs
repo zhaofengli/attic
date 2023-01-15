@@ -1,12 +1,12 @@
 use sea_orm_migration::prelude::*;
 
-use crate::database::entity::nar::*;
+use crate::database::entity::chunk::*;
 
 pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20221227_000003_create_nar_table"
+        "m20230112_000001_add_chunk_table"
     }
 }
 
@@ -17,7 +17,6 @@ impl MigrationTrait for Migration {
             .create_table(
                 Table::create()
                     .table(Entity)
-                    .if_not_exists()
                     .col(
                         ColumnDef::new(Column::Id)
                             .big_integer()
@@ -31,18 +30,14 @@ impl MigrationTrait for Migration {
                             .char_len(1)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Column::NarHash).string().not_null())
-                    .col(ColumnDef::new(Column::NarSize).big_integer().not_null())
+                    .col(ColumnDef::new(Column::ChunkHash).string().not_null())
+                    .col(ColumnDef::new(Column::ChunkSize).big_integer().not_null())
                     .col(ColumnDef::new(Alias::new("file_hash")).string().null())
                     .col(ColumnDef::new(Alias::new("file_size")).big_integer().null())
                     .col(ColumnDef::new(Column::Compression).string().not_null())
+                    .col(ColumnDef::new(Column::RemoteFile).string().not_null())
                     .col(
-                        ColumnDef::new(Alias::new("remote_file"))
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("remote_file_id"))
+                        ColumnDef::new(Column::RemoteFileId)
                             .string()
                             .not_null()
                             .unique_key(),
@@ -65,9 +60,9 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx-nar-nar-hash")
+                    .name("idx-chunk-chunk-hash")
                     .table(Entity)
-                    .col(Column::NarHash)
+                    .col(Column::ChunkHash)
                     .to_owned(),
             )
             .await

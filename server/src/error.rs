@@ -54,6 +54,9 @@ pub enum ErrorKind {
     /// Invalid compression type "{name}".
     InvalidCompressionType { name: String },
 
+    /// The requested NAR has missing chunks and needs to be repaired.
+    IncompleteNar,
+
     /// Database error: {0}
     DatabaseError(AnyError),
 
@@ -174,6 +177,7 @@ impl ErrorKind {
             Self::NoSuchCache => "NoSuchCache",
             Self::CacheAlreadyExists => "CacheAlreadyExists",
             Self::InvalidCompressionType { .. } => "InvalidCompressionType",
+            Self::IncompleteNar => "IncompleteNar",
             Self::AtticError(e) => e.name(),
             Self::DatabaseError(_) => "DatabaseError",
             Self::StorageError(_) => "StorageError",
@@ -218,6 +222,7 @@ impl ErrorKind {
             Self::NoSuchCache => StatusCode::NOT_FOUND,
             Self::NoSuchObject => StatusCode::NOT_FOUND,
             Self::CacheAlreadyExists => StatusCode::BAD_REQUEST,
+            Self::IncompleteNar => StatusCode::SERVICE_UNAVAILABLE,
             Self::ManifestSerializationError(_) => StatusCode::BAD_REQUEST,
             Self::RequestError(_) => StatusCode::BAD_REQUEST,
             Self::InvalidCompressionType { .. } => StatusCode::BAD_REQUEST,

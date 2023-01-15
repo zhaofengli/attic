@@ -90,12 +90,6 @@ pub enum Relation {
 impl Model {
     /// Converts this object to a NarInfo.
     pub fn to_nar_info(&self, nar: &NarModel) -> ServerResult<NarInfo> {
-        // FIXME: Return Err if file_hash and file_size don't exist
-        let file_size = nar
-            .file_size
-            .unwrap()
-            .try_into()
-            .map_err(ServerError::database_error)?;
         let nar_size = nar
             .nar_size
             .try_into()
@@ -106,8 +100,8 @@ impl Model {
             url: format!("nar/{}.nar", self.store_path_hash.as_str()),
 
             compression: Compression::from_str(&nar.compression)?,
-            file_hash: Hash::from_typed(nar.file_hash.as_ref().unwrap())?,
-            file_size,
+            file_hash: None, // FIXME
+            file_size: None, // FIXME
             nar_hash: Hash::from_typed(&nar.nar_hash)?,
             nar_size,
             system: self.system.to_owned(),

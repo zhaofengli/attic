@@ -17,6 +17,8 @@ use tracing::instrument;
 use super::{State, StateInner};
 use crate::config::Config;
 use crate::database::entity::cache::{self, Entity as Cache};
+use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
+use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object};
 
@@ -54,6 +56,7 @@ pub async fn run_garbage_collection_once(config: Config) -> Result<()> {
     let state = StateInner::new(config).await;
     run_time_based_garbage_collection(&state).await?;
     run_reap_orphan_nars(&state).await?;
+    run_reap_orphan_chunks(&state).await?;
 
     Ok(())
 }
@@ -122,7 +125,6 @@ async fn run_time_based_garbage_collection(state: &State) -> Result<()> {
 #[instrument(skip_all)]
 async fn run_reap_orphan_nars(state: &State) -> Result<()> {
     let db = state.database().await?;
-    let storage = state.storage().await?;
 
     // find all orphan NARs...
     let orphan_nar_ids = Query::select()
@@ -140,46 +142,78 @@ async fn run_reap_orphan_nars(state: &State) -> Result<()> {
         .lock_with_tables_behavior(LockType::Update, [Nar], LockBehavior::SkipLocked)
         .to_owned();
 
+    // ... and simply delete them
+    let deletion = Nar::delete_many()
+        .filter(nar::Column::Id.in_subquery(orphan_nar_ids))
+        .exec(db)
+        .await?;
+
+    tracing::info!("Deleted {} orphan NARs", deletion.rows_affected,);
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
+    let db = state.database().await?;
+    let storage = state.storage().await?;
+
+    // find all orphan chunks...
+    let orphan_chunk_ids = Query::select()
+        .from(Chunk)
+        .expr(chunk::Column::Id.into_expr())
+        .left_join(
+            ChunkRef,
+            chunkref::Column::ChunkId
+                .into_expr()
+                .eq(chunk::Column::Id.into_expr()),
+        )
+        .and_where(chunkref::Column::Id.is_null())
+        .and_where(chunk::Column::State.eq(ChunkState::Valid))
+        .and_where(chunk::Column::HoldersCount.eq(0))
+        .lock_with_tables_behavior(LockType::Update, [Chunk], LockBehavior::SkipLocked)
+        .to_owned();
+
     // ... and transition their state to Deleted
     //
-    // Deleted NARs are essentially invisible from our normal queries
+    // Deleted chunks are essentially invisible from our normal queries
     let change_state = Query::update()
-        .table(Nar)
-        .value(nar::Column::State, NarState::Deleted)
-        .and_where(nar::Column::Id.in_subquery(orphan_nar_ids))
+        .table(Chunk)
+        .value(chunk::Column::State, ChunkState::Deleted)
+        .and_where(chunk::Column::Id.in_subquery(orphan_chunk_ids))
         .returning_all()
         .to_owned();
 
     let stmt = db.get_database_backend().build(&change_state);
 
-    let orphan_nars = nar::Model::find_by_statement(stmt).all(db).await?;
+    let orphan_chunks = chunk::Model::find_by_statement(stmt).all(db).await?;
 
-    if orphan_nars.is_empty() {
+    if orphan_chunks.is_empty() {
         return Ok(());
     }
 
-    // Delete the NARs from remote storage
+    // Delete the chunks from remote storage
     let delete_limit = Arc::new(Semaphore::new(20)); // TODO: Make this configurable
-    let futures: Vec<_> = orphan_nars
+    let futures: Vec<_> = orphan_chunks
         .into_iter()
-        .map(|nar| {
+        .map(|chunk| {
             let delete_limit = delete_limit.clone();
             async move {
                 let permit = delete_limit.acquire().await?;
-                storage.delete_file_db(&nar.remote_file.0).await?;
+                storage.delete_file_db(&chunk.remote_file.0).await?;
                 drop(permit);
-                Result::<_, anyhow::Error>::Ok(nar.id)
+                Result::<_, anyhow::Error>::Ok(chunk.id)
             }
         })
         .collect();
 
     // Deletions can result in spurious failures, tolerate them
     //
-    // NARs that failed to be deleted from the remote storage will
+    // Chunks that failed to be deleted from the remote storage will
     // just be stuck in Deleted state.
     //
     // TODO: Maybe have an interactive command to retry deletions?
-    let deleted_nar_ids: Vec<_> = join_all(futures)
+    let deleted_chunk_ids: Vec<_> = join_all(futures)
         .await
         .into_iter()
         .filter(|r| {
@@ -193,12 +227,12 @@ async fn run_reap_orphan_nars(state: &State) -> Result<()> {
         .collect();
 
     // Finally, delete them from the database
-    let deletion = Nar::delete_many()
-        .filter(nar::Column::Id.is_in(deleted_nar_ids))
+    let deletion = Chunk::delete_many()
+        .filter(chunk::Column::Id.is_in(deleted_chunk_ids))
         .exec(db)
         .await?;
 
-    tracing::info!("Deleted {} NARs", deletion.rows_affected);
+    tracing::info!("Deleted {} orphan chunks", deletion.rows_affected);
 
     Ok(())
 }

@@ -34,9 +34,9 @@ Sig: cache.nixos.org-1:lo9EfNIL4eGRuNh7DTbAAffWPpI2SlYC/8uP7JnhgmfRIUNGhSbFe8qEa
         assert_eq!(Compression::Xz, narinfo.compression);
         assert_eq!(
             "sha256:0nqgf15qfiacfxrgm2wkw0gwwncjqqzzalj8rs14w9srkydkjsk9",
-            narinfo.file_hash.to_typed_base32()
+            narinfo.file_hash.as_ref().unwrap().to_typed_base32()
         );
-        assert_eq!(41104, narinfo.file_size);
+        assert_eq!(Some(41104), narinfo.file_size);
         assert_eq!(
             "sha256:16mvl7v0ylzcg2n3xzjn41qhzbmgcn5iyarx16nn5l2r36n2kqci",
             narinfo.nar_hash.to_typed_base32()

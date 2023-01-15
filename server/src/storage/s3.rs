@@ -1,13 +1,18 @@
 //! S3 remote files.
 
+use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use aws_sdk_s3::{
-    config::Builder as S3ConfigBuilder, model::CompletedMultipartUpload, model::CompletedPart,
-    presigning::config::PresigningConfig, Client, Credentials, Endpoint, Region,
+    client::fluent_builders::GetObject,
+    config::Builder as S3ConfigBuilder,
+    model::{CompletedMultipartUpload, CompletedPart},
+    presigning::config::PresigningConfig,
+    Client, Credentials, Endpoint, Region,
 };
 use futures::future::join_all;
+use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
@@ -133,6 +138,29 @@ impl S3Backend {
         };
 
         Ok((client, file))
+    }
+
+    async fn get_download(&self, req: GetObject, prefer_stream: bool) -> ServerResult<Download> {
+        if prefer_stream {
+            let output = req.send().await.map_err(ServerError::storage_error)?;
+
+            let stream = StreamExt::map(output.body, |item| {
+                item.map_err(|e| IoError::new(IoErrorKind::Other, e))
+            });
+
+            Ok(Download::Stream(Box::pin(stream)))
+        } else {
+            // FIXME: Configurable expiration
+            let presign_config = PresigningConfig::expires_in(Duration::from_secs(600))
+                .map_err(ServerError::storage_error)?;
+
+            let presigned = req
+                .presigned(presign_config)
+                .await
+                .map_err(ServerError::storage_error)?;
+
+            Ok(Download::Url(presigned.uri().to_string()))
+        }
     }
 }
 
@@ -313,38 +341,26 @@ impl StorageBackend for S3Backend {
         Ok(())
     }
 
-    async fn download_file(&self, name: String) -> ServerResult<Download> {
-        // FIXME: Configurable expiration
-        let presign_config = PresigningConfig::expires_in(Duration::from_secs(10))
-            .map_err(ServerError::storage_error)?;
-
-        let presigned = self
+    async fn download_file(&self, name: String, prefer_stream: bool) -> ServerResult<Download> {
+        let req = self
             .client
             .get_object()
             .bucket(&self.config.bucket)
-            .key(&name)
-            .presigned(presign_config)
-            .await
-            .map_err(ServerError::storage_error)?;
+            .key(&name);
 
-        Ok(Download::Redirect(presigned.uri().to_string()))
+        self.get_download(req, prefer_stream).await
     }
 
-    async fn download_file_db(&self, file: &RemoteFile) -> ServerResult<Download> {
+    async fn download_file_db(
+        &self,
+        file: &RemoteFile,
+        prefer_stream: bool,
+    ) -> ServerResult<Download> {
         let (client, file) = self.get_client_from_db_ref(file).await?;
 
-        let presign_config = PresigningConfig::expires_in(Duration::from_secs(600))
-            .map_err(ServerError::storage_error)?;
+        let req = client.get_object().bucket(&file.bucket).key(&file.key);
 
-        let presigned = client
-            .get_object()
-            .bucket(&file.bucket)
-            .key(&file.key)
-            .presigned(presign_config)
-            .await
-            .map_err(ServerError::storage_error)?;
-
-        Ok(Download::Redirect(presigned.uri().to_string()))
+        self.get_download(req, prefer_stream).await
     }
 
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile> {

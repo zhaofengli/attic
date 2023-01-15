@@ -87,15 +87,19 @@ impl StorageBackend for LocalBackend {
         Ok(())
     }
 
-    async fn download_file(&self, name: String) -> ServerResult<Download> {
+    async fn download_file(&self, name: String, _prefer_stream: bool) -> ServerResult<Download> {
         let file = File::open(self.get_path(&name))
             .await
             .map_err(ServerError::storage_error)?;
 
-        Ok(Download::Stream(Box::new(file)))
+        Ok(Download::AsyncRead(Box::new(file)))
     }
 
-    async fn download_file_db(&self, file: &RemoteFile) -> ServerResult<Download> {
+    async fn download_file_db(
+        &self,
+        file: &RemoteFile,
+        _prefer_stream: bool,
+    ) -> ServerResult<Download> {
         let file = if let RemoteFile::Local(file) = file {
             file
         } else {
@@ -109,7 +113,7 @@ impl StorageBackend for LocalBackend {
             .await
             .map_err(ServerError::storage_error)?;
 
-        Ok(Download::Stream(Box::new(file)))
+        Ok(Download::AsyncRead(Box::new(file)))
     }
 
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile> {
