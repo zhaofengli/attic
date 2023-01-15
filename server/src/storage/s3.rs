@@ -9,10 +9,11 @@ use aws_sdk_s3::{
 };
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::AsyncRead;
 
 use super::{Download, RemoteFile, StorageBackend};
 use crate::error::{ErrorKind, ServerError, ServerResult};
+use attic::stream::read_chunk_async;
 use attic::util::Finally;
 
 /// The chunk size for each part in a multipart upload.
@@ -142,7 +143,9 @@ impl StorageBackend for S3Backend {
         name: String,
         mut stream: &mut (dyn AsyncRead + Unpin + Send),
     ) -> ServerResult<RemoteFile> {
-        let first_chunk = read_chunk_async(&mut stream).await?;
+        let first_chunk = read_chunk_async(&mut stream, CHUNK_SIZE)
+            .await
+            .map_err(ServerError::storage_error)?;
 
         if first_chunk.len() < CHUNK_SIZE {
             // do a normal PutObject
@@ -207,7 +210,9 @@ impl StorageBackend for S3Backend {
             let chunk = if part_number == 1 {
                 first_chunk.take().unwrap()
             } else {
-                read_chunk_async(&mut stream).await?
+                read_chunk_async(&mut stream, CHUNK_SIZE)
+                    .await
+                    .map_err(ServerError::storage_error)?
             };
 
             if chunk.is_empty() {
@@ -349,26 +354,4 @@ impl StorageBackend for S3Backend {
             key: name,
         }))
     }
-}
-
-// adapted from rust-s3
-async fn read_chunk_async<S: AsyncRead + Unpin + Send>(stream: &mut S) -> ServerResult<Vec<u8>> {
-    let mut chunk: Box<[u8]> = vec![0u8; CHUNK_SIZE].into_boxed_slice();
-    let mut cursor = 0;
-
-    while cursor < CHUNK_SIZE {
-        let buf = &mut chunk[cursor..];
-        let read = stream.read(buf).await.map_err(ServerError::storage_error)?;
-
-        if read == 0 {
-            break;
-        } else {
-            cursor += read;
-        }
-    }
-
-    let mut vec = chunk.into_vec();
-    vec.truncate(cursor);
-
-    Ok(vec)
 }

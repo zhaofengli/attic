@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use digest::{Digest, Output as DigestOutput};
-use tokio::io::{AsyncRead, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio::sync::OnceCell;
 
 /// Stream filter that hashes the bytes that have been read.
@@ -71,6 +71,34 @@ impl<R: AsyncRead + Unpin, D: Digest + Unpin> AsyncRead for StreamHasher<R, D> {
 
         r
     }
+}
+
+/// Greedily reads from a stream for some number of bytes.
+///
+/// This was originally from rust-s3 but completely rewritten to resolve
+/// performance problems.
+pub async fn read_chunk_async<S: AsyncRead + Unpin + Send>(
+    stream: &mut S,
+    max_size: usize,
+) -> std::io::Result<Vec<u8>> {
+    let mut chunk: Box<[u8]> = vec![0u8; max_size].into_boxed_slice();
+    let mut cursor = 0;
+
+    while cursor < max_size {
+        let buf = &mut chunk[cursor..];
+        let read = stream.read(buf).await?;
+
+        if read == 0 {
+            break;
+        } else {
+            cursor += read;
+        }
+    }
+
+    let mut vec = chunk.into_vec();
+    vec.truncate(cursor);
+
+    Ok(vec)
 }
 
 #[cfg(test)]
