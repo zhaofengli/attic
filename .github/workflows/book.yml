@@ -22,7 +22,7 @@ jobs:
         run: |
           echo ACTION_USER=$USER >> $GITHUB_ENV
 
-      - uses: DeterminateSystems/nix-installer@main
+      - uses: DeterminateSystems/nix-installer-action@2ec668c45628a4029e59357600d6b73107b0843b
         with:
           extra-conf: |
             trusted-users = root ${{ env.ACTION_USER }}
