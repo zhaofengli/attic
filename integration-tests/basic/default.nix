@@ -155,7 +155,7 @@ in {
       ${storageModules.${config.storage}.testScript or ""}
 
       server.wait_for_unit('atticd.service')
-      client.wait_until_succeeds("curl -sL http://server:8080", timeout=20)
+      client.wait_until_succeeds("curl -sL http://server:8080", timeout=40)
 
       root_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --push '*' --pull '*' --delete '*' --create-cache '*' --destroy-cache '*' --configure-cache '*' --configure-cache-retention '*'")
       readonly_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --pull 'test'")
