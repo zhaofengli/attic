@@ -12,6 +12,10 @@ use attic::nix_store::NixStore;
 #[derive(Debug, Parser)]
 pub struct GetClosure {
     store_path: PathBuf,
+
+    /// For derivations, include their outputs.
+    #[clap(long)]
+    include_outputs: bool,
 }
 
 pub async fn run(opts: Opts) -> Result<()> {
@@ -20,7 +24,7 @@ pub async fn run(opts: Opts) -> Result<()> {
     let store = NixStore::connect()?;
     let store_path = store.follow_store_path(&sub.store_path)?;
     let closure = store
-        .compute_fs_closure(store_path, false, false, false)
+        .compute_fs_closure(store_path, false, sub.include_outputs, false)
         .await?;
 
     for path in &closure {
