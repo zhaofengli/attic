@@ -161,6 +161,10 @@ async fn upload_path_dedup(
         }
     }
 
+    let file_size = existing_nar.file_size
+        .map(|dbs| dbs.try_into().map_err(ServerError::database_error))
+        .transpose()?;
+
     // Finally...
     let txn = database
         .begin()
@@ -187,10 +191,6 @@ async fn upload_path_dedup(
     .map_err(ServerError::database_error)?;
 
     txn.commit().await.map_err(ServerError::database_error)?;
-
-    let file_size = existing_nar.file_size
-        .map(|dbs| dbs.try_into().map_err(ServerError::database_error))
-        .transpose()?;
 
     // Ensure it's not unlocked earlier
     drop(existing_nar);
