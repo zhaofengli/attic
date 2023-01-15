@@ -21,6 +21,20 @@ let
     cat <$configFile >$out
   '';
 
+  atticadmWrapper = pkgs.writeShellScriptBin "atticd-atticadm" ''
+    exec systemd-run \
+      --pty \
+      --same-dir \
+      --wait \
+      --collect \
+      --service-type=exec \
+      --property=EnvironmentFile=${cfg.credentialsFile} \
+      --property=DynamicUser=yes \
+      --property=User=atticd \
+      -- \
+      ${cfg.package}/bin/atticadm -f ${checkedConfigFile} "$@"
+  '';
+
   hasLocalPostgresDB = let
     url = cfg.settings.database.url;
     localStrings = [ "localhost" "127.0.0.1" "/run/postgresql" ];
@@ -129,7 +143,7 @@ in
         };
       };
 
-      environment.systemPackages = [ cfg.package ];
+      environment.systemPackages = [ atticadmWrapper ];
     }
     (lib.mkIf cfg.useFlakeCompatOverlay {
       nixpkgs.overlays = [ overlay ];

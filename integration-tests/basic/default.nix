@@ -5,7 +5,7 @@ let
   serverConfigFile = config.nodes.server.services.atticd.configFile;
 
   cmd = {
-    atticadm = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 && atticadm -f ${serverConfigFile}";
+    atticadm = "atticd-atticadm";
     atticd = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 && atticd -f ${serverConfigFile}";
   };
 
@@ -128,6 +128,8 @@ in {
             listen = "[::]:8080";
           };
         };
+
+        environment.systemPackages = [ pkgs.attic-server ];
 
         networking.firewall.allowedTCPPorts = [ 8080 ];
       };
