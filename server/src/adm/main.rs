@@ -15,7 +15,7 @@ use command::make_token::{self, MakeToken};
 #[clap(propagate_version = true)]
 pub struct Opts {
     /// Path to the config file.
-    #[clap(short = 'f', long)]
+    #[clap(short = 'f', long, global = true)]
     config: Option<PathBuf>,
 
     /// The sub-command.
