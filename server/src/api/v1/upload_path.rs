@@ -224,6 +224,21 @@ async fn upload_path_dedup(
     .await
     .map_err(ServerError::database_error)?;
 
+    // Also mark the NAR as complete again
+    //
+    // This is racy (a chunkref might have been broken in the
+    // meantime), but it's okay since it's just a hint to
+    // `get-missing-paths` so clients don't attempt to upload
+    // again. Also see the comments in `server/src/database/entity/nar.rs`.
+    Nar::update(nar::ActiveModel {
+        id: Set(existing_nar.id),
+        completeness_hint: Set(true),
+        ..Default::default()
+    })
+    .exec(&txn)
+    .await
+    .map_err(ServerError::database_error)?;
+
     txn.commit().await.map_err(ServerError::database_error)?;
 
     // Ensure it's not unlocked earlier
