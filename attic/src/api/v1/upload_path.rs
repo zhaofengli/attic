@@ -57,6 +57,10 @@ pub struct UploadPathNarInfo {
 pub struct UploadPathResult {
     #[serde_as(deserialize_as = "DefaultOnError")]
     pub kind: UploadPathResultKind,
+
+    /// The compressed size of the NAR, in bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size: Option<usize>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]

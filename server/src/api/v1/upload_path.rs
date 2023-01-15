@@ -188,11 +188,16 @@ async fn upload_path_dedup(
 
     txn.commit().await.map_err(ServerError::database_error)?;
 
+    let file_size = existing_nar.file_size
+        .map(|dbs| dbs.try_into().map_err(ServerError::database_error))
+        .transpose()?;
+
     // Ensure it's not unlocked earlier
     drop(existing_nar);
 
     Ok(Json(UploadPathResult {
         kind: UploadPathResultKind::Deduplicated,
+        file_size,
     }))
 }
 
@@ -339,6 +344,7 @@ async fn upload_path_new(
 
     Ok(Json(UploadPathResult {
         kind: UploadPathResultKind::Uploaded,
+        file_size: Some(*file_size),
     }))
 }
 
