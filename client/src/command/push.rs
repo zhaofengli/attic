@@ -39,7 +39,7 @@ pub struct Push {
     ignore_upstream_cache_filter: bool,
 
     /// The maximum number of parallel upload processes.
-    #[clap(short = 'j', long, default_value = "10")]
+    #[clap(short = 'j', long, default_value = "5")]
     jobs: usize,
 }
 
