@@ -71,6 +71,11 @@ features = [
 ]
 
 [dependencies.sea-orm]
+# Temporary workaround for nixpkgs 22.11 w/ Rust 1.64.0.
+# TODO: Remove once 23.05 becomes stable
+git = "https://github.com/zhaofengli/sea-orm"
+branch = "attic"
+
 version = "0.10.6"
 features = [
 	"runtime-tokio-rustls",
@@ -81,7 +86,12 @@ features = [
 ]
 
 [dependencies.sea-orm-migration]
-version = "0.10.6"
+# Temporary workaround for nixpkgs 22.11 w/ Rust 1.64.0.
+# TODO: Remove once 23.05 becomes stable
+git = "https://github.com/zhaofengli/sea-orm"
+branch = "attic"
+
+version = "0.10.5"
 
 [dependencies.tokio]
 version = "1.23.0"
