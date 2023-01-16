@@ -489,6 +489,7 @@ async fn upload_path_new_unchunked(
         seq: Set(0),
         chunk_id: Set(Some(chunk.id)),
         chunk_hash: Set(upload_info.nar_hash.to_typed_base16()),
+        compression: Set(compression.to_string()),
         ..Default::default()
     })
     .exec(&txn)
