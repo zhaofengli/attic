@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-22.11";
     flake-utils.url = "github:numtide/flake-utils";
 
     crane = {
@@ -18,7 +19,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, crane, ... }: let
+  outputs = { self, nixpkgs, nixpkgs-stable, flake-utils, crane, ... }: let
     supportedSystems = flake-utils.lib.defaultSystems;
 
     makeCranePkgs = pkgs: let
@@ -30,6 +31,12 @@
       overlays = [];
     };
     cranePkgs = makeCranePkgs pkgs;
+
+    pkgsStable = import nixpkgs-stable {
+      inherit system;
+      overlays = [];
+    };
+    cranePkgsStable = makeCranePkgs pkgsStable;
 
     inherit (pkgs) lib;
   in rec {
@@ -130,13 +137,17 @@
       inherit (cranePkgs) attic-tests cargoArtifacts;
     };
 
-    checks = lib.optionalAttrs pkgs.stdenv.isLinux (import ./integration-tests {
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [ self.overlays.default ];
+    checks = let
+      makeIntegrationTests = pkgs: import ./integration-tests {
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ self.overlays.default ];
+        };
+        flake = self;
       };
-      flake = self;
-    });
+      unstableTests = makeIntegrationTests pkgs;
+      stableTests = lib.mapAttrs' (name: lib.nameValuePair "stable-${name}") (makeIntegrationTests pkgsStable);
+    in lib.optionalAttrs pkgs.stdenv.isLinux (unstableTests // stableTests);
   }) // {
     overlays = {
       default = final: prev: let
