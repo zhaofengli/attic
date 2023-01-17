@@ -61,15 +61,24 @@ pub struct UploadPathResult {
     /// The compressed size of the NAR, in bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_size: Option<usize>,
+
+    /// The fraction of data that was deduplicated, from 0 to 1.
+    pub frac_deduplicated: Option<f64>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum UploadPathResultKind {
     /// The path was uploaded.
+    ///
+    /// This is purely informational and servers may return
+    /// this variant even when the NAR is deduplicated.
     Uploaded,
 
     /// The path was globally deduplicated.
+    ///
+    /// The exact semantics of what counts as deduplicated
+    /// is opaque to the client.
     Deduplicated,
 }
 

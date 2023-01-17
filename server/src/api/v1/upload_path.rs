@@ -62,6 +62,12 @@ enum ChunkData {
     Stream(Box<dyn AsyncRead + Send + Unpin + 'static>, Hash, usize),
 }
 
+/// Result of a chunk upload.
+struct UploadChunkResult {
+    guard: ChunkGuard,
+    deduplicated: bool,
+}
+
 /// Applies compression to a stream, computing hashes along the way.
 ///
 /// Our strategy is to stream directly onto a UUID-keyed file on the
@@ -247,6 +253,7 @@ async fn upload_path_dedup(
     Ok(Json(UploadPathResult {
         kind: UploadPathResultKind::Deduplicated,
         file_size: None, // TODO: Sum the chunks
+        frac_deduplicated: None,
     }))
 }
 
@@ -341,15 +348,25 @@ async fn upload_path_new_chunked(
     }
 
     // Wait for all uploads to complete
-    let chunks: Vec<ChunkGuard> = join_all(futures)
+    let chunks: Vec<UploadChunkResult> = join_all(futures)
         .await
         .into_iter()
         .map(|join_result| join_result.unwrap())
         .collect::<ServerResult<Vec<_>>>()?;
 
-    let file_size = chunks
-        .iter()
-        .fold(0, |acc, c| acc + c.file_size.unwrap() as usize);
+    let (file_size, deduplicated_size) =
+        chunks
+            .iter()
+            .fold((0, 0), |(file_size, deduplicated_size), c| {
+                (
+                    file_size + c.guard.file_size.unwrap() as usize,
+                    if c.deduplicated {
+                        deduplicated_size + c.guard.chunk_size as usize
+                    } else {
+                        deduplicated_size
+                    },
+                )
+            });
 
     // Finally...
     let txn = database
@@ -385,9 +402,9 @@ async fn upload_path_new_chunked(
         ChunkRef::insert(chunkref::ActiveModel {
             nar_id: Set(nar_id),
             seq: Set(i as i32),
-            chunk_id: Set(Some(chunk.id)),
-            chunk_hash: Set(chunk.chunk_hash.clone()),
-            compression: Set(chunk.compression.clone()),
+            chunk_id: Set(Some(chunk.guard.id)),
+            chunk_hash: Set(chunk.guard.chunk_hash.clone()),
+            compression: Set(chunk.guard.compression.clone()),
             ..Default::default()
         })
         .exec(&txn)
@@ -419,6 +436,9 @@ async fn upload_path_new_chunked(
     Ok(Json(UploadPathResult {
         kind: UploadPathResultKind::Uploaded,
         file_size: Some(file_size),
+
+        // Currently, frac_deduplicated is computed from size before compression
+        frac_deduplicated: Some(deduplicated_size as f64 / *nar_size as f64),
     }))
 }
 
@@ -452,7 +472,7 @@ async fn upload_path_new_unchunked(
         state.config.require_proof_of_possession,
     )
     .await?;
-    let file_size = chunk.file_size.unwrap() as usize;
+    let file_size = chunk.guard.file_size.unwrap() as usize;
 
     // Finally...
     let txn = database
@@ -467,7 +487,7 @@ async fn upload_path_new_unchunked(
             compression: Set(compression.to_string()),
 
             nar_hash: Set(upload_info.nar_hash.to_typed_base16()),
-            nar_size: Set(chunk.chunk_size),
+            nar_size: Set(chunk.guard.chunk_size),
 
             num_chunks: Set(1),
 
@@ -487,7 +507,7 @@ async fn upload_path_new_unchunked(
     ChunkRef::insert(chunkref::ActiveModel {
         nar_id: Set(nar_id),
         seq: Set(0),
-        chunk_id: Set(Some(chunk.id)),
+        chunk_id: Set(Some(chunk.guard.id)),
         chunk_hash: Set(upload_info.nar_hash.to_typed_base16()),
         compression: Set(compression.to_string()),
         ..Default::default()
@@ -520,6 +540,7 @@ async fn upload_path_new_unchunked(
     Ok(Json(UploadPathResult {
         kind: UploadPathResultKind::Uploaded,
         file_size: Some(file_size),
+        frac_deduplicated: None,
     }))
 }
 
@@ -533,7 +554,7 @@ async fn upload_chunk(
     database: DatabaseConnection,
     state: State,
     require_proof_of_possession: bool,
-) -> ServerResult<ChunkGuard> {
+) -> ServerResult<UploadChunkResult> {
     let compression: Compression = compression_type.into();
 
     let given_chunk_hash = data.hash();
@@ -565,7 +586,10 @@ async fn upload_chunk(
             }
         }
 
-        return Ok(existing_chunk);
+        return Ok(UploadChunkResult {
+            guard: existing_chunk,
+            deduplicated: true,
+        });
     }
 
     let key = format!("{}.chunk", Uuid::new_v4());
@@ -680,7 +704,10 @@ async fn upload_chunk(
 
     let guard = ChunkGuard::from_locked(database.clone(), chunk);
 
-    Ok(guard)
+    Ok(UploadChunkResult {
+        guard,
+        deduplicated: false,
+    })
 }
 
 /// Returns a compressor function that takes some stream as input.

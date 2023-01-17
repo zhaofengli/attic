@@ -17,7 +17,7 @@ use crate::api::ApiClient;
 use crate::cache::{CacheName, CacheRef};
 use crate::cli::Opts;
 use crate::config::Config;
-use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResultKind};
+use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
 use attic::error::AtticResult;
 use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
 
@@ -132,37 +132,39 @@ pub async fn upload_path(
     let start = Instant::now();
     match api.upload_path(upload_info, nar_stream).await {
         Ok(r) => {
-            if r.is_none() {
-                mp.suspend(|| {
-                    eprintln!("Warning: Please update your server. Compatibility will be removed in the first stable release.");
-                })
-            }
+            let r = r.unwrap_or(UploadPathResult {
+                kind: UploadPathResultKind::Uploaded,
+                file_size: None,
+                frac_deduplicated: None,
+            });
 
-            let deduplicated = if let Some(r) = r {
-                r.kind == UploadPathResultKind::Deduplicated
-            } else {
-                false
+            let info_string: String = match r.kind {
+                UploadPathResultKind::Deduplicated => "deduplicated".to_string(),
+                _ => {
+                    let elapsed = start.elapsed();
+                    let seconds = elapsed.as_secs_f64();
+                    let speed = (path_info.nar_size as f64 / seconds) as u64;
+
+                    let mut s = format!("{}/s", HumanBytes(speed));
+
+                    if let Some(frac_deduplicated) = r.frac_deduplicated {
+                        if frac_deduplicated > 0.01f64 {
+                            s += &format!(", {:.1}% deduplicated", frac_deduplicated * 100.0);
+                        }
+                    }
+
+                    s
+                }
             };
 
-            if deduplicated {
-                mp.suspend(|| {
-                    eprintln!("✅ {} (deduplicated)", path.as_os_str().to_string_lossy());
-                });
-                bar.finish_and_clear();
-            } else {
-                let elapsed = start.elapsed();
-                let seconds = elapsed.as_secs_f64();
-                let speed = (path_info.nar_size as f64 / seconds) as u64;
-
-                mp.suspend(|| {
-                    eprintln!(
-                        "✅ {} ({}/s)",
-                        path.as_os_str().to_string_lossy(),
-                        HumanBytes(speed)
-                    );
-                });
-                bar.finish_and_clear();
-            }
+            mp.suspend(|| {
+                eprintln!(
+                    "✅ {} ({})",
+                    path.as_os_str().to_string_lossy(),
+                    info_string
+                );
+            });
+            bar.finish_and_clear();
 
             Ok(())
         }
