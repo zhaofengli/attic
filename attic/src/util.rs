@@ -20,6 +20,7 @@ impl<F: Future + Send + 'static> Finally<F>
 where
     F::Output: Send + 'static,
 {
+    #[must_use]
     pub fn new(f: F) -> Self {
         Self { f: Some(f) }
     }
