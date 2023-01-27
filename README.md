@@ -32,4 +32,4 @@ And yes, it works on macOS too!
 Attic is available under the **Apache License, Version 2.0**.
 See `LICENSE` for details.
 
-By contributing to the project, you agree to license your work under the aforementioned licenses.
+By contributing to the project, you agree to license your work under the aforementioned license.
