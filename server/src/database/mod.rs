@@ -39,6 +39,7 @@ pub trait AtticDatabase: Send + Sync {
         &self,
         cache: &CacheName,
         store_path_hash: &StorePathHash,
+        include_chunks: bool,
     ) -> ServerResult<(ObjectModel, CacheModel, NarModel, Vec<Option<ChunkModel>>)>;
 
     /// Retrieves a binary cache.
@@ -76,7 +77,7 @@ fn prefix_column<E: EntityTrait, S: QuerySelect>(mut select: S, prefix: &str) ->
     select
 }
 
-pub fn build_cache_object_nar_query() -> Select<Object> {
+pub fn build_cache_object_nar_query(include_chunks: bool) -> Select<Object> {
     /*
         Build something like:
 
@@ -113,16 +114,20 @@ pub fn build_cache_object_nar_query() -> Select<Object> {
     let mut query = Object::find()
         .select_only()
         .join(JoinType::InnerJoin, object::Relation::Cache.def())
-        .join(JoinType::InnerJoin, object::Relation::Nar.def())
-        .join(JoinType::InnerJoin, nar::Relation::ChunkRef.def())
-        .join(JoinType::LeftJoin, chunkref::Relation::Chunk.def())
-        .order_by_asc(chunkref::Column::Seq);
+        .join(JoinType::InnerJoin, object::Relation::Nar.def());
 
     query = prefix_column::<object::Entity, _>(query, SELECT_OBJECT);
     query = prefix_column::<cache::Entity, _>(query, SELECT_CACHE);
     query = prefix_column::<nar::Entity, _>(query, SELECT_NAR);
-    query = prefix_column::<chunk::Entity, _>(query, SELECT_CHUNK);
-    query = prefix_column::<chunkref::Entity, _>(query, SELECT_CHUNKREF);
+
+    if include_chunks {
+        query = query.join(JoinType::InnerJoin, nar::Relation::ChunkRef.def())
+            .join(JoinType::LeftJoin, chunkref::Relation::Chunk.def())
+            .order_by_asc(chunkref::Column::Seq);
+
+        query = prefix_column::<chunk::Entity, _>(query, SELECT_CHUNK);
+        query = prefix_column::<chunkref::Entity, _>(query, SELECT_CHUNKREF);
+    };
 
     query
 }
@@ -133,19 +138,23 @@ impl AtticDatabase for DatabaseConnection {
         &self,
         cache: &CacheName,
         store_path_hash: &StorePathHash,
+        include_chunks: bool,
     ) -> ServerResult<(ObjectModel, CacheModel, NarModel, Vec<Option<ChunkModel>>)> {
-        let stmt = build_cache_object_nar_query()
+        let mut query = build_cache_object_nar_query(include_chunks)
             .filter(cache::Column::Name.eq(cache.as_str()))
             .filter(cache::Column::DeletedAt.is_null())
             .filter(object::Column::StorePathHash.eq(store_path_hash.as_str()))
-            .filter(nar::Column::State.eq(NarState::Valid))
-            .filter(
+            .filter(nar::Column::State.eq(NarState::Valid));
+
+        if include_chunks {
+            query = query.filter(
                 chunk::Column::State
                     .eq(ChunkState::Valid)
                     .or(chunk::Column::State.is_null()),
-            )
-            .build(self.get_database_backend());
+            );
+        }
 
+        let stmt = query.build(self.get_database_backend());
         let results = self
             .query_all(stmt)
             .await
@@ -158,8 +167,6 @@ impl AtticDatabase for DatabaseConnection {
         let mut it = results.iter();
         let first = it.next().unwrap();
 
-        let mut chunks = Vec::new();
-
         let object = object::Model::from_query_result(first, SELECT_OBJECT)
             .map_err(ServerError::database_error)?;
         let cache = cache::Model::from_query_result(first, SELECT_CACHE)
@@ -167,46 +174,49 @@ impl AtticDatabase for DatabaseConnection {
         let nar = nar::Model::from_query_result(first, SELECT_NAR)
             .map_err(ServerError::database_error)?;
 
-        if results.len() != nar.num_chunks as usize {
-            // Something went terribly wrong. This means there are a wrong number of `chunkref` rows.
-            return Err(ErrorKind::DatabaseError(anyhow!(
-                "Database returned the wrong number of chunks: Expected {}, got {}",
-                nar.num_chunks,
-                results.len()
-            ))
-            .into());
-        }
-
-        chunks.push({
-            let chunk_id: Option<i64> = first
-                .try_get(SELECT_CHUNK, chunk::Column::Id.as_str())
-                .map_err(ServerError::database_error)?;
-
-            if chunk_id.is_some() {
-                Some(
-                    chunk::Model::from_query_result(first, SELECT_CHUNK)
-                        .map_err(ServerError::database_error)?,
-                )
-            } else {
-                None
+        let mut chunks = Vec::new();
+        if include_chunks {
+            if results.len() != nar.num_chunks as usize {
+                // Something went terribly wrong. This means there are a wrong number of `chunkref` rows.
+                return Err(ErrorKind::DatabaseError(anyhow!(
+                    "Database returned the wrong number of chunks: Expected {}, got {}",
+                    nar.num_chunks,
+                    results.len()
+                ))
+                .into());
             }
-        });
 
-        for chunk in it {
             chunks.push({
-                let chunk_id: Option<i64> = chunk
+                let chunk_id: Option<i64> = first
                     .try_get(SELECT_CHUNK, chunk::Column::Id.as_str())
                     .map_err(ServerError::database_error)?;
 
                 if chunk_id.is_some() {
                     Some(
-                        chunk::Model::from_query_result(chunk, SELECT_CHUNK)
+                        chunk::Model::from_query_result(first, SELECT_CHUNK)
                             .map_err(ServerError::database_error)?,
                     )
                 } else {
                     None
                 }
             });
+
+            for chunk in it {
+                chunks.push({
+                    let chunk_id: Option<i64> = chunk
+                        .try_get(SELECT_CHUNK, chunk::Column::Id.as_str())
+                        .map_err(ServerError::database_error)?;
+
+                    if chunk_id.is_some() {
+                        Some(
+                            chunk::Model::from_query_result(chunk, SELECT_CHUNK)
+                                .map_err(ServerError::database_error)?,
+                        )
+                    } else {
+                        None
+                    }
+                });
+            }
         }
 
         Ok((object, cache, nar, chunks))

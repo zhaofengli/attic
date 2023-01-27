@@ -134,10 +134,10 @@ async fn get_store_path_info(
         cache_name
     );
 
-    let (object, cache, nar, chunks) = state
+    let (object, cache, nar, _) = state
         .database()
         .await?
-        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash)
+        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash, false)
         .await?;
 
     let permission = req_state
@@ -146,11 +146,6 @@ async fn get_store_path_info(
     permission.require_pull()?;
 
     req_state.set_public_cache(cache.is_public);
-
-    if chunks.iter().any(Option::is_none) {
-        // at least one of the chunks is missing :(
-        return Err(ErrorKind::IncompleteNar.into());
-    }
 
     let mut narinfo = object.to_nar_info(&nar)?;
 
@@ -196,7 +191,7 @@ async fn get_nar(
     let database = state.database().await?;
 
     let (object, cache, _nar, chunks) = database
-        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash)
+        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash, true)
         .await?;
 
     let permission = req_state
