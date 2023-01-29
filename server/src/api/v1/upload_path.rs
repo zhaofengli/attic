@@ -32,7 +32,9 @@ use crate::config::CompressionType;
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
 use crate::{RequestState, State};
-use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
+use attic::api::v1::upload_path::{
+    UploadPathNarInfo, UploadPathResult, UploadPathResultKind, ATTIC_NAR_INFO,
+};
 use attic::hash::Hash;
 use attic::stream::StreamHasher;
 use attic::util::Finally;
@@ -116,7 +118,7 @@ pub(crate) async fn upload_path(
 ) -> ServerResult<Json<UploadPathResult>> {
     let upload_info: UploadPathNarInfo = {
         let header = headers
-            .get("X-Attic-Nar-Info")
+            .get(ATTIC_NAR_INFO)
             .ok_or_else(|| ErrorKind::RequestError(anyhow!("X-Attic-Nar-Info must be set")))?;
 
         serde_json::from_slice(header.as_bytes()).map_err(ServerError::request_error)?

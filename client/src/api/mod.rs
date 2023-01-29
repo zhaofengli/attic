@@ -16,7 +16,7 @@ use crate::config::ServerConfig;
 use crate::version::ATTIC_DISTRIBUTOR;
 use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
-use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult};
+use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, ATTIC_NAR_INFO};
 use attic::cache::CacheName;
 use attic::nix_store::StorePathHash;
 
@@ -177,10 +177,7 @@ impl ApiClient {
         let req = self
             .client
             .put(endpoint)
-            .header(
-                "X-Attic-Nar-Info",
-                HeaderValue::from_str(&upload_info_json)?,
-            )
+            .header(ATTIC_NAR_INFO, HeaderValue::from_str(&upload_info_json)?)
             .header(USER_AGENT, HeaderValue::from_str(ATTIC_USER_AGENT)?)
             .body(Body::wrap_stream(stream));
 

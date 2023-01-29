@@ -5,6 +5,9 @@ use crate::cache::CacheName;
 use crate::hash::Hash;
 use crate::nix_store::StorePathHash;
 
+/// Header containing the upload info.
+pub const ATTIC_NAR_INFO: &str = "X-Attic-Nar-Info";
+
 /// NAR information associated with a upload.
 ///
 /// This is JSON-serialized as the value of the `X-Attic-Nar-Info` header.
