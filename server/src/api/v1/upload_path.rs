@@ -183,7 +183,6 @@ pub(crate) async fn upload_path(
     // Try to acquire a lock on an existing NAR
     let existing_nar = database.find_and_lock_nar(&upload_info.nar_hash).await?;
     match existing_nar {
-        // FIXME: existing NAR may be missing chunks
         Some(existing_nar) => {
             // Deduplicate?
             let missing_chunk = ChunkRef::find()
