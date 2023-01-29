@@ -1,19 +1,16 @@
-use std::collections::{HashMap, HashSet};
-use std::cmp;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
-use futures::future::join_all;
 use indicatif::MultiProgress;
 
 use crate::api::ApiClient;
-use crate::cache::{CacheName, CacheRef};
+use crate::cache::CacheRef;
 use crate::cli::Opts;
 use crate::config::Config;
 use crate::push::{Pusher, PushConfig};
-use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
+use attic::nix_store::NixStore;
 
 /// Push closures to a binary cache.
 #[derive(Debug, Parser)]
@@ -41,20 +38,6 @@ pub struct Push {
     force_preamble: bool,
 }
 
-struct PushPlan {
-    /// Store paths to push.
-    store_path_map: HashMap<StorePathHash, ValidPathInfo>,
-
-    /// The number of paths in the original full closure.
-    num_all_paths: usize,
-
-    /// Number of paths that have been filtered out because they are already cached.
-    num_already_cached: usize,
-
-    /// Number of paths that have been filtered out because they are signed by an upstream cache.
-    num_upstream: usize,
-}
-
 pub async fn run(opts: Opts) -> Result<()> {
     let sub = opts.command.as_push().unwrap();
     if sub.jobs == 0 {
@@ -74,15 +57,24 @@ pub async fn run(opts: Opts) -> Result<()> {
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
 
     let mut api = ApiClient::from_server_config(server.clone())?;
-    let plan = PushPlan::plan(
-        store.clone(),
-        &mut api,
-        cache,
-        roots,
-        sub.no_closure,
-        sub.ignore_upstream_cache_filter,
-    )
-    .await?;
+
+    // Confirm remote cache validity, query cache config
+    let cache_config = api.get_cache_config(cache).await?;
+
+    if let Some(api_endpoint) = &cache_config.api_endpoint {
+        // Use delegated API endpoint
+        api.set_endpoint(api_endpoint)?;
+    }
+
+    let push_config = PushConfig {
+        num_workers: sub.jobs,
+        force_preamble: sub.force_preamble,
+    };
+
+    let mp = MultiProgress::new();
+
+    let pusher = Pusher::new(store, api, cache.to_owned(), cache_config, mp, push_config);
+    let plan = pusher.plan(roots, sub.no_closure, sub.ignore_upstream_cache_filter).await?;
 
     if plan.store_path_map.is_empty() {
         if plan.num_all_paths == 0 {
@@ -106,120 +98,12 @@ pub async fn run(opts: Opts) -> Result<()> {
         );
     }
 
-    let push_config = PushConfig {
-        num_workers: cmp::min(sub.jobs, plan.store_path_map.len()),
-        force_preamble: sub.force_preamble,
-    };
-
-    let mp = MultiProgress::new();
-
-    let pusher = Pusher::new(store, api, cache.to_owned(), mp, push_config);
     for (_, path_info) in plan.store_path_map {
-        pusher.push(path_info).await?;
+        pusher.queue(path_info).await?;
     }
 
     let results = pusher.wait().await;
     results.into_iter().map(|(_, result)| result).collect::<Result<Vec<()>>>()?;
 
     Ok(())
-}
-
-impl PushPlan {
-    /// Creates a plan.
-    async fn plan(
-        store: Arc<NixStore>,
-        api: &mut ApiClient,
-        cache: &CacheName,
-        roots: Vec<StorePath>,
-        no_closure: bool,
-        ignore_upstream_filter: bool,
-    ) -> Result<Self> {
-        // Compute closure
-        let closure = if no_closure {
-            roots
-        } else {
-            store
-                .compute_fs_closure_multi(roots, false, false, false)
-                .await?
-        };
-
-        let mut store_path_map: HashMap<StorePathHash, ValidPathInfo> = {
-            let futures = closure
-                .iter()
-                .map(|path| {
-                    let store = store.clone();
-                    let path = path.clone();
-                    let path_hash = path.to_hash();
-
-                    async move {
-                        let path_info = store.query_path_info(path).await?;
-                        Ok((path_hash, path_info))
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            join_all(futures).await.into_iter().collect::<Result<_>>()?
-        };
-
-        let num_all_paths = store_path_map.len();
-        if store_path_map.is_empty() {
-            return Ok(Self {
-                store_path_map,
-                num_all_paths,
-                num_already_cached: 0,
-                num_upstream: 0,
-            });
-        }
-
-        // Confirm remote cache validity, query cache config
-        let cache_config = api.get_cache_config(cache).await?;
-
-        if let Some(api_endpoint) = &cache_config.api_endpoint {
-            // Use delegated API endpoint
-            api.set_endpoint(api_endpoint)?;
-        }
-
-        if !ignore_upstream_filter {
-            // Filter out paths signed by upstream caches
-            let upstream_cache_key_names =
-                cache_config.upstream_cache_key_names.unwrap_or_default();
-            store_path_map.retain(|_, pi| {
-                for sig in &pi.sigs {
-                    if let Some((name, _)) = sig.split_once(':') {
-                        if upstream_cache_key_names.iter().any(|u| name == u) {
-                            return false;
-                        }
-                    }
-                }
-
-                true
-            });
-        }
-
-        let num_filtered_paths = store_path_map.len();
-        if store_path_map.is_empty() {
-            return Ok(Self {
-                store_path_map,
-                num_all_paths,
-                num_already_cached: 0,
-                num_upstream: num_all_paths - num_filtered_paths,
-            });
-        }
-
-        // Query missing paths
-        let missing_path_hashes: HashSet<StorePathHash> = {
-            let store_path_hashes = store_path_map.keys().map(|sph| sph.to_owned()).collect();
-            let res = api.get_missing_paths(cache, store_path_hashes).await?;
-            res.missing_paths.into_iter().collect()
-        };
-        store_path_map.retain(|sph, _| missing_path_hashes.contains(sph));
-        let num_missing_paths = store_path_map.len();
-
-        Ok(Self {
-            store_path_map,
-            num_all_paths,
-            num_already_cached: num_filtered_paths - num_missing_paths,
-            num_upstream: num_all_paths - num_filtered_paths,
-        })
-    }
 }

@@ -24,6 +24,7 @@ futures = "0.3.25"
 humantime = "2.1.0"
 indicatif = "0.17.2"
 lazy_static = "1.4.0"
+notify = { version = "5.1.0", default-features = false, features = ["macos_kqueue"] }
 regex = "1.7.0"
 reqwest = { version = "0.11.13", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots", "stream"] }
 serde = { version = "1.0.151", features = ["derive"] }

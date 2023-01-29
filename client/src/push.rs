@@ -1,10 +1,21 @@
 //! Store path uploader.
 //!
-//! Multiple workers are spawned to upload store paths concurrently.
+//! There are two APIs: `Pusher` and `PushSession`.
+//!
+//! A `Pusher` simply dispatches `ValidPathInfo`s for workers to push. Use this
+//! when you know all store paths to push beforehand. The push plan (closure, missing
+//! paths, all path metadata) should be computed prior to pushing.
+//!
+//! A `PushSession`, on the other hand, accepts a stream of `StorePath`s and
+//! takes care of retrieving the closure and path metadata. It automatically
+//! batches expensive operations (closure computation, querying missing paths).
+//! Use this when the list of store paths is streamed from some external
+//! source (e.g., FS watcher, Unix Domain Socket) and a push plan cannot be
+//! created statically.
 //!
 //! TODO: Refactor out progress reporting and support a simple output style without progress bars
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -18,11 +29,14 @@ use futures::stream::{Stream, TryStreamExt};
 use futures::future::join_all;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
 use tokio::task::{JoinHandle, spawn};
+use tokio::time;
+use tokio::sync::Mutex;
 
+use attic::api::v1::cache_config::CacheConfig;
 use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
 use attic::cache::CacheName;
 use attic::error::AtticResult;
-use attic::nix_store::{NixStore, StorePath, ValidPathInfo};
+use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
 use crate::api::ApiClient;
 
 type JobSender = channel::Sender<ValidPathInfo>;
@@ -38,14 +52,76 @@ pub struct PushConfig {
     pub force_preamble: bool,
 }
 
+/// Configuration for a push session.
+#[derive(Clone, Copy, Debug)]
+pub struct PushSessionConfig {
+    /// Push the specified paths only and do not compute closures.
+    pub no_closure: bool,
+
+    /// Ignore the upstream cache filter.
+    pub ignore_upstream_cache_filter: bool,
+}
+
 /// A handle to push store paths to a cache.
 ///
 /// The caller is responsible for computing closures and
 /// checking for paths that already exist on the remote
 /// cache.
 pub struct Pusher {
+    api: ApiClient,
+    store: Arc<NixStore>,
+    cache: CacheName,
+    cache_config: CacheConfig,
     workers: Vec<JoinHandle<HashMap<StorePath, Result<()>>>>,
     sender: JobSender,
+}
+
+/// A wrapper over a `Pusher` that accepts a stream of `StorePath`s.
+///
+/// Unlike a `Pusher`, a `PushSession` takes a stream of `StorePath`s
+/// instead of `ValidPathInfo`s, taking care of retrieving the closure
+/// and path metadata.
+///
+/// This is useful when the list of store paths is streamed from some
+/// external source (e.g., FS watcher, Unix Domain Socket) and a push
+/// plan cannot be computed statically.
+///
+/// ## Batching
+///
+/// Many store paths can be built in a short period of time, with each
+/// having a big closure. It can be very inefficient if we were to compute
+/// closure and query for missing paths for each individual path. This is
+/// especially true if we have a lot of remote builders (e.g., `attic watch-store`
+/// running alongside a beefy Hydra instance).
+///
+/// `PushSession` batches operations in order to minimize the number of
+/// closure computations and API calls. It also remembers which paths already
+/// exist on the remote cache. By default, it submits a batch if it's been 2
+/// seconds since the last path is queued or it's been 10 seconds in total.
+pub struct PushSession {
+    /// Sender to the batching future.
+    sender: channel::Sender<Vec<StorePath>>,
+}
+
+enum SessionQueuePoll {
+    Paths(Vec<StorePath>),
+    Closed,
+    TimedOut,
+}
+
+#[derive(Debug)]
+pub struct PushPlan {
+    /// Store paths to push.
+    pub store_path_map: HashMap<StorePathHash, ValidPathInfo>,
+
+    /// The number of paths in the original full closure.
+    pub num_all_paths: usize,
+
+    /// Number of paths that have been filtered out because they are already cached.
+    pub num_already_cached: usize,
+
+    /// Number of paths that have been filtered out because they are signed by an upstream cache.
+    pub num_upstream: usize,
 }
 
 /// Wrapper to update a progress bar as a NAR is streamed.
@@ -55,12 +131,12 @@ struct NarStreamProgress<S> {
 }
 
 impl Pusher {
-    pub fn new(store: Arc<NixStore>, api: ApiClient, cache: CacheName, mp: MultiProgress, config: PushConfig) -> Self {
+    pub fn new(store: Arc<NixStore>, api: ApiClient, cache: CacheName, cache_config: CacheConfig, mp: MultiProgress, config: PushConfig) -> Self {
         let (sender, receiver) = channel::unbounded();
         let mut workers = Vec::new();
 
         for _ in 0..config.num_workers {
-            workers.push(spawn(worker(
+            workers.push(spawn(Self::worker(
                 receiver.clone(),
                 store.clone(),
                 api.clone(),
@@ -70,11 +146,11 @@ impl Pusher {
             )));
         }
 
-        Self { workers, sender }
+        Self { api, store, cache, cache_config, workers, sender }
     }
 
-    /// Sends a path to be pushed.
-    pub async fn push(&self, path_info: ValidPathInfo) -> Result<()> {
+    /// Queues a store path to be pushed.
+    pub async fn queue(&self, path_info: ValidPathInfo) -> Result<()> {
         self.sender.send(path_info).await
             .map_err(|e| anyhow!(e))
     }
@@ -96,42 +172,262 @@ impl Pusher {
 
         results
     }
-}
 
-async fn worker(
-    receiver: JobReceiver,
-    store: Arc<NixStore>,
-    api: ApiClient,
-    cache: CacheName,
-    mp: MultiProgress,
-    config: PushConfig,
-) -> HashMap<StorePath, Result<()>> {
-    let mut results = HashMap::new();
-
-    loop {
-        let path_info = match receiver.recv().await {
-            Ok(path_info) => path_info,
-            Err(_) => {
-                // channel is closed - we are done
-                break;
-            }
-        };
-
-        let store_path = path_info.path.clone();
-
-        let r = upload_path(
-            path_info,
-            store.clone(),
-            api.clone(),
-            &cache,
-            mp.clone(),
-            config.force_preamble,
-        ).await;
-
-        results.insert(store_path, r);
+    /// Creates a push plan.
+    pub async fn plan(&self, roots: Vec<StorePath>, no_closure: bool, ignore_upstream_filter: bool) -> Result<PushPlan> {
+        PushPlan::plan(
+            self.store.clone(),
+            &self.api,
+            &self.cache,
+            &self.cache_config,
+            roots,
+            no_closure,
+            ignore_upstream_filter,
+        ).await
     }
 
-    results
+    /// Converts the pusher into a `PushSession`.
+    ///
+    /// This is useful when the list of store paths is streamed from some
+    /// external source (e.g., FS watcher, Unix Domain Socket) and a push
+    /// plan cannot be computed statically.
+    pub fn into_push_session(self, config: PushSessionConfig) -> PushSession {
+        PushSession::with_pusher(self, config)
+    }
+
+    async fn worker(
+        receiver: JobReceiver,
+        store: Arc<NixStore>,
+        api: ApiClient,
+        cache: CacheName,
+        mp: MultiProgress,
+        config: PushConfig,
+    ) -> HashMap<StorePath, Result<()>> {
+        let mut results = HashMap::new();
+
+        loop {
+            let path_info = match receiver.recv().await {
+                Ok(path_info) => path_info,
+                Err(_) => {
+                    // channel is closed - we are done
+                    break;
+                }
+            };
+
+            let store_path = path_info.path.clone();
+
+            let r = upload_path(
+                path_info,
+                store.clone(),
+                api.clone(),
+                &cache,
+                mp.clone(),
+                config.force_preamble,
+            ).await;
+
+            results.insert(store_path, r);
+        }
+
+        results
+    }
+}
+
+impl PushSession {
+    pub fn with_pusher(pusher: Pusher, config: PushSessionConfig) -> Self {
+        let (sender, receiver) = channel::unbounded();
+
+        let known_paths_mutex = Arc::new(Mutex::new(HashSet::new()));
+
+        // FIXME
+        spawn(async move {
+            let pusher = Arc::new(pusher);
+            loop {
+                if let Err(e) = Self::worker(
+                    pusher.clone(),
+                    config.clone(),
+                    known_paths_mutex.clone(),
+                    receiver.clone(),
+                ).await {
+                    eprintln!("Worker exited: {:?}", e);
+                } else {
+                    break;
+                }
+            }
+        });
+
+        Self {
+            sender,
+        }
+    }
+
+    async fn worker(
+        pusher: Arc<Pusher>,
+        config: PushSessionConfig,
+        known_paths_mutex: Arc<Mutex<HashSet<StorePathHash>>>,
+        receiver: channel::Receiver<Vec<StorePath>>,
+    ) -> Result<()> {
+        let mut roots = HashSet::new();
+
+        loop {
+            // Get outstanding paths in queue
+            let done = tokio::select! {
+                // 2 seconds since last queued path
+                done = async {
+                    loop {
+                        let poll = tokio::select! {
+                            r = receiver.recv() => match r {
+                                Ok(paths) => SessionQueuePoll::Paths(paths),
+                                _ => SessionQueuePoll::Closed,
+                            },
+                            _ = time::sleep(Duration::from_secs(2)) => SessionQueuePoll::TimedOut,
+                        };
+
+                        match poll {
+                            SessionQueuePoll::Paths(store_paths) => {
+                                roots.extend(store_paths.into_iter());
+                            }
+                            SessionQueuePoll::Closed => {
+                                break true;
+                            }
+                            SessionQueuePoll::TimedOut => {
+                                break false;
+                            }
+                        }
+                    }
+                } => done,
+
+                // 10 seconds
+                _ = time::sleep(Duration::from_secs(10)) => {
+                    false
+                },
+            };
+
+            // Compute push plan
+            let roots_vec: Vec<StorePath> = {
+                let known_paths = known_paths_mutex.lock().await;
+                roots.drain()
+                    .filter(|root| !known_paths.contains(&root.to_hash()))
+                    .collect()
+            };
+
+            let mut plan = pusher.plan(roots_vec, config.no_closure, config.ignore_upstream_cache_filter).await?;
+
+            let mut known_paths = known_paths_mutex.lock().await;
+            plan.store_path_map
+                .retain(|sph, _| !known_paths.contains(&sph));
+
+            // Push everything
+            for (store_path_hash, path_info) in plan.store_path_map.into_iter() {
+                pusher.queue(path_info).await?;
+                known_paths.insert(store_path_hash);
+            }
+
+            drop(known_paths);
+
+            if done {
+                return Ok(());
+            }
+        }
+    }
+
+    /// Queues multiple store paths to be pushed.
+    pub fn queue_many(&self, store_paths: Vec<StorePath>) -> Result<()> {
+        self.sender.send_blocking(store_paths)
+            .map_err(|e| anyhow!(e))
+    }
+}
+
+impl PushPlan {
+    /// Creates a plan.
+    async fn plan(
+        store: Arc<NixStore>,
+        api: &ApiClient,
+        cache: &CacheName,
+        cache_config: &CacheConfig,
+        roots: Vec<StorePath>,
+        no_closure: bool,
+        ignore_upstream_filter: bool,
+    ) -> Result<Self> {
+        // Compute closure
+        let closure = if no_closure {
+            roots
+        } else {
+            store
+                .compute_fs_closure_multi(roots, false, false, false)
+                .await?
+        };
+
+        let mut store_path_map: HashMap<StorePathHash, ValidPathInfo> = {
+            let futures = closure
+                .iter()
+                .map(|path| {
+                    let store = store.clone();
+                    let path = path.clone();
+                    let path_hash = path.to_hash();
+
+                    async move {
+                        let path_info = store.query_path_info(path).await?;
+                        Ok((path_hash, path_info))
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            join_all(futures).await.into_iter().collect::<Result<_>>()?
+        };
+
+        let num_all_paths = store_path_map.len();
+        if store_path_map.is_empty() {
+            return Ok(Self {
+                store_path_map,
+                num_all_paths,
+                num_already_cached: 0,
+                num_upstream: 0,
+            });
+        }
+
+        if !ignore_upstream_filter {
+            // Filter out paths signed by upstream caches
+            let upstream_cache_key_names =
+                cache_config.upstream_cache_key_names.as_ref().map_or([].as_slice(), |v| v.as_slice());
+            store_path_map.retain(|_, pi| {
+                for sig in &pi.sigs {
+                    if let Some((name, _)) = sig.split_once(':') {
+                        if upstream_cache_key_names.iter().any(|u| name == u) {
+                            return false;
+                        }
+                    }
+                }
+
+                true
+            });
+        }
+
+        let num_filtered_paths = store_path_map.len();
+        if store_path_map.is_empty() {
+            return Ok(Self {
+                store_path_map,
+                num_all_paths,
+                num_already_cached: 0,
+                num_upstream: num_all_paths - num_filtered_paths,
+            });
+        }
+
+        // Query missing paths
+        let missing_path_hashes: HashSet<StorePathHash> = {
+            let store_path_hashes = store_path_map.keys().map(|sph| sph.to_owned()).collect();
+            let res = api.get_missing_paths(cache, store_path_hashes).await?;
+            res.missing_paths.into_iter().collect()
+        };
+        store_path_map.retain(|sph, _| missing_path_hashes.contains(sph));
+        let num_missing_paths = store_path_map.len();
+
+        Ok(Self {
+            store_path_map,
+            num_all_paths,
+            num_already_cached: num_filtered_paths - num_missing_paths,
+            num_upstream: num_all_paths - num_filtered_paths,
+        })
+    }
 }
 
 /// Uploads a single path to a cache.
