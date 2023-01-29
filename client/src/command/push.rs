@@ -1,25 +1,18 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
+use std::cmp;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use bytes::Bytes;
 use clap::Parser;
 use futures::future::join_all;
-use futures::stream::{Stream, TryStreamExt};
-use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use tokio::sync::Semaphore;
+use indicatif::MultiProgress;
 
 use crate::api::ApiClient;
 use crate::cache::{CacheName, CacheRef};
 use crate::cli::Opts;
 use crate::config::Config;
-use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
-use attic::error::AtticResult;
+use crate::push::{Pusher, PushConfig};
 use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
 
 /// Push closures to a binary cache.
@@ -60,132 +53,6 @@ struct PushPlan {
 
     /// Number of paths that have been filtered out because they are signed by an upstream cache.
     num_upstream: usize,
-}
-
-/// Wrapper to update a progress bar as a NAR is streamed.
-struct NarStreamProgress<S> {
-    stream: S,
-    bar: ProgressBar,
-}
-
-/// Uploads a single path to a cache.
-pub async fn upload_path(
-    store: Arc<NixStore>,
-    path_info: ValidPathInfo,
-    api: ApiClient,
-    cache: &CacheName,
-    mp: MultiProgress,
-    force_preamble: bool,
-) -> Result<()> {
-    let path = &path_info.path;
-    let upload_info = {
-        let full_path = store
-            .get_full_path(path)
-            .to_str()
-            .ok_or_else(|| anyhow!("Path contains non-UTF-8"))?
-            .to_string();
-
-        let references = path_info
-            .references
-            .into_iter()
-            .map(|pb| {
-                pb.to_str()
-                    .ok_or_else(|| anyhow!("Reference contains non-UTF-8"))
-                    .map(|s| s.to_owned())
-            })
-            .collect::<Result<Vec<String>, anyhow::Error>>()?;
-
-        UploadPathNarInfo {
-            cache: cache.to_owned(),
-            store_path_hash: path.to_hash(),
-            store_path: full_path,
-            references,
-            system: None,  // TODO
-            deriver: None, // TODO
-            sigs: path_info.sigs,
-            ca: path_info.ca,
-            nar_hash: path_info.nar_hash.to_owned(),
-            nar_size: path_info.nar_size as usize,
-        }
-    };
-
-    let template = format!(
-        "{{spinner}} {: <20.20} {{bar:40.green/blue}} {{human_bytes:10}} ({{average_speed}})",
-        path.name(),
-    );
-    let style = ProgressStyle::with_template(&template)
-        .unwrap()
-        .tick_chars("🕛🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚✅")
-        .progress_chars("██ ")
-        .with_key("human_bytes", |state: &ProgressState, w: &mut dyn Write| {
-            write!(w, "{}", HumanBytes(state.pos())).unwrap();
-        })
-        // Adapted from
-        // <https://github.com/console-rs/indicatif/issues/394#issuecomment-1309971049>
-        .with_key(
-            "average_speed",
-            |state: &ProgressState, w: &mut dyn Write| match (state.pos(), state.elapsed()) {
-                (pos, elapsed) if elapsed > Duration::ZERO => {
-                    write!(w, "{}", average_speed(pos, elapsed)).unwrap();
-                }
-                _ => write!(w, "-").unwrap(),
-            },
-        );
-    let bar = mp.add(ProgressBar::new(path_info.nar_size));
-    bar.set_style(style);
-    let nar_stream = NarStreamProgress::new(store.nar_from_path(path.to_owned()), bar.clone())
-        .map_ok(Bytes::from);
-
-    let start = Instant::now();
-    match api
-        .upload_path(upload_info, nar_stream, force_preamble)
-        .await
-    {
-        Ok(r) => {
-            let r = r.unwrap_or(UploadPathResult {
-                kind: UploadPathResultKind::Uploaded,
-                file_size: None,
-                frac_deduplicated: None,
-            });
-
-            let info_string: String = match r.kind {
-                UploadPathResultKind::Deduplicated => "deduplicated".to_string(),
-                _ => {
-                    let elapsed = start.elapsed();
-                    let seconds = elapsed.as_secs_f64();
-                    let speed = (path_info.nar_size as f64 / seconds) as u64;
-
-                    let mut s = format!("{}/s", HumanBytes(speed));
-
-                    if let Some(frac_deduplicated) = r.frac_deduplicated {
-                        if frac_deduplicated > 0.01f64 {
-                            s += &format!(", {:.1}% deduplicated", frac_deduplicated * 100.0);
-                        }
-                    }
-
-                    s
-                }
-            };
-
-            mp.suspend(|| {
-                eprintln!(
-                    "✅ {} ({})",
-                    path.as_os_str().to_string_lossy(),
-                    info_string
-                );
-            });
-            bar.finish_and_clear();
-
-            Ok(())
-        }
-        Err(e) => {
-            mp.suspend(|| {
-                eprintln!("❌ {}: {}", path.as_os_str().to_string_lossy(), e);
-            });
-            bar.finish_and_clear();
-            Err(e)
-        }
-    }
 }
 
 pub async fn run(opts: Opts) -> Result<()> {
@@ -239,40 +106,20 @@ pub async fn run(opts: Opts) -> Result<()> {
         );
     }
 
+    let push_config = PushConfig {
+        num_workers: cmp::min(sub.jobs, plan.store_path_map.len()),
+        force_preamble: sub.force_preamble,
+    };
+
     let mp = MultiProgress::new();
-    let upload_limit = Arc::new(Semaphore::new(sub.jobs));
-    let futures = plan
-        .store_path_map
-        .into_iter()
-        .map(|(_, path_info)| {
-            let store = store.clone();
-            let api = api.clone();
-            let mp = mp.clone();
-            let upload_limit = upload_limit.clone();
 
-            async move {
-                let permit = upload_limit.acquire().await?;
+    let pusher = Pusher::new(store, api, cache.to_owned(), mp, push_config);
+    for (_, path_info) in plan.store_path_map {
+        pusher.push(path_info).await?;
+    }
 
-                upload_path(
-                    store.clone(),
-                    path_info,
-                    api,
-                    cache,
-                    mp.clone(),
-                    sub.force_preamble,
-                )
-                .await?;
-
-                drop(permit);
-                Ok::<(), anyhow::Error>(())
-            }
-        })
-        .collect::<Vec<_>>();
-
-    futures::future::join_all(futures)
-        .await
-        .into_iter()
-        .collect::<Result<Vec<()>>>()?;
+    let results = pusher.wait().await;
+    results.into_iter().map(|(_, result)| result).collect::<Result<Vec<()>>>()?;
 
     Ok(())
 }
@@ -375,34 +222,4 @@ impl PushPlan {
             num_upstream: num_all_paths - num_filtered_paths,
         })
     }
-}
-
-impl<S: Stream<Item = AtticResult<Vec<u8>>>> NarStreamProgress<S> {
-    fn new(stream: S, bar: ProgressBar) -> Self {
-        Self { stream, bar }
-    }
-}
-
-impl<S: Stream<Item = AtticResult<Vec<u8>>> + Unpin> Stream for NarStreamProgress<S> {
-    type Item = AtticResult<Vec<u8>>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match Pin::new(&mut self.stream).as_mut().poll_next(cx) {
-            Poll::Ready(Some(data)) => {
-                if let Ok(data) = &data {
-                    self.bar.inc(data.len() as u64);
-                }
-
-                Poll::Ready(Some(data))
-            }
-            other => other,
-        }
-    }
-}
-
-// Just the average, no fancy sliding windows that cause wild fluctuations
-// <https://github.com/console-rs/indicatif/issues/394>
-fn average_speed(bytes: u64, duration: Duration) -> String {
-    let speed = bytes as f64 * 1000_f64 / duration.as_millis() as f64;
-    format!("{}/s", HumanBytes(speed as u64))
 }
