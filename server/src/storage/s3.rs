@@ -11,6 +11,7 @@ use aws_sdk_s3::{
     presigning::config::PresigningConfig,
     Client, Credentials, Endpoint, Region,
 };
+use bytes::BytesMut;
 use futures::future::join_all;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -171,7 +172,8 @@ impl StorageBackend for S3Backend {
         name: String,
         mut stream: &mut (dyn AsyncRead + Unpin + Send),
     ) -> ServerResult<RemoteFile> {
-        let first_chunk = read_chunk_async(&mut stream, CHUNK_SIZE)
+        let buf = BytesMut::with_capacity(CHUNK_SIZE);
+        let first_chunk = read_chunk_async(&mut stream, buf)
             .await
             .map_err(ServerError::storage_error)?;
 
@@ -238,7 +240,8 @@ impl StorageBackend for S3Backend {
             let chunk = if part_number == 1 {
                 first_chunk.take().unwrap()
             } else {
-                read_chunk_async(&mut stream, CHUNK_SIZE)
+                let buf = BytesMut::with_capacity(CHUNK_SIZE);
+                read_chunk_async(&mut stream, buf)
                     .await
                     .map_err(ServerError::storage_error)?
             };

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use async_stream::try_stream;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use digest::{Digest, Output as DigestOutput};
 use futures::stream::{BoxStream, Stream, StreamExt};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
@@ -152,32 +152,20 @@ impl<R: AsyncRead + Unpin, D: Digest + Unpin> AsyncRead for StreamHasher<R, D> {
     }
 }
 
-/// Greedily reads from a stream for some number of bytes.
-///
-/// This was originally from rust-s3 but completely rewritten to resolve
-/// performance problems.
+/// Greedily reads from a stream to fill a buffer.
 pub async fn read_chunk_async<S: AsyncRead + Unpin + Send>(
     stream: &mut S,
-    max_size: usize,
-) -> std::io::Result<Vec<u8>> {
-    let mut chunk: Box<[u8]> = vec![0u8; max_size].into_boxed_slice();
-    let mut cursor = 0;
-
-    while cursor < max_size {
-        let buf = &mut chunk[cursor..];
-        let read = stream.read(buf).await?;
+    mut chunk: BytesMut,
+) -> std::io::Result<Bytes> {
+    while chunk.len() < chunk.capacity() {
+        let read = stream.read_buf(&mut chunk).await?;
 
         if read == 0 {
             break;
-        } else {
-            cursor += read;
         }
     }
 
-    let mut vec = chunk.into_vec();
-    vec.truncate(cursor);
-
-    Ok(vec)
+    Ok(chunk.freeze())
 }
 
 #[cfg(test)]
