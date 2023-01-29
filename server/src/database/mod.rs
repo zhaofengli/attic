@@ -121,7 +121,8 @@ pub fn build_cache_object_nar_query(include_chunks: bool) -> Select<Object> {
     query = prefix_column::<nar::Entity, _>(query, SELECT_NAR);
 
     if include_chunks {
-        query = query.join(JoinType::InnerJoin, nar::Relation::ChunkRef.def())
+        query = query
+            .join(JoinType::InnerJoin, nar::Relation::ChunkRef.def())
             .join(JoinType::LeftJoin, chunkref::Relation::Chunk.def())
             .order_by_asc(chunkref::Column::Seq);
 
