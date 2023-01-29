@@ -9,16 +9,23 @@ let
     atticd = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 && atticd -f ${serverConfigFile}";
   };
 
-  testDrv = pkgs.writeText "test.nix" ''
+  makeTestDerivation = pkgs.writeShellScript "make-drv" ''
+    name=$1
+    base=$(basename $name)
+
+    cat >$name <<EOF
     #!/bin/sh
-    /*/sh -c "echo hello > $out"; exit 0; */
+    /*/sh -c "echo hello > \$out"; exit 0; */
     derivation {
-      name = "hello.txt";
-      builder = ./test.nix;
+      name = "$base";
+      builder = ./$name;
       system = builtins.currentSystem;
       preferLocalBuild = true;
       allowSubstitutes = false;
     }
+    EOF
+
+    chmod +x $name
   '';
 
   databaseModules = {
@@ -171,7 +178,7 @@ in {
           client.succeed("attic cache create test")
 
       with subtest("Check that we can push a path"):
-          client.succeed("cat ${testDrv} >test.nix && chmod +x test.nix")
+          client.succeed("${makeTestDerivation} test.nix")
           test_file = client.succeed("nix-build --no-out-link test.nix")
           test_file_hash = test_file.removeprefix("/nix/store/")[:32]
 
@@ -209,6 +216,13 @@ in {
           print(f"Remaining files: {files}")
           assert files.strip() == ""
       ''}
+
+      with subtest("Check that we can include the upload info in the payload"):
+          client.succeed("${makeTestDerivation} test2.nix")
+          test2_file = client.succeed("nix-build --no-out-link test2.nix")
+          client.succeed(f"attic push --force-preamble test {test2_file}")
+          client.succeed(f"nix-store --delete {test2_file}")
+          client.succeed(f"nix-store -r {test2_file}")
 
       with subtest("Check that we can destroy the cache"):
           client.succeed("attic cache info test")

@@ -5,7 +5,10 @@ use anyhow::Result;
 use bytes::Bytes;
 use const_format::concatcp;
 use displaydoc::Display;
-use futures::TryStream;
+use futures::{
+    future,
+    stream::{self, StreamExt, TryStream, TryStreamExt},
+};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT},
     Body, Client as HttpClient, Response, StatusCode, Url,
@@ -16,13 +19,18 @@ use crate::config::ServerConfig;
 use crate::version::ATTIC_DISTRIBUTOR;
 use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
-use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, ATTIC_NAR_INFO};
+use attic::api::v1::upload_path::{
+    UploadPathNarInfo, UploadPathResult, ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE,
+};
 use attic::cache::CacheName;
 use attic::nix_store::StorePathHash;
 
 /// The User-Agent string of Attic.
 const ATTIC_USER_AGENT: &str =
     concatcp!("Attic/{} ({})", env!("CARGO_PKG_NAME"), ATTIC_DISTRIBUTOR);
+
+/// The size threshold to send the upload info as part of the PUT body.
+const NAR_INFO_PREAMBLE_THRESHOLD: usize = 4 * 1024; // 4 KiB
 
 /// The Attic API client.
 #[derive(Debug, Clone)]
@@ -165,21 +173,34 @@ impl ApiClient {
         &self,
         nar_info: UploadPathNarInfo,
         stream: S,
+        force_preamble: bool,
     ) -> Result<Option<UploadPathResult>>
     where
-        S: TryStream + Send + Sync + 'static,
-        S::Error: Into<Box<dyn StdError + Send + Sync>>,
-        Bytes: From<S::Ok>,
+        S: TryStream<Ok = Bytes> + Send + Sync + 'static,
+        S::Error: Into<Box<dyn StdError + Send + Sync>> + Send + Sync,
     {
         let endpoint = self.endpoint.join("_api/v1/upload-path")?;
         let upload_info_json = serde_json::to_string(&nar_info)?;
 
-        let req = self
+        let mut req = self
             .client
             .put(endpoint)
-            .header(ATTIC_NAR_INFO, HeaderValue::from_str(&upload_info_json)?)
-            .header(USER_AGENT, HeaderValue::from_str(ATTIC_USER_AGENT)?)
-            .body(Body::wrap_stream(stream));
+            .header(USER_AGENT, HeaderValue::from_str(ATTIC_USER_AGENT)?);
+
+        if force_preamble || upload_info_json.len() >= NAR_INFO_PREAMBLE_THRESHOLD {
+            let preamble = Bytes::from(upload_info_json);
+            let preamble_len = preamble.len();
+            let preamble_stream = stream::once(future::ok(preamble));
+
+            let chained = preamble_stream.chain(stream.into_stream());
+            req = req
+                .header(ATTIC_NAR_INFO_PREAMBLE_SIZE, preamble_len)
+                .body(Body::wrap_stream(chained));
+        } else {
+            req = req
+                .header(ATTIC_NAR_INFO, HeaderValue::from_str(&upload_info_json)?)
+                .body(Body::wrap_stream(stream));
+        }
 
         let res = req.send().await?;
 

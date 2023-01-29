@@ -11,7 +11,7 @@ use axum::{
     extract::{BodyStream, Extension, Json},
     http::HeaderMap,
 };
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use chrono::Utc;
 use digest::Output as DigestOutput;
 use futures::future::join_all;
@@ -34,9 +34,10 @@ use crate::narinfo::Compression;
 use crate::{RequestState, State};
 use attic::api::v1::upload_path::{
     UploadPathNarInfo, UploadPathResult, UploadPathResultKind, ATTIC_NAR_INFO,
+    ATTIC_NAR_INFO_PREAMBLE_SIZE,
 };
 use attic::hash::Hash;
-use attic::stream::StreamHasher;
+use attic::stream::{read_chunk_async, StreamHasher};
 use attic::util::Finally;
 
 use crate::chunking::chunk_stream;
@@ -52,6 +53,9 @@ use crate::database::{AtticDatabase, ChunkGuard, NarGuard};
 ///
 /// TODO: Make this configurable
 const CONCURRENT_CHUNK_UPLOADS: usize = 10;
+
+/// The maximum size of the upload info JSON.
+const MAX_NAR_INFO_SIZE: usize = 64 * 1024; // 64 KiB
 
 type CompressorFn<C> = Box<dyn FnOnce(C) -> Box<dyn AsyncRead + Unpin + Send> + Send>;
 
@@ -116,12 +120,52 @@ pub(crate) async fn upload_path(
     headers: HeaderMap,
     stream: BodyStream,
 ) -> ServerResult<Json<UploadPathResult>> {
-    let upload_info: UploadPathNarInfo = {
-        let header = headers
-            .get(ATTIC_NAR_INFO)
-            .ok_or_else(|| ErrorKind::RequestError(anyhow!("X-Attic-Nar-Info must be set")))?;
+    let mut stream = StreamReader::new(
+        stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
+    );
 
-        serde_json::from_slice(header.as_bytes()).map_err(ServerError::request_error)?
+    let upload_info: UploadPathNarInfo = {
+        if let Some(preamble_size_bytes) = headers.get(ATTIC_NAR_INFO_PREAMBLE_SIZE) {
+            // Read from the beginning of the PUT body
+            let preamble_size: usize = preamble_size_bytes
+                .to_str()
+                .map_err(|_| {
+                    ErrorKind::RequestError(anyhow!(
+                        "{} has invalid encoding",
+                        ATTIC_NAR_INFO_PREAMBLE_SIZE
+                    ))
+                })?
+                .parse()
+                .map_err(|_| {
+                    ErrorKind::RequestError(anyhow!(
+                        "{} must be a valid unsigned integer",
+                        ATTIC_NAR_INFO_PREAMBLE_SIZE
+                    ))
+                })?;
+
+            if preamble_size > MAX_NAR_INFO_SIZE {
+                return Err(ErrorKind::RequestError(anyhow!("Upload info is too large")).into());
+            }
+
+            let buf = BytesMut::with_capacity(preamble_size);
+            let preamble = read_chunk_async(&mut stream, buf)
+                .await
+                .map_err(|e| ErrorKind::RequestError(e.into()))?;
+
+            if preamble.len() != preamble_size {
+                return Err(ErrorKind::RequestError(anyhow!(
+                    "Upload info doesn't match specified size"
+                ))
+                .into());
+            }
+
+            serde_json::from_slice(&preamble).map_err(ServerError::request_error)?
+        } else if let Some(nar_info_bytes) = headers.get(ATTIC_NAR_INFO) {
+            // Read from X-Attic-Nar-Info header
+            serde_json::from_slice(nar_info_bytes.as_bytes()).map_err(ServerError::request_error)?
+        } else {
+            return Err(ErrorKind::RequestError(anyhow!("{} must be set", ATTIC_NAR_INFO)).into());
+        }
     };
     let cache_name = &upload_info.cache;
 
@@ -133,10 +177,6 @@ pub(crate) async fn upload_path(
             Ok(cache)
         })
         .await?;
-
-    let stream = StreamReader::new(
-        stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
-    );
 
     let username = req_state.auth.username().map(str::to_string);
 

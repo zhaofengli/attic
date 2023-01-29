@@ -7,9 +7,10 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
+use bytes::Bytes;
 use clap::Parser;
 use futures::future::join_all;
-use futures::stream::Stream;
+use futures::stream::{Stream, TryStreamExt};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
 use tokio::sync::Semaphore;
 
@@ -41,6 +42,10 @@ pub struct Push {
     /// The maximum number of parallel upload processes.
     #[clap(short = 'j', long, default_value = "5")]
     jobs: usize,
+
+    /// Always send the upload info as part of the payload.
+    #[clap(long, hide = true)]
+    force_preamble: bool,
 }
 
 struct PushPlan {
@@ -70,6 +75,7 @@ pub async fn upload_path(
     api: ApiClient,
     cache: &CacheName,
     mp: MultiProgress,
+    force_preamble: bool,
 ) -> Result<()> {
     let path = &path_info.path;
     let upload_info = {
@@ -127,10 +133,14 @@ pub async fn upload_path(
         );
     let bar = mp.add(ProgressBar::new(path_info.nar_size));
     bar.set_style(style);
-    let nar_stream = NarStreamProgress::new(store.nar_from_path(path.to_owned()), bar.clone());
+    let nar_stream = NarStreamProgress::new(store.nar_from_path(path.to_owned()), bar.clone())
+        .map_ok(Bytes::from);
 
     let start = Instant::now();
-    match api.upload_path(upload_info, nar_stream).await {
+    match api
+        .upload_path(upload_info, nar_stream, force_preamble)
+        .await
+    {
         Ok(r) => {
             let r = r.unwrap_or(UploadPathResult {
                 kind: UploadPathResultKind::Uploaded,
@@ -243,7 +253,15 @@ pub async fn run(opts: Opts) -> Result<()> {
             async move {
                 let permit = upload_limit.acquire().await?;
 
-                upload_path(store.clone(), path_info, api, cache, mp.clone()).await?;
+                upload_path(
+                    store.clone(),
+                    path_info,
+                    api,
+                    cache,
+                    mp.clone(),
+                    sub.force_preamble,
+                )
+                .await?;
 
                 drop(permit);
                 Ok::<(), anyhow::Error>(())

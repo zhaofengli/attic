@@ -8,10 +8,19 @@ use crate::nix_store::StorePathHash;
 /// Header containing the upload info.
 pub const ATTIC_NAR_INFO: &str = "X-Attic-Nar-Info";
 
+/// Header containing the size of the upload info at the beginning of the body.
+pub const ATTIC_NAR_INFO_PREAMBLE_SIZE: &str = "X-Attic-Nar-Info-Preamble-Size";
+
 /// NAR information associated with a upload.
 ///
-/// This is JSON-serialized as the value of the `X-Attic-Nar-Info` header.
-/// The (client-compressed) NAR is the PUT body.
+/// There are two ways for the client to supply the NAR information:
+///
+/// 1. At the beginning of the PUT body. The `X-Attic-Nar-Info-Preamble-Size`
+///    header must be set to the size of the JSON.
+/// 2. Through the `X-Attic-Nar-Info` header.
+///
+/// The client is advised to use the first method if the serialized
+/// JSON is large (>4K).
 ///
 /// Regardless of client compression, the server will always decompress
 /// the NAR to validate the NAR hash before applying the server-configured
