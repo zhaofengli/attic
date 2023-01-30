@@ -9,6 +9,7 @@ let
       "login"
       "use"
       "push"
+      "watch-store"
       "cache"
       "cache create"
       "cache configure"
