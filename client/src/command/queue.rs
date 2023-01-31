@@ -18,22 +18,22 @@ static SOCKET_NAME: &str = "socket";
 #[command(about = "Queue paths to upload")]
 pub struct Queue {
     #[clap(subcommand)]
-    command: Command,
+    pub command: Command,
 }
 
 #[derive(Debug, Subcommand)]
-enum Command {
+pub enum Command {
     Daemon(Daemon),
     Relay(Relay),
 }
 
 #[derive(Debug, Parser)]
 #[command(about = "Start daemon that uploads paths received via the relay")]
-struct Daemon {}
+pub struct Daemon {}
 
 #[derive(Debug, Parser)]
 #[command(about = "Relay paths to the daemon for uploading")]
-struct Relay {}
+pub struct Relay {}
 
 pub async fn run(options: Opts) -> Result<()> {
     if let Some(queue) = options.command.as_queue() {
@@ -53,7 +53,7 @@ pub async fn run(options: Opts) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_daemon() -> Result<()> {
+async fn run_daemon() -> Result<()> {
     let paths: Vec<PathBuf> = Vec::new();
     let paths = Arc::new(Mutex::new(paths));
 
@@ -64,7 +64,7 @@ pub async fn run_daemon() -> Result<()> {
     Ok(())
 }
 
-pub async fn receive_paths(paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
+async fn receive_paths(paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
     let socket_location = get_socket_location()?;
     let socket = UnixListener::bind(&socket_location)?;
 
@@ -90,7 +90,7 @@ pub async fn receive_paths(paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_relay() -> Result<()> {
+async fn run_relay() -> Result<()> {
     let socket_location = get_socket_location()?;
     let mut socket = UnixStream::connect(&socket_location).await?;
 
