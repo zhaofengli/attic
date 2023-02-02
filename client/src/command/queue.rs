@@ -95,7 +95,7 @@ async fn handle_shutdown(sender: Sender<bool>) -> Result<()> {
 }
 
 async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<()> {
-    let socket_location = get_socket_location()?;
+    let socket_location = get_socket_location();
     let socket = UnixListener::bind(&socket_location)?;
 
     let conf = Config::load()?;
@@ -167,7 +167,7 @@ async fn handle_connection(push_session: PushSession, mut stream: UnixStream) ->
 }
 
 async fn run_relay() -> Result<()> {
-    let socket_location = get_socket_location()?;
+    let socket_location = get_socket_location();
     let mut socket = UnixStream::connect(&socket_location).await?;
 
     let paths: Vec<_> = env::var("OUT_PATHS")?
@@ -184,6 +184,6 @@ async fn run_relay() -> Result<()> {
     Ok(())
 }
 
-fn get_socket_location() -> Result<PathBuf> {
-    Ok(PathBuf::from(DIR).join(SOCKET_NAME))
+fn get_socket_location() -> PathBuf {
+    PathBuf::from(DIR).join(SOCKET_NAME)
 }
