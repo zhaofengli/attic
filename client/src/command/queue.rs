@@ -11,7 +11,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast::{self, Receiver, Sender};
-use tokio::sync::Mutex;
 use tokio::{select, spawn};
 
 use crate::api::ApiClient;
@@ -67,16 +66,12 @@ pub async fn run(options: Opts) -> Result<()> {
 
 async fn run_daemon(options: Daemon) -> Result<()> {
     let (shutdown, _) = broadcast::channel(1);
-    let paths: Vec<PathBuf> = Vec::new();
-    let paths = Arc::new(Mutex::new(paths));
 
-    let socket = spawn(handle_socket(paths.clone(), shutdown.subscribe()));
-    let upload = spawn(handle_upload(options, paths.clone(), shutdown.subscribe()));
+    let paths = spawn(handle_paths(options, shutdown.subscribe()));
     let shutdown = spawn(handle_shutdown(shutdown));
 
     shutdown.await??;
-    socket.await??;
-    upload.await??;
+    paths.await??;
 
     Ok(())
 }
@@ -99,11 +94,10 @@ async fn handle_shutdown(sender: Sender<bool>) -> Result<()> {
     Ok(())
 }
 
-async fn handle_upload(
-    options: Daemon,
-    paths: Arc<Mutex<Vec<PathBuf>>>,
-    mut shutdown: Receiver<bool>,
-) -> Result<()> {
+async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<()> {
+    let socket_location = get_socket_location()?;
+    let socket = UnixListener::bind(&socket_location)?;
+
     let conf = Config::load()?;
     let (_, server_conf, cache_name) = conf.resolve_cache(&options.cache)?;
     let mut api_client = ApiClient::from_server_config(server_conf.to_owned())?;
@@ -133,78 +127,41 @@ async fn handle_upload(
 
     loop {
         select!(
-            Ok(shutdown) = shutdown.recv() => { if shutdown { break; }; },
-            Ok(_) = upload_path(&push_session, paths.clone()) => {},
-        )
+            Ok(shutdown) = shutdown.recv() => { if shutdown { break; }; }
+            Ok((stream, _)) = socket.accept() => {
+                spawn(handle_connection(push_session.clone(), stream));
+            },
+        );
     }
 
-    println!("Shutting down upload…");
+    println!("Shutting down…");
+    remove_file(socket_location).await?;
 
     Ok(())
 }
 
-async fn upload_path(push_session: &PushSession, paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
-    let mut paths = paths.lock().await;
-    if paths.is_empty() {
-        return Ok(());
-    }
-
+async fn handle_connection(push_session: PushSession, mut stream: UnixStream) -> Result<()> {
+    let mut received_paths = String::new();
     let mut store_paths = vec![];
 
+    stream.readable().await?;
+    stream.read_to_string(&mut received_paths).await?;
+
+    let received_paths: Vec<PathBuf> = serde_json::from_str(&received_paths)?;
+
     let nix_store = NixStore::connect()?;
-    for path in &*paths {
+    for path in received_paths {
         let store_path = nix_store.parse_store_path(path)?;
         store_paths.push(store_path);
     }
 
     push_session.queue_many(store_paths.clone())?;
 
-    println!("Queued: {:?}", paths);
-
-    paths.clear();
-
-    Ok(())
-}
-
-async fn handle_socket(
-    paths: Arc<Mutex<Vec<PathBuf>>>,
-    mut shutdown: Receiver<bool>,
-) -> Result<()> {
-    let socket_location = get_socket_location()?;
-    let socket = UnixListener::bind(&socket_location)?;
-
-    loop {
-        select!(
-            Ok(shutdown) = shutdown.recv() => { if shutdown { break; }; }
-            Ok((stream, _)) = socket.accept() => {
-                spawn(handle_connection(stream, paths.clone()));
-            },
-        );
+    if store_paths.len() == 1 {
+        println!("Queued one path");
+    } else {
+        println!("Queued {} paths", store_paths.len())
     }
-
-    println!("Shutting down socket…");
-    remove_file(socket_location).await?;
-
-    Ok(())
-}
-
-async fn handle_connection(mut stream: UnixStream, paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
-    let mut received_paths = String::new();
-
-    stream.readable().await?;
-    stream.read_to_string(&mut received_paths).await?;
-
-    let mut paths = paths.lock().await;
-
-    let received_paths: Vec<PathBuf> = serde_json::from_str(&received_paths)?;
-    let mut received_paths = received_paths
-        .into_iter()
-        .filter(|p| !paths.contains(&p))
-        .collect();
-
-    println!("Received: {:?}", received_paths);
-
-    paths.append(&mut received_paths);
 
     Ok(())
 }

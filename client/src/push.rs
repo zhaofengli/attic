@@ -98,6 +98,7 @@ pub struct Pusher {
 /// closure computations and API calls. It also remembers which paths already
 /// exist on the remote cache. By default, it submits a batch if it's been 2
 /// seconds since the last path is queued or it's been 10 seconds in total.
+#[derive(Clone)]
 pub struct PushSession {
     /// Sender to the batching future.
     sender: channel::Sender<Vec<StorePath>>,
