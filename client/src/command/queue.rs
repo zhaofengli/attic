@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use attic::nix_store::NixStore;
 use clap::{Parser, Subcommand};
 use indicatif::MultiProgress;
-use tokio::fs::remove_file;
+use tokio::fs::{read_to_string, remove_file, write};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
@@ -21,6 +21,7 @@ use crate::push::{PushConfig, PushSession, PushSessionConfig, Pusher};
 
 static DIR: &str = "/var/lib/attic/client";
 static SOCKET_NAME: &str = "socket";
+static FALLBACK_FILE: &str = "fallback.json";
 
 #[derive(Debug, Parser)]
 #[command(about = "Queue paths to upload")]
@@ -125,6 +126,18 @@ async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<(
         ignore_upstream_cache_filter: false,
     });
 
+    let fallback_file = get_fallback_file_location();
+    if fallback_file.exists() {
+        println!("Loading fallback file…");
+
+        let paths = read_to_string(&fallback_file).await?;
+        let paths: Vec<PathBuf> = serde_json::from_str(&paths)?;
+
+        upload_paths(&push_session, paths)?;
+
+        remove_file(fallback_file).await?;
+    }
+
     loop {
         select!(
             Ok(shutdown) = shutdown.recv() => { if shutdown { break; }; }
@@ -142,15 +155,22 @@ async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<(
 
 async fn handle_connection(push_session: PushSession, mut stream: UnixStream) -> Result<()> {
     let mut received_paths = String::new();
-    let mut store_paths = vec![];
 
     stream.readable().await?;
     stream.read_to_string(&mut received_paths).await?;
 
     let received_paths: Vec<PathBuf> = serde_json::from_str(&received_paths)?;
 
+    upload_paths(&push_session, received_paths)?;
+
+    Ok(())
+}
+
+fn upload_paths(push_session: &PushSession, paths: Vec<PathBuf>) -> Result<()> {
     let nix_store = NixStore::connect()?;
-    for path in received_paths {
+    let mut store_paths = vec![];
+
+    for path in paths {
         let store_path = nix_store.parse_store_path(path)?;
         store_paths.push(store_path);
     }
@@ -168,22 +188,39 @@ async fn handle_connection(push_session: PushSession, mut stream: UnixStream) ->
 
 async fn run_relay() -> Result<()> {
     let socket_location = get_socket_location();
-    let mut socket = UnixStream::connect(&socket_location).await?;
-
-    let paths: Vec<_> = env::var("OUT_PATHS")?
+    let mut paths: Vec<_> = env::var("OUT_PATHS")?
         .as_str()
         .split_whitespace()
         .map(PathBuf::from)
         .collect();
-    let paths = serde_json::to_string(&paths)?;
 
-    socket.writable().await?;
-    socket.write_all(paths.as_bytes()).await?;
-    socket.shutdown().await?;
+    if socket_location.exists() {
+        let mut socket = UnixStream::connect(&socket_location).await?;
+
+        let paths = serde_json::to_string(&paths)?;
+
+        socket.writable().await?;
+        socket.write_all(paths.as_bytes()).await?;
+        socket.shutdown().await?;
+    } else {
+        let fallback_file = get_fallback_file_location();
+
+        if fallback_file.exists() {
+            let fallback_file_content = read_to_string(&fallback_file).await?;
+            paths.append(&mut serde_json::from_str(&fallback_file_content)?);
+        }
+
+        let paths = serde_json::to_string(&paths)?;
+        write(fallback_file, paths).await?;
+    }
 
     Ok(())
 }
 
 fn get_socket_location() -> PathBuf {
     PathBuf::from(DIR).join(SOCKET_NAME)
+}
+
+fn get_fallback_file_location() -> PathBuf {
+    PathBuf::from(DIR).join(FALLBACK_FILE)
 }
