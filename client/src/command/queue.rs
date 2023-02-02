@@ -6,16 +6,19 @@ use anyhow::{anyhow, Result};
 use attic::nix_store::NixStore;
 use clap::{Parser, Subcommand};
 use indicatif::MultiProgress;
+use tokio::fs::remove_file;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::spawn;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::broadcast::{self, Receiver, Sender};
 use tokio::sync::Mutex;
+use tokio::{select, spawn};
 
 use crate::api::ApiClient;
 use crate::cache::CacheRef;
 use crate::cli::Opts;
 use crate::config::Config;
-use crate::push::{PushConfig, PushSessionConfig, Pusher};
+use crate::push::{PushConfig, PushSession, PushSessionConfig, Pusher};
 
 static DIR: &str = "/var/lib/attic/client";
 static SOCKET_NAME: &str = "socket";
@@ -63,19 +66,44 @@ pub async fn run(options: Opts) -> Result<()> {
 }
 
 async fn run_daemon(options: Daemon) -> Result<()> {
+    let (shutdown, _) = broadcast::channel(1);
     let paths: Vec<PathBuf> = Vec::new();
     let paths = Arc::new(Mutex::new(paths));
 
-    let socket = spawn(receive_paths(paths.clone()));
-    let upload = spawn(upload_paths(options, paths.clone()));
+    let socket = spawn(handle_socket(paths.clone(), shutdown.subscribe()));
+    let upload = spawn(handle_upload(options, paths.clone(), shutdown.subscribe()));
+    let shutdown = spawn(handle_shutdown(shutdown));
 
+    shutdown.await??;
     socket.await??;
     upload.await??;
 
     Ok(())
 }
 
-async fn upload_paths(options: Daemon, paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
+async fn handle_shutdown(sender: Sender<bool>) -> Result<()> {
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sighup = signal(SignalKind::hangup())?;
+    let mut sigquit = signal(SignalKind::quit())?;
+
+    select!(
+        Some(_) = sigterm.recv() => sender.send(true)?,
+        Some(_) = sigint.recv() => sender.send(true)?,
+        Some(_) = sighup.recv() => sender.send(true)?,
+        Some(_) = sigquit.recv() => sender.send(true)?,
+    );
+
+    println!("Sent shutdown signal…");
+
+    Ok(())
+}
+
+async fn handle_upload(
+    options: Daemon,
+    paths: Arc<Mutex<Vec<PathBuf>>>,
+    mut shutdown: Receiver<bool>,
+) -> Result<()> {
     let conf = Config::load()?;
     let (_, server_conf, cache_name) = conf.resolve_cache(&options.cache)?;
     let mut api_client = ApiClient::from_server_config(server_conf.to_owned())?;
@@ -87,10 +115,8 @@ async fn upload_paths(options: Daemon, paths: Arc<Mutex<Vec<PathBuf>>>) -> Resul
             .ok_or(anyhow!("Could not retrieve cache endpoint"))?,
     )?;
 
-    let nix_store = NixStore::connect()?;
-    let nix_store = Arc::new(nix_store);
     let push_session = Pusher::new(
-        Arc::clone(&nix_store),
+        Arc::new(NixStore::connect()?),
         api_client,
         cache_name.clone(),
         cache_conf,
@@ -106,48 +132,79 @@ async fn upload_paths(options: Daemon, paths: Arc<Mutex<Vec<PathBuf>>>) -> Resul
     });
 
     loop {
-        let mut paths = paths.lock().await;
-        if paths.is_empty() {
-            continue;
-        }
-
-        let mut store_paths = vec![];
-
-        for path in &*paths {
-            let store_path = nix_store.parse_store_path(path)?;
-            store_paths.push(store_path);
-        }
-
-        push_session.queue_many(store_paths.clone())?;
-
-        println!("Queued: {:?}", paths);
-
-        paths.clear();
+        select!(
+            Ok(shutdown) = shutdown.recv() => { if shutdown { break; }; },
+            Ok(_) = upload_path(&push_session, paths.clone()) => {},
+        )
     }
+
+    println!("Shutting down upload…");
+
+    Ok(())
 }
 
-async fn receive_paths(paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
+async fn upload_path(push_session: &PushSession, paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
+    let mut paths = paths.lock().await;
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let mut store_paths = vec![];
+
+    let nix_store = NixStore::connect()?;
+    for path in &*paths {
+        let store_path = nix_store.parse_store_path(path)?;
+        store_paths.push(store_path);
+    }
+
+    push_session.queue_many(store_paths.clone())?;
+
+    println!("Queued: {:?}", paths);
+
+    paths.clear();
+
+    Ok(())
+}
+
+async fn handle_socket(
+    paths: Arc<Mutex<Vec<PathBuf>>>,
+    mut shutdown: Receiver<bool>,
+) -> Result<()> {
     let socket_location = get_socket_location()?;
     let socket = UnixListener::bind(&socket_location)?;
 
-    while let Ok((mut stream, _)) = socket.accept().await {
-        let mut received_paths = String::new();
-
-        stream.readable().await?;
-        stream.read_to_string(&mut received_paths).await?;
-
-        let mut paths = paths.lock().await;
-
-        let received_paths: Vec<PathBuf> = serde_json::from_str(&received_paths)?;
-        let mut received_paths = received_paths
-            .into_iter()
-            .filter(|p| !paths.contains(&p))
-            .collect();
-
-        println!("Received: {:?}", received_paths);
-
-        paths.append(&mut received_paths);
+    loop {
+        select!(
+            Ok(shutdown) = shutdown.recv() => { if shutdown { break; }; }
+            Ok((stream, _)) = socket.accept() => {
+                spawn(handle_connection(stream, paths.clone()));
+            },
+        );
     }
+
+    println!("Shutting down socket…");
+    remove_file(socket_location).await?;
+
+    Ok(())
+}
+
+async fn handle_connection(mut stream: UnixStream, paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
+    let mut received_paths = String::new();
+
+    stream.readable().await?;
+    stream.read_to_string(&mut received_paths).await?;
+
+    let mut paths = paths.lock().await;
+
+    let received_paths: Vec<PathBuf> = serde_json::from_str(&received_paths)?;
+    let mut received_paths = received_paths
+        .into_iter()
+        .filter(|p| !paths.contains(&p))
+        .collect();
+
+    println!("Received: {:?}", received_paths);
+
+    paths.append(&mut received_paths);
 
     Ok(())
 }

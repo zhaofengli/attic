@@ -44,4 +44,5 @@ features = [
 	"rt",
 	"rt-multi-thread",
 	"sync",
+	"signal",
 ]
