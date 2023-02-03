@@ -71,8 +71,8 @@ async fn run_daemon(options: Daemon) -> Result<()> {
     let paths = spawn(handle_paths(options, shutdown.subscribe()));
     let shutdown = spawn(handle_shutdown(shutdown));
 
-    shutdown.await??;
     paths.await??;
+    shutdown.await??;
 
     Ok(())
 }
