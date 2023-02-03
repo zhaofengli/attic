@@ -132,6 +132,7 @@ async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<(
 
         let paths = read_to_string(&fallback_file).await?;
         let paths: Vec<PathBuf> = serde_json::from_str(&paths)?;
+        let paths = paths.into_iter().filter(|p| p.exists()).collect();
 
         upload_paths(&push_session, paths)?;
 
