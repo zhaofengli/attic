@@ -3,7 +3,7 @@
 
   inputs = {
     # FIXME: Debug issue preventing interactive builds from working
-    nixpkgs.url = "github:NixOS/nixpkgs/956bc25a803ac00394f2a6d98b7a901ab3065dcf";
+    nixpkgs.url = "github:NixOS/nixpkgs/ea692c2ad1afd6384e171eabef4f0887d2b882d3";
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-22.11";
     flake-utils.url = "github:numtide/flake-utils";
 
