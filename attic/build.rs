@@ -95,4 +95,9 @@ fn run_bindgen() {
         .atleast_version("2.4")
         .probe("nix-store")
         .unwrap();
+
+    pkg_config::Config::new()
+        .atleast_version("2.4")
+        .probe("nix-main")
+        .unwrap();
 }

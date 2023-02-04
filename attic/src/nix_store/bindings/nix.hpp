@@ -19,6 +19,7 @@
 #include <nix/hash.hh>
 #include <nix/path.hh>
 #include <nix/serialise.hh>
+#include <nix/shared.hh>
 #include <rust/cxx.h>
 
 template<class T> using RVec = rust::Vec<T>;

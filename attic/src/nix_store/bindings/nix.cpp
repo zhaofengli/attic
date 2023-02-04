@@ -76,6 +76,7 @@ RString CPathInfo::ca() {
 
 CNixStore::CNixStore() {
 	std::map<std::string, std::string> params;
+	nix::initNix();
 	this->store = nix::openStore("auto", params);
 }
 
