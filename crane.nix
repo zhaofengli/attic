@@ -8,6 +8,7 @@
 { stdenv
 , lib
 , craneLib
+, llvmPackages
 , rustPlatform
 , runCommand
 , writeReferencesToFile
@@ -32,7 +33,6 @@ let
   };
 
   nativeBuildInputs = [
-    rustPlatform.bindgenHook
     pkg-config
     installShellFiles
   ];
@@ -67,6 +67,12 @@ let
     doCheck = false;
 
     cargoExtraArgs = "-p attic-client -p attic-server";
+
+    # Temporary workaround for https://github.com/NixOS/nixpkgs/pull/207352#issuecomment-1418363441
+    preBuild = ''
+      export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib"
+      export BINDGEN_EXTRA_CLANG_ARGS="$(< ${llvmPackages.clang}/nix-support/cc-cflags) $(< ${llvmPackages.clang}/nix-support/libc-cflags) $(< ${llvmPackages.clang}/nix-support/libcxx-cxxflags) $NIX_CFLAGS_COMPILE"
+    '';
 
     postInstall = lib.optionalString (stdenv.hostPlatform == stdenv.buildPlatform) ''
       if [[ -f $out/bin/attic ]]; then
