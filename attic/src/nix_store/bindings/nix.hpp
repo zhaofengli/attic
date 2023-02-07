@@ -11,6 +11,7 @@
 #pragma once
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <nix/store-api.hh>
 #include <nix/local-store.hh>

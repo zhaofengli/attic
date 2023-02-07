@@ -10,6 +10,9 @@
 
 #include "attic/src/nix_store/bindings/nix.hpp"
 
+static std::mutex g_init_nix_mutex;
+static bool g_init_nix_done = false;
+
 static nix::StorePath store_path_from_rust(RBasePathSlice base_name) {
 	std::string_view sv((const char *)base_name.data(), base_name.size());
 	return nix::StorePath(sv);
@@ -76,7 +79,13 @@ RString CPathInfo::ca() {
 
 CNixStore::CNixStore() {
 	std::map<std::string, std::string> params;
-	nix::initNix();
+	std::lock_guard<std::mutex> lock(g_init_nix_mutex);
+
+	if (!g_init_nix_done) {
+		nix::initNix();
+		g_init_nix_done = true;
+	}
+
 	this->store = nix::openStore("auto", params);
 }
 
