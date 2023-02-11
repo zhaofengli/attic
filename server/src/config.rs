@@ -129,6 +129,10 @@ pub struct DatabaseConfig {
     /// If enabled, a heartbeat query will be sent every minute.
     #[serde(default = "default_db_heartbeat")]
     pub heartbeat: bool,
+
+    /// The maximum number of concurrent connections to maintain.
+    #[serde(default = "default_db_max_connections")]
+    pub max_connections: u32,
 }
 
 /// File storage configuration.
@@ -313,6 +317,10 @@ fn default_listen_address() -> SocketAddr {
 
 fn default_db_heartbeat() -> bool {
     false
+}
+
+fn default_db_max_connections() -> u32 {
+    20
 }
 
 fn default_soft_delete_caches() -> bool {
