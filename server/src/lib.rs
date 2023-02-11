@@ -37,7 +37,7 @@ use axum::{
     http::{uri::Scheme, Uri},
     Router,
 };
-use sea_orm::{query::Statement, ConnectionTrait, ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{query::Statement, ConnectionTrait, Database, DatabaseConnection};
 use tokio::sync::OnceCell;
 use tokio::time;
 use tower_http::catch_panic::CatchPanicLayer;
@@ -105,11 +105,7 @@ impl StateInner {
     async fn database(&self) -> ServerResult<&DatabaseConnection> {
         self.database
             .get_or_try_init(|| async {
-                let options = ConnectOptions::new(self.config.database.url.to_owned())
-                    .max_connections(self.config.database.max_connections)
-                    .to_owned();
-
-                Database::connect(options)
+                Database::connect(&self.config.database.url)
                     .await
                     .map_err(ServerError::database_error)
             })
