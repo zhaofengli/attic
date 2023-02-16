@@ -22,6 +22,17 @@ let
     cat <$configFile >$out
   '';
 
+  atticadmShim = pkgs.writeShellScript "atticadm" ''
+    if [ -n "$ATTICADM_PWD" ]; then
+      cd "$ATTICADM_PWD"
+      if [ "$?" != "0" ]; then
+        >&2 echo "Warning: Failed to change directory to $ATTICADM_PWD"
+      fi
+    fi
+
+    exec ${cfg.package}/bin/atticadm -f ${checkedConfigFile} "$@"
+  '';
+
   atticadmWrapper = pkgs.writeShellScriptBin "atticd-atticadm" ''
     exec systemd-run \
       --pty \
@@ -32,8 +43,10 @@ let
       --property=EnvironmentFile=${cfg.credentialsFile} \
       --property=DynamicUser=yes \
       --property=User=atticd \
+      --property=Environment=ATTICADM_PWD=$(pwd) \
+      --working-directory / \
       -- \
-      ${cfg.package}/bin/atticadm -f ${checkedConfigFile} "$@"
+      ${atticadmShim} "$@"
   '';
 
   hasLocalPostgresDB = let
