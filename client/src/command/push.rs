@@ -16,6 +16,9 @@ use attic::nix_store::NixStore;
 #[derive(Debug, Parser)]
 pub struct Push {
     /// The cache to push to.
+    ///
+    /// This can be either `servername:cachename` or `cachename`
+    /// when using the default server.
     cache: CacheRef,
 
     /// The store paths to push.

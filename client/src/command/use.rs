@@ -13,6 +13,9 @@ use crate::nix_netrc::NixNetrc;
 #[derive(Debug, Parser)]
 pub struct Use {
     /// The cache to configure.
+    ///
+    /// This can be either `servername:cachename` or `cachename`
+    /// when using the default server.
     cache: CacheRef,
 }
 

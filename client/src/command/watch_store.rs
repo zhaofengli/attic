@@ -17,6 +17,9 @@ use attic::nix_store::{NixStore, StorePath};
 #[derive(Debug, Parser)]
 pub struct WatchStore {
     /// The cache to push to.
+    ///
+    /// This can be either `servername:cachename` or `cachename`
+    /// when using the default server.
     cache: CacheRef,
 
     /// Push the new paths only and do not compute closures.

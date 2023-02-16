@@ -33,6 +33,9 @@ enum Command {
 #[derive(Debug, Clone, Parser)]
 struct Create {
     /// Name of the cache to create.
+    ///
+    /// This can be either `servername:cachename` or `cachename`
+    /// when using the default server.
     cache: CacheRef,
 
     /// Make the cache public.
