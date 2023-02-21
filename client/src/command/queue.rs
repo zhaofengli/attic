@@ -19,7 +19,7 @@ use crate::cli::Opts;
 use crate::config::Config;
 use crate::push::{PushConfig, PushSession, PushSessionConfig, Pusher};
 
-static DIR: &str = "/var/lib/attic/client";
+static DIR: &str = "/var/lib/attic-client";
 static SOCKET_NAME: &str = "socket";
 static FALLBACK_FILE: &str = "fallback.json";
 
