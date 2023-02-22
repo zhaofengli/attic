@@ -127,6 +127,8 @@ async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<(
     });
 
     let fallback_file = get_fallback_file_location();
+    let empty_vec: Vec<PathBuf> = vec![];
+    let empty_file_content = serde_json::to_string(&empty_vec)?;
     if fallback_file.exists() {
         println!("Loading fallback file…");
 
@@ -136,7 +138,11 @@ async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<(
 
         upload_paths(&push_session, paths)?;
 
-        remove_file(fallback_file).await?;
+        write(fallback_file, empty_file_content).await?;
+    } else {
+        // create file so that relay can fall back to it if need be
+        // needs to be created by daemon to ensure readability
+        write(fallback_file, empty_file_content).await?;
     }
 
     loop {
@@ -203,10 +209,11 @@ async fn run_relay() -> Result<()> {
         if fallback_file.exists() {
             let fallback_file_content = read_to_string(&fallback_file).await?;
             paths.append(&mut serde_json::from_str(&fallback_file_content)?);
-        }
 
-        let paths = serde_json::to_string(&paths)?;
-        write(fallback_file, paths).await?;
+            // write only if file exists to ensure readability of file by attic-client daemon
+            let paths = serde_json::to_string(&paths)?;
+            write(fallback_file, paths).await?;
+        }
     }
 
     Ok(())
