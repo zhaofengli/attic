@@ -178,12 +178,6 @@ fn upload_paths(push_session: &PushSession, paths: Vec<PathBuf>) -> Result<()> {
 
     push_session.queue_many(store_paths.clone())?;
 
-    if store_paths.len() == 1 {
-        println!("Queued one path");
-    } else {
-        println!("Queued {} paths", store_paths.len())
-    }
-
     Ok(())
 }
 
