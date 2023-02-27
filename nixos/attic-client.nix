@@ -49,6 +49,8 @@
         ExecStart = "${pkgs.attic}/bin/attic queue daemon ${config.services.attic-client.daemon.cache}";
         Restart = "on-failure";
       };
+      wantedBy = ["multi-user.target"];
+      after = ["network.target"];
     };
   };
 }
