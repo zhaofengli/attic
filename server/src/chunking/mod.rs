@@ -5,7 +5,7 @@
 
 use async_stream::try_stream;
 use bytes::{BufMut, Bytes, BytesMut};
-use fastcdc::FastCDC;
+use fastcdc::ronomon::FastCDC;
 use futures::stream::Stream;
 use tokio::io::AsyncRead;
 

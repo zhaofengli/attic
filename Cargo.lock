@@ -1616,9 +1616,9 @@ dependencies = [
 
 [[package]]
 name = "fastcdc"
-version = "1.0.8"
+version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3f1596230ad22715a97a82deba0403ece9e4a458d008fd2511518d72a115bef"
+checksum = "98f097dd9a9fce80d26a1fb02e088957f659bb9f051df9c229265181072c4650"
 
 [[package]]
 name = "fastrand"
