@@ -38,28 +38,28 @@ in
   name = "attic-0.1.0";
   system = "x86_64-linux";
 } {
-  out = "/nix/store/pl3ddk9579aqypxwjsapfvz946j4r1cv-attic-0.1.0";
+  out = "/nix/store/6rsd0s532902xr4465cnvrsn30r9cf2x-attic-0.1.0";
 }).out;
 
   "aarch64-linux" = (mkFakeDerivation {
   name = "attic-0.1.0";
   system = "aarch64-linux";
 } {
-  out = "/nix/store/5bm1mqpd0xjfhmbrz3gvznddvdzinykw-attic-0.1.0";
+  out = "/nix/store/h3mpa7qb2ywgi2zs187l2748m4hljfad-attic-0.1.0";
 }).out;
 
   "x86_64-darwin" = (mkFakeDerivation {
   name = "attic-0.1.0";
   system = "x86_64-darwin";
 } {
-  out = "/nix/store/kl6v8r5z7xd8pq2nk3yfp2678m10k89v-attic-0.1.0";
+  out = "/nix/store/35xnsvzr0177dlcyfrnmd8jzv51kphw7-attic-0.1.0";
 }).out;
 
   "aarch64-darwin" = (mkFakeDerivation {
   name = "attic-0.1.0";
   system = "aarch64-darwin";
 } {
-  out = "/nix/store/bxbs5q50sxzpxjk1idz10xsybkgx3hr7-attic-0.1.0";
+  out = "/nix/store/9l4sza3hyaxh3lb0gazxirp9p6nljfd8-attic-0.1.0";
 }).out;
 
 }.${system}
