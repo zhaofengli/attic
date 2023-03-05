@@ -71,6 +71,7 @@ mod tests;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
 pub use jwt_simple::{
@@ -361,7 +362,7 @@ impl Default for CachePermission {
 impl StdError for Error {}
 
 pub fn decode_token_hs256_secret_base64(s: &str) -> Result<HS256Key> {
-    let secret = base64::decode(s).map_err(Error::Base64Error)?;
+    let secret = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
     Ok(HS256Key::from_bytes(&secret))
 }
 

@@ -1,5 +1,6 @@
 use std::str;
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -18,7 +19,7 @@ pub fn parse_authorization_header(authorization: &str) -> Option<String> {
         Some(rest.to_string())
     } else {
         // Basic auth
-        let bytes = base64::decode(rest).ok()?;
+        let bytes = BASE64_STANDARD.decode(rest).ok()?;
 
         let user_pass = str::from_utf8(&bytes).ok()?;
         let colon = user_pass.find(':')?;

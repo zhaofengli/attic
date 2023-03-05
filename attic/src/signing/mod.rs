@@ -25,7 +25,7 @@ use std::convert::TryInto;
 
 use serde::{de, ser, Deserialize, Serialize};
 
-use base64::DecodeError;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, DecodeError, Engine};
 use displaydoc::Display;
 use ed25519_compact::{Error as SignatureError, KeyPair, PublicKey, Signature};
 
@@ -126,7 +126,7 @@ impl NixKeypair {
     /// For example, it can look like:
     ///     attic-test:msdoldbtlongtt0/xkzmcbqihd7yvy8iomajqhnkutsl3b1pyyyc0mgg2rs0ttzzuyuk9rb2zphvtpes71mlha==
     pub fn export_keypair(&self) -> String {
-        format!("{}:{}", self.name, base64::encode(*self.keypair))
+        format!("{}:{}", self.name, BASE64_STANDARD.encode(*self.keypair))
     }
 
     /// Returns the canonical representation of the public key.
@@ -134,7 +134,7 @@ impl NixKeypair {
     /// For example, it can look like:
     ///     attic-test:C929acssgtJoINkUtLbc81GFJPUW9maR77TxEu9ZpRw=
     pub fn export_public_key(&self) -> String {
-        format!("{}:{}", self.name, base64::encode(*self.keypair.pk))
+        format!("{}:{}", self.name, BASE64_STANDARD.encode(*self.keypair.pk))
     }
 
     /// Returns the public key portion of the keypair.
@@ -148,7 +148,7 @@ impl NixKeypair {
     /// Signs a message, returning its canonical representation.
     pub fn sign(&self, message: &[u8]) -> String {
         let bytes = self.keypair.sk.sign(message, None);
-        format!("{}:{}", self.name, base64::encode(bytes))
+        format!("{}:{}", self.name, BASE64_STANDARD.encode(bytes))
     }
 
     /// Verifies a message.
@@ -205,7 +205,7 @@ impl NixPublicKey {
     /// For example, it can look like:
     ///     attic-test:C929acssgtJoINkUtLbc81GFJPUW9maR77TxEu9ZpRw=
     pub fn export(&self) -> String {
-        format!("{}:{}", self.name, base64::encode(*self.public))
+        format!("{}:{}", self.name, BASE64_STANDARD.encode(*self.public))
     }
 
     /// Verifies a message.
@@ -256,7 +256,9 @@ fn decode_string<'s>(
         }
     }
 
-    let bytes = base64::decode(&colon_and_payload[1..]).map_err(Error::Base64DecodeError)?;
+    let bytes = BASE64_STANDARD
+        .decode(&colon_and_payload[1..])
+        .map_err(Error::Base64DecodeError)?;
 
     if bytes.len() != expected_payload_length {
         return Err(Error::InvalidPayloadLength {

@@ -12,6 +12,7 @@
 //! - NARs: `~/.local/share/attic/storage`
 
 use anyhow::Result;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{Months, Utc};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
@@ -51,7 +52,7 @@ pub async fn run_oobe() -> Result<()> {
             .map(char::from)
             .collect();
 
-        base64::encode(random)
+        BASE64_STANDARD.encode(random)
     };
 
     let config_content = CONFIG_TEMPLATE

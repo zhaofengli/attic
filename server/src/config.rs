@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_compression::Level as CompressionLevel;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
@@ -348,7 +349,7 @@ pub async fn load_config(config_path: Option<&Path>, allow_oobe: bool) -> Result
     if let Some(config_path) = config_path {
         load_config_from_path(config_path)
     } else if let Ok(config_env) = env::var(ENV_CONFIG_BASE64) {
-        let decoded = String::from_utf8(base64::decode(config_env.as_bytes())?)?;
+        let decoded = String::from_utf8(BASE64_STANDARD.decode(config_env.as_bytes())?)?;
         load_config_from_str(&decoded)
     } else {
         // Config from XDG
