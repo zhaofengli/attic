@@ -84,6 +84,20 @@ in
         type = types.nullOr types.path;
         default = null;
       };
+      user = lib.mkOption {
+        description = ''
+          The group under which attic runs.
+        '';
+        type = types.str;
+        default = "atticd";
+      };
+      group = lib.mkOption {
+        description = ''
+          The user under which attic runs.
+        '';
+        type = types.str;
+        default = "atticd";
+      };
       settings = lib.mkOption {
         description = ''
           Structured configurations of atticd.
@@ -158,6 +172,8 @@ in
           EnvironmentFile = cfg.credentialsFile;
           StateDirectory = "atticd"; # for usage with local storage and sqlite
           DynamicUser = true;
+          User = cfg.user;
+          Group = cfg.group;
           ProtectHome = true;
           ProtectHostname = true;
           ProtectKernelLogs = true;
