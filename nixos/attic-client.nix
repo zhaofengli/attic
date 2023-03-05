@@ -47,6 +47,7 @@
         Group = groupName;
         WorkingDirectory = dir;
         ExecStart = "${pkgs.attic}/bin/attic queue daemon ${config.services.attic-client.daemon.cache}";
+        ExecStopPost = "${pkgs.coreutils}/bin/rm -rf ${dir}/socket";
         Restart = "on-failure";
       };
       wantedBy = ["multi-user.target"];

@@ -6,12 +6,10 @@ use anyhow::{anyhow, Result};
 use attic::nix_store::NixStore;
 use clap::{Parser, Subcommand};
 use indicatif::MultiProgress;
-use tokio::fs::{read_to_string, remove_file, write};
+use tokio::fs::{read_to_string, write};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::broadcast::{self, Receiver, Sender};
-use tokio::{select, spawn};
+use tokio::spawn;
 
 use crate::api::ApiClient;
 use crate::cache::CacheRef;
@@ -66,36 +64,6 @@ pub async fn run(options: Opts) -> Result<()> {
 }
 
 async fn run_daemon(options: Daemon) -> Result<()> {
-    let (shutdown, _) = broadcast::channel(1);
-
-    let paths = spawn(handle_paths(options, shutdown.subscribe()));
-    let shutdown = spawn(handle_shutdown(shutdown));
-
-    paths.await??;
-    shutdown.await??;
-
-    Ok(())
-}
-
-async fn handle_shutdown(sender: Sender<bool>) -> Result<()> {
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigint = signal(SignalKind::interrupt())?;
-    let mut sighup = signal(SignalKind::hangup())?;
-    let mut sigquit = signal(SignalKind::quit())?;
-
-    select!(
-        Some(_) = sigterm.recv() => sender.send(true)?,
-        Some(_) = sigint.recv() => sender.send(true)?,
-        Some(_) = sighup.recv() => sender.send(true)?,
-        Some(_) = sigquit.recv() => sender.send(true)?,
-    );
-
-    println!("Sent shutdown signal…");
-
-    Ok(())
-}
-
-async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<()> {
     let socket_location = get_socket_location();
     let socket = UnixListener::bind(&socket_location)?;
 
@@ -145,17 +113,9 @@ async fn handle_paths(options: Daemon, mut shutdown: Receiver<bool>) -> Result<(
         write(fallback_file, empty_file_content).await?;
     }
 
-    loop {
-        select!(
-            Ok(shutdown) = shutdown.recv() => { if shutdown { break; }; }
-            Ok((stream, _)) = socket.accept() => {
-                spawn(handle_connection(push_session.clone(), stream));
-            },
-        );
+    while let Ok((stream, _)) = socket.accept().await {
+        spawn(handle_connection(push_session.clone(), stream));
     }
-
-    println!("Shutting down…");
-    remove_file(socket_location).await?;
 
     Ok(())
 }
