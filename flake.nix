@@ -2,14 +2,12 @@
   description = "A Nix binary cache server";
 
   inputs = {
-    # FIXME: Bump after the next staging-next merge
-    # Unstable has been a bumpy ride this year :(
-    nixpkgs.url = "github:NixOS/nixpkgs/293a28df6d7ff3dec1e61e37cc4ee6e6c0fb0847";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-22.11";
     flake-utils.url = "github:numtide/flake-utils";
 
     crane = {
-      url = "github:ipetkov/crane/b13963c8c18026aa694acd98d14f66d24666f70b";
+      url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-compat.follows = "flake-compat";
       inputs.flake-utils.follows = "flake-utils";
