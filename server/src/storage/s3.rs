@@ -9,7 +9,7 @@ use aws_sdk_s3::{
     config::Builder as S3ConfigBuilder,
     model::{CompletedMultipartUpload, CompletedPart},
     presigning::config::PresigningConfig,
-    Client, Credentials, Endpoint, Region,
+    Client, Credentials, Region,
 };
 use bytes::BytesMut;
 use futures::future::join_all;
@@ -106,8 +106,7 @@ impl S3Backend {
         }
 
         if let Some(endpoint) = &config.endpoint {
-            let endpoint = Endpoint::immutable(endpoint).map_err(ServerError::storage_error)?;
-            builder = builder.endpoint_resolver(endpoint);
+            builder = builder.endpoint_url(endpoint).force_path_style(true);
         }
 
         Ok(builder)
