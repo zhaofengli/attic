@@ -150,7 +150,8 @@ in
 
       systemd.services.atticd = {
         wantedBy = [ "multi-user.target" ];
-        after = [ "network.target" ] ++ lib.optional hasLocalPostgresDB "postgresql.service";
+        after = [ "network.target" ]
+          ++ lib.optionals hasLocalPostgresDB [ "postgresql.service" "nss-lookup.target" ];
         serviceConfig = {
           ExecStart = "${cfg.package}/bin/atticd -f ${checkedConfigFile}";
           EnvironmentFile = cfg.credentialsFile;
