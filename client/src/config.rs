@@ -118,7 +118,8 @@ impl ConfigData {
         if let Some(path) = path {
             if path.exists() {
                 let contents = fs::read(path)?;
-                let data = toml::from_slice(&contents)?;
+                let s = std::str::from_utf8(&contents)?;
+                let data = toml::from_str(&s)?;
                 return Ok(data);
             }
         }
