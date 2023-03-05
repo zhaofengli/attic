@@ -4,13 +4,13 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use indicatif::MultiProgress;
-use notify::{RecursiveMode, Watcher, EventKind};
+use notify::{EventKind, RecursiveMode, Watcher};
 
 use crate::api::ApiClient;
 use crate::cache::CacheRef;
 use crate::cli::Opts;
 use crate::config::Config;
-use crate::push::{Pusher, PushConfig, PushSessionConfig};
+use crate::push::{PushConfig, PushSessionConfig, Pusher};
 use attic::nix_store::{NixStore, StorePath};
 
 /// Watch the Nix Store for new paths and upload them to a binary cache.
@@ -72,8 +72,15 @@ pub async fn run(opts: Opts) -> Result<()> {
     };
 
     let mp = MultiProgress::new();
-    let session = Pusher::new(store.clone(), api, cache.to_owned(), cache_config, mp, push_config)
-        .into_push_session(push_session_config);
+    let session = Pusher::new(
+        store.clone(),
+        api,
+        cache.to_owned(),
+        cache_config,
+        mp,
+        push_config,
+    )
+    .into_push_session(push_session_config);
 
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         match res {
@@ -81,7 +88,8 @@ pub async fn run(opts: Opts) -> Result<()> {
                 // We watch the removals of lock files which signify
                 // store paths becoming valid
                 if let EventKind::Remove(_) = event.kind {
-                    let paths = event.paths
+                    let paths = event
+                        .paths
                         .iter()
                         .filter_map(|p| {
                             let base = strip_lock_file(&p)?;
@@ -100,13 +108,13 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     watcher.watch(&store_dir, RecursiveMode::NonRecursive)?;
 
-    eprintln!("👀 Pushing new store paths to \"{cache}\" on \"{server}\"",
+    eprintln!(
+        "👀 Pushing new store paths to \"{cache}\" on \"{server}\"",
         cache = cache.as_str(),
         server = server_name.as_str(),
     );
 
-    loop {
-    }
+    loop {}
 }
 
 fn strip_lock_file(p: &Path) -> Option<PathBuf> {

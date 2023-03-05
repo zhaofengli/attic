@@ -25,19 +25,19 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 use async_channel as channel;
 use bytes::Bytes;
-use futures::stream::{Stream, TryStreamExt};
 use futures::future::join_all;
+use futures::stream::{Stream, TryStreamExt};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use tokio::task::{JoinHandle, spawn};
-use tokio::time;
 use tokio::sync::Mutex;
+use tokio::task::{spawn, JoinHandle};
+use tokio::time;
 
+use crate::api::ApiClient;
 use attic::api::v1::cache_config::CacheConfig;
 use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
 use attic::cache::CacheName;
 use attic::error::AtticResult;
 use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
-use crate::api::ApiClient;
 
 type JobSender = channel::Sender<ValidPathInfo>;
 type JobReceiver = channel::Receiver<ValidPathInfo>;
@@ -131,7 +131,14 @@ struct NarStreamProgress<S> {
 }
 
 impl Pusher {
-    pub fn new(store: Arc<NixStore>, api: ApiClient, cache: CacheName, cache_config: CacheConfig, mp: MultiProgress, config: PushConfig) -> Self {
+    pub fn new(
+        store: Arc<NixStore>,
+        api: ApiClient,
+        cache: CacheName,
+        cache_config: CacheConfig,
+        mp: MultiProgress,
+        config: PushConfig,
+    ) -> Self {
         let (sender, receiver) = channel::unbounded();
         let mut workers = Vec::new();
 
@@ -146,13 +153,19 @@ impl Pusher {
             )));
         }
 
-        Self { api, store, cache, cache_config, workers, sender }
+        Self {
+            api,
+            store,
+            cache,
+            cache_config,
+            workers,
+            sender,
+        }
     }
 
     /// Queues a store path to be pushed.
     pub async fn queue(&self, path_info: ValidPathInfo) -> Result<()> {
-        self.sender.send(path_info).await
-            .map_err(|e| anyhow!(e))
+        self.sender.send(path_info).await.map_err(|e| anyhow!(e))
     }
 
     /// Waits for all workers to terminate, returning all results.
@@ -174,7 +187,12 @@ impl Pusher {
     }
 
     /// Creates a push plan.
-    pub async fn plan(&self, roots: Vec<StorePath>, no_closure: bool, ignore_upstream_filter: bool) -> Result<PushPlan> {
+    pub async fn plan(
+        &self,
+        roots: Vec<StorePath>,
+        no_closure: bool,
+        ignore_upstream_filter: bool,
+    ) -> Result<PushPlan> {
         PushPlan::plan(
             self.store.clone(),
             &self.api,
@@ -183,7 +201,8 @@ impl Pusher {
             roots,
             no_closure,
             ignore_upstream_filter,
-        ).await
+        )
+        .await
     }
 
     /// Converts the pusher into a `PushSession`.
@@ -223,7 +242,8 @@ impl Pusher {
                 &cache,
                 mp.clone(),
                 config.force_preamble,
-            ).await;
+            )
+            .await;
 
             results.insert(store_path, r);
         }
@@ -247,7 +267,9 @@ impl PushSession {
                     config.clone(),
                     known_paths_mutex.clone(),
                     receiver.clone(),
-                ).await {
+                )
+                .await
+                {
                     eprintln!("Worker exited: {:?}", e);
                 } else {
                     break;
@@ -255,9 +277,7 @@ impl PushSession {
             }
         });
 
-        Self {
-            sender,
-        }
+        Self { sender }
     }
 
     async fn worker(
@@ -305,12 +325,19 @@ impl PushSession {
             // Compute push plan
             let roots_vec: Vec<StorePath> = {
                 let known_paths = known_paths_mutex.lock().await;
-                roots.drain()
+                roots
+                    .drain()
                     .filter(|root| !known_paths.contains(&root.to_hash()))
                     .collect()
             };
 
-            let mut plan = pusher.plan(roots_vec, config.no_closure, config.ignore_upstream_cache_filter).await?;
+            let mut plan = pusher
+                .plan(
+                    roots_vec,
+                    config.no_closure,
+                    config.ignore_upstream_cache_filter,
+                )
+                .await?;
 
             let mut known_paths = known_paths_mutex.lock().await;
             plan.store_path_map
@@ -332,7 +359,8 @@ impl PushSession {
 
     /// Queues multiple store paths to be pushed.
     pub fn queue_many(&self, store_paths: Vec<StorePath>) -> Result<()> {
-        self.sender.send_blocking(store_paths)
+        self.sender
+            .send_blocking(store_paths)
             .map_err(|e| anyhow!(e))
     }
 }
@@ -387,8 +415,10 @@ impl PushPlan {
 
         if !ignore_upstream_filter {
             // Filter out paths signed by upstream caches
-            let upstream_cache_key_names =
-                cache_config.upstream_cache_key_names.as_ref().map_or([].as_slice(), |v| v.as_slice());
+            let upstream_cache_key_names = cache_config
+                .upstream_cache_key_names
+                .as_ref()
+                .map_or([].as_slice(), |v| v.as_slice());
             store_path_map.retain(|_, pi| {
                 for sig in &pi.sigs {
                     if let Some((name, _)) = sig.split_once(':') {

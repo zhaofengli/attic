@@ -9,7 +9,7 @@ use crate::api::ApiClient;
 use crate::cache::CacheRef;
 use crate::cli::Opts;
 use crate::config::Config;
-use crate::push::{Pusher, PushConfig};
+use crate::push::{PushConfig, Pusher};
 use attic::nix_store::NixStore;
 
 /// Push closures to a binary cache.
@@ -77,7 +77,9 @@ pub async fn run(opts: Opts) -> Result<()> {
     let mp = MultiProgress::new();
 
     let pusher = Pusher::new(store, api, cache.to_owned(), cache_config, mp, push_config);
-    let plan = pusher.plan(roots, sub.no_closure, sub.ignore_upstream_cache_filter).await?;
+    let plan = pusher
+        .plan(roots, sub.no_closure, sub.ignore_upstream_cache_filter)
+        .await?;
 
     if plan.store_path_map.is_empty() {
         if plan.num_all_paths == 0 {
@@ -106,7 +108,10 @@ pub async fn run(opts: Opts) -> Result<()> {
     }
 
     let results = pusher.wait().await;
-    results.into_iter().map(|(_, result)| result).collect::<Result<Vec<()>>>()?;
+    results
+        .into_iter()
+        .map(|(_, result)| result)
+        .collect::<Result<Vec<()>>>()?;
 
     Ok(())
 }
