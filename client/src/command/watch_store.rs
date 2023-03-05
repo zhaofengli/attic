@@ -23,7 +23,7 @@ pub struct WatchStore {
     cache: CacheRef,
 
     /// Push the new paths only and do not compute closures.
-    #[clap(long)]
+    #[clap(long, hide = true)]
     no_closure: bool,
 
     /// Ignore the upstream cache filter.
