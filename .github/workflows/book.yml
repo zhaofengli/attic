@@ -18,14 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3.0.2
 
-      - name: Obtain current username
-        run: |
-          echo ACTION_USER=$USER >> $GITHUB_ENV
-
-      - uses: DeterminateSystems/nix-installer-action@2ec668c45628a4029e59357600d6b73107b0843b
-        with:
-          extra-conf: |
-            trusted-users = root ${{ env.ACTION_USER }}
+      - uses: DeterminateSystems/nix-installer-action@v1
+        continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
         run: ./.github/install-attic-ci.sh
