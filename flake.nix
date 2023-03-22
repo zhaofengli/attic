@@ -117,11 +117,6 @@
         RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
 
         ATTIC_DISTRIBUTOR = "dev";
-
-        shellHook = ''
-          export LIBCLANG_PATH="${pkgs.llvmPackages.libclang.lib}/lib"
-          export BINDGEN_EXTRA_CLANG_ARGS="$(< ${pkgs.llvmPackages.clang}/nix-support/cc-cflags) $(< ${pkgs.llvmPackages.clang}/nix-support/libc-cflags) $(< ${pkgs.llvmPackages.clang}/nix-support/libcxx-cxxflags) $NIX_CFLAGS_COMPILE"
-        '';
       };
 
       demo = pkgs.mkShell {

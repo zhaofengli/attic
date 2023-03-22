@@ -7,7 +7,6 @@
 { lib, stdenv, rustPlatform
 , pkg-config
 , installShellFiles
-, llvmPackages
 , nix
 , boost
 , darwin
@@ -32,6 +31,7 @@ in rustPlatform.buildRustPackage rec {
   };
 
   nativeBuildInputs = [
+    rustPlatform.bindgenHook
     pkg-config
     installShellFiles
   ];
@@ -49,12 +49,6 @@ in rustPlatform.buildRustPackage rec {
   cargoBuildFlags = lib.concatMapStrings (c: "-p ${c} ") crates;
 
   ATTIC_DISTRIBUTOR = "attic";
-
-  # Temporary workaround for https://github.com/NixOS/nixpkgs/pull/207352#issuecomment-1418363441
-  preBuild = ''
-    export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib"
-    export BINDGEN_EXTRA_CLANG_ARGS="$(< ${llvmPackages.clang}/nix-support/cc-cflags) $(< ${llvmPackages.clang}/nix-support/libc-cflags) $(< ${llvmPackages.clang}/nix-support/libcxx-cxxflags) $NIX_CFLAGS_COMPILE"
-  '';
 
   # Recursive Nix is not stable yet
   doCheck = false;
