@@ -59,11 +59,20 @@
           ];
         });
       }).overrideAttrs (old: {
+        nativeBuildInputs = (old.nativeBuildInputs or []) ++ [
+          pkgs.nukeReferences
+        ];
+
         # Read by pkg_config crate (do some autodetection in build.rs?)
         PKG_CONFIG_ALL_STATIC = "1";
 
         "NIX_CFLAGS_LINK_${pkgs.pkgsStatic.stdenv.cc.suffixSalt}" = "-lc";
         RUSTFLAGS = "-C relocation-model=static";
+
+        postFixup = (old.postFixup or "") + ''
+          rm -f $out/nix-support/propagated-build-inputs
+          nuke-refs $out/bin/attic
+        '';
       });
 
       attic-client-static = packages.attic-static.override {
