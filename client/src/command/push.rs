@@ -54,7 +54,7 @@ pub async fn run(opts: Opts) -> Result<()> {
         .paths
         .clone()
         .into_iter()
-        .map(|p| store.follow_store_path(&p))
+        .map(|p| store.follow_store_path(p))
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
@@ -108,10 +108,7 @@ pub async fn run(opts: Opts) -> Result<()> {
     }
 
     let results = pusher.wait().await;
-    results
-        .into_iter()
-        .map(|(_, result)| result)
-        .collect::<Result<Vec<()>>>()?;
+    results.into_values().collect::<Result<Vec<()>>>()?;
 
     Ok(())
 }

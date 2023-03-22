@@ -31,7 +31,7 @@ where
             let read = read_chunk_async(&mut stream, buf).await?;
 
             let mut eof = false;
-            if read.len() == 0 {
+            if read.is_empty() {
                 // Already EOF
                 break;
             } else if read.len() < max_size {

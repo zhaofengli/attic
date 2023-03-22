@@ -36,7 +36,7 @@ pub struct Config {
 }
 
 /// Client configurations.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ConfigData {
     /// The default server to connect to.
     #[serde(rename = "default-server")]
@@ -119,7 +119,7 @@ impl ConfigData {
             if path.exists() {
                 let contents = fs::read(path)?;
                 let s = std::str::from_utf8(&contents)?;
-                let data = toml::from_str(&s)?;
+                let data = toml::from_str(s)?;
                 return Ok(data);
             }
         }
@@ -159,15 +159,6 @@ impl ConfigData {
                     .ok_or_else(|| anyhow!("Server \"{}\" does not exist", server.as_str()))?;
                 Ok((server, config, cache))
             }
-        }
-    }
-}
-
-impl Default for ConfigData {
-    fn default() -> Self {
-        Self {
-            default_server: None,
-            servers: HashMap::new(),
         }
     }
 }

@@ -149,7 +149,7 @@ impl Pusher {
                 api.clone(),
                 cache.clone(),
                 mp.clone(),
-                config.clone(),
+                config,
             )));
         }
 
@@ -264,7 +264,7 @@ impl PushSession {
             loop {
                 if let Err(e) = Self::worker(
                     pusher.clone(),
-                    config.clone(),
+                    config,
                     known_paths_mutex.clone(),
                     receiver.clone(),
                 )
@@ -341,7 +341,7 @@ impl PushSession {
 
             let mut known_paths = known_paths_mutex.lock().await;
             plan.store_path_map
-                .retain(|sph, _| !known_paths.contains(&sph));
+                .retain(|sph, _| !known_paths.contains(sph));
 
             // Push everything
             for (store_path_hash, path_info) in plan.store_path_map.into_iter() {

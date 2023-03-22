@@ -417,7 +417,7 @@ async fn upload_path_new_chunked(
                 // Create mapping from the NAR to the chunk
                 ChunkRef::insert(chunkref::ActiveModel {
                     nar_id: Set(nar_id),
-                    seq: Set(chunk_idx as i32),
+                    seq: Set(chunk_idx),
                     chunk_id: Set(Some(chunk.guard.id)),
                     chunk_hash: Set(chunk.guard.chunk_hash.clone()),
                     compression: Set(chunk.guard.compression.clone()),

@@ -151,7 +151,7 @@ pub struct AtticAccess {
 
 /// Permission to a single cache.
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CachePermission {
     /// Can pull objects from the cache.
     #[serde(default = "CachePermission::permission_default")]
@@ -229,7 +229,7 @@ impl Token {
     /// Verifies and decodes a token.
     pub fn from_jwt(token: &str, key: &HS256Key) -> Result<Self> {
         key.verify_token(token, None)
-            .map_err(|e| Error::TokenError(e))
+            .map_err(Error::TokenError)
             .map(Token)
     }
 
@@ -256,8 +256,7 @@ impl Token {
 
     /// Encodes the token.
     pub fn encode(&self, key: &HS256Key) -> Result<String> {
-        key.authenticate(self.0.clone())
-            .map_err(|e| Error::TokenError(e))
+        key.authenticate(self.0.clone()).map_err(Error::TokenError)
     }
 
     /// Returns the subject of the token.
@@ -357,20 +356,6 @@ impl CachePermission {
 
     fn permission_default() -> bool {
         false
-    }
-}
-
-impl Default for CachePermission {
-    fn default() -> Self {
-        Self {
-            pull: false,
-            push: false,
-            delete: false,
-            create_cache: false,
-            configure_cache: false,
-            configure_cache_retention: false,
-            destroy_cache: false,
-        }
     }
 }
 

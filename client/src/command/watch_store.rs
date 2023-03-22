@@ -92,7 +92,7 @@ pub async fn run(opts: Opts) -> Result<()> {
                         .paths
                         .iter()
                         .filter_map(|p| {
-                            let base = strip_lock_file(&p)?;
+                            let base = strip_lock_file(p)?;
                             store.parse_store_path(base).ok()
                         })
                         .collect::<Vec<StorePath>>();
