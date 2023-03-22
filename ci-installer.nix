@@ -41,7 +41,9 @@ let
   '';
 
   makeBootstrap = system: let
-    package = self.packages.${system}.attic;
+    package =
+      if system == "x86_64-linux" then self.packages.${system}.attic-client-static
+      else self.packages.${system}.attic-client;
   in ''
     "${system}" = (mkFakeDerivation {
       name = "${package.name}";
