@@ -35,31 +35,31 @@ in
 
 {
   "x86_64-linux" = (mkFakeDerivation {
-  name = "attic-0.1.0";
+  name = "attic-static-x86_64-unknown-linux-musl-0.1.0";
   system = "x86_64-linux";
 } {
-  out = "/nix/store/6rsd0s532902xr4465cnvrsn30r9cf2x-attic-0.1.0";
+  out = "/nix/store/qi9cixkq0pj60yw1y5l28hid7f53310i-attic-static-x86_64-unknown-linux-musl-0.1.0";
 }).out;
 
   "aarch64-linux" = (mkFakeDerivation {
   name = "attic-0.1.0";
   system = "aarch64-linux";
 } {
-  out = "/nix/store/h3mpa7qb2ywgi2zs187l2748m4hljfad-attic-0.1.0";
+  out = "/nix/store/ng1aykmyk7ayzrn69hlv4n4qzbywj5rk-attic-0.1.0";
 }).out;
 
   "x86_64-darwin" = (mkFakeDerivation {
   name = "attic-0.1.0";
   system = "x86_64-darwin";
 } {
-  out = "/nix/store/35xnsvzr0177dlcyfrnmd8jzv51kphw7-attic-0.1.0";
+  out = "/nix/store/zh35fhdyxnxzp1mjyla95g2yv2ayzc3f-attic-0.1.0";
 }).out;
 
   "aarch64-darwin" = (mkFakeDerivation {
   name = "attic-0.1.0";
   system = "aarch64-darwin";
 } {
-  out = "/nix/store/9l4sza3hyaxh3lb0gazxirp9p6nljfd8-attic-0.1.0";
+  out = "/nix/store/z9i4grsf3h0wdlbhg95v6nanxiqx5xvp-attic-0.1.0";
 }).out;
 
 }.${system}
