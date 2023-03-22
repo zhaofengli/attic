@@ -66,6 +66,10 @@
         RUSTFLAGS = "-C relocation-model=static";
       });
 
+      attic-client-static = packages.attic-static.override {
+        clientOnly = true;
+      };
+
       attic-ci-installer = pkgs.callPackage ./ci-installer.nix {
         inherit self;
       };
