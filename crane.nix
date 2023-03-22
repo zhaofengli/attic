@@ -57,7 +57,7 @@ let
     installCargoArtifactsMode = "use-zstd";
   };
 
-  attic = craneLib.buildPackage {
+  mkAttic = args: craneLib.buildPackage ({
     pname = "attic";
     inherit src version nativeBuildInputs buildInputs cargoArtifacts;
 
@@ -84,12 +84,16 @@ let
       maintainers = with maintainers; [ zhaofengli ];
       platforms = platforms.linux ++ platforms.darwin;
     };
+  } // args);
+
+  attic = mkAttic {
+    cargoExtraArgs = "-p attic-client -p attic-server";
   };
 
   # Client-only package.
-  attic-client = attic.overrideAttrs (old: {
+  attic-client = mkAttic {
     cargoExtraArgs = " -p attic-client";
-  });
+  };
 
   # Server-only package with fat LTO enabled.
   #
