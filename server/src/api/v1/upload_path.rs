@@ -21,7 +21,7 @@ use sea_orm::sea_query::Expr;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{QuerySelect, TransactionTrait};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
+use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, BufReader};
 use tokio::sync::{OnceCell, Semaphore};
 use tokio::task::spawn;
 use tokio_util::io::StreamReader;
@@ -376,7 +376,7 @@ async fn upload_path_new_chunked(
         }
     });
 
-    // FIXME: Maybe the client will send much more data than claimed
+    let stream = stream.take(upload_info.nar_size as u64);
     let (stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
     let mut chunks = chunk_stream(
         stream,
@@ -530,6 +530,7 @@ async fn upload_path_new_unchunked(
     let compression: Compression = compression_type.into();
 
     // Upload the entire NAR as a single chunk
+    let stream = stream.take(upload_info.nar_size as u64);
     let data = ChunkData::Stream(
         Box::new(stream),
         upload_info.nar_hash.clone(),
