@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::{thread, time};
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
@@ -114,7 +115,9 @@ pub async fn run(opts: Opts) -> Result<()> {
         server = server_name.as_str(),
     );
 
-    loop {}
+    loop {
+        thread::sleep(time::Duration::from_secs(60));
+    }
 }
 
 fn strip_lock_file(p: &Path) -> Option<PathBuf> {
