@@ -29,6 +29,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::config::CompressionType;
+use crate::decompression::StreamingDecompressor;
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
 use crate::{RequestState, State};
@@ -122,9 +123,16 @@ pub(crate) async fn upload_path(
     headers: HeaderMap,
     stream: BodyStream,
 ) -> ServerResult<Json<UploadPathResult>> {
-    let mut stream = StreamReader::new(
+    let compression_format = headers
+        .get("Content-Encoding")
+        .and_then(|e| e.to_str().ok())
+        .unwrap_or("");
+
+    let stream = StreamReader::new(
         stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
     );
+
+    let mut stream = StreamingDecompressor::new_unbuffered(stream, compression_format)?;
 
     let upload_info: UploadPathNarInfo = {
         if let Some(preamble_size_bytes) = headers.get(ATTIC_NAR_INFO_PREAMBLE_SIZE) {

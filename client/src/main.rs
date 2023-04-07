@@ -17,6 +17,7 @@ mod api;
 mod cache;
 mod cli;
 mod command;
+mod compression;
 mod config;
 mod nix_config;
 mod nix_netrc;

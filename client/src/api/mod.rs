@@ -8,15 +8,19 @@ use displaydoc::Display;
 use futures::{
     future,
     stream::{self, StreamExt, TryStream, TryStreamExt},
+    AsyncReadExt,
 };
 use reqwest::{
-    header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT},
+    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_ENCODING, USER_AGENT},
     Body, Client as HttpClient, Response, StatusCode, Url,
 };
 use serde::Deserialize;
 
-use crate::config::ServerConfig;
 use crate::version::ATTIC_DISTRIBUTOR;
+use crate::{
+    compression::StreamingCompressor,
+    config::{CompressionConfig, ServerConfig},
+};
 use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
 use attic::api::v1::upload_path::{
@@ -40,6 +44,9 @@ pub struct ApiClient {
 
     /// An initialized HTTP client.
     client: HttpClient,
+
+    /// The compression algorithm to use.
+    compression: CompressionConfig,
 }
 
 /// An API error.
@@ -67,6 +74,7 @@ impl ApiClient {
         Ok(Self {
             endpoint: Url::parse(&config.endpoint)?,
             client,
+            compression: config.compression,
         })
     }
 
@@ -176,7 +184,7 @@ impl ApiClient {
         force_preamble: bool,
     ) -> Result<Option<UploadPathResult>>
     where
-        S: TryStream<Ok = Bytes> + Send + Sync + 'static,
+        S: TryStream<Ok = Bytes> + Send + Sync + std::marker::Unpin + 'static,
         S::Error: Into<Box<dyn StdError + Send + Sync>> + Send + Sync,
     {
         let endpoint = self.endpoint.join("_api/v1/upload-path")?;
@@ -185,7 +193,11 @@ impl ApiClient {
         let mut req = self
             .client
             .put(endpoint)
-            .header(USER_AGENT, HeaderValue::from_str(ATTIC_USER_AGENT)?);
+            .header(USER_AGENT, HeaderValue::from_str(ATTIC_USER_AGENT)?)
+            .header(
+                CONTENT_ENCODING,
+                HeaderValue::from_static(self.compression.http_value()),
+            );
 
         if force_preamble || upload_info_json.len() >= NAR_INFO_PREAMBLE_THRESHOLD {
             let preamble = Bytes::from(upload_info_json);
@@ -193,13 +205,45 @@ impl ApiClient {
             let preamble_stream = stream::once(future::ok(preamble));
 
             let chained = preamble_stream.chain(stream.into_stream());
+            let chained = chained.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+            let mut compressed =
+                StreamingCompressor::new_unbuffered(chained.into_async_read(), self.compression);
+            let final_stream = async_stream::stream! {
+              loop {
+                let mut buf = vec![0; 4096];
+                match compressed.read(&mut buf).await {
+                  Ok(0) => {break;}
+                  Ok(n) => {
+                    buf.truncate(n);
+                    yield Ok(buf);
+                  }
+                  Err(e) => {yield Err(e);}
+                }
+              }
+            };
             req = req
                 .header(ATTIC_NAR_INFO_PREAMBLE_SIZE, preamble_len)
-                .body(Body::wrap_stream(chained));
+                .body(Body::wrap_stream(final_stream));
         } else {
+            let stream = stream.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+            let mut compressed =
+                StreamingCompressor::new_unbuffered(stream.into_async_read(), self.compression);
+            let final_stream = async_stream::stream! {
+              loop {
+                let mut buf = vec![0; 4096];
+                match compressed.read(&mut buf).await {
+                  Ok(0) => {break;}
+                  Ok(n) => {
+                    buf.truncate(n);
+                    yield Ok(buf);
+                  }
+                  Err(e) => {yield Err(e);}
+                }
+              }
+            };
             req = req
                 .header(ATTIC_NAR_INFO, HeaderValue::from_str(&upload_info_json)?)
-                .body(Body::wrap_stream(stream));
+                .body(Body::wrap_stream(final_stream));
         }
 
         let res = req.send().await?;
