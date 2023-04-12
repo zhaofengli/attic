@@ -55,7 +55,9 @@ use crate::database::{AtticDatabase, ChunkGuard, NarGuard};
 const CONCURRENT_CHUNK_UPLOADS: usize = 10;
 
 /// The maximum size of the upload info JSON.
-const MAX_NAR_INFO_SIZE: usize = 64 * 1024; // 64 KiB
+///
+/// TODO: Make this configurable
+const MAX_NAR_INFO_SIZE: usize = 1 * 1024 * 1024; // 1 MiB
 
 type CompressorFn<C> = Box<dyn FnOnce(C) -> Box<dyn AsyncRead + Unpin + Send> + Send>;
 
