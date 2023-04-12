@@ -94,6 +94,9 @@
           # Debugging utilities for `fly ssh console`
           pkgs.busybox
           packages.attic-server
+
+          # Now required by the fly.io sshd
+          pkgs.dockerTools.fakeNss
         ];
         config = {
           Entrypoint = [ "${packages.attic-server}/bin/atticd" ];
