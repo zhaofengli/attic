@@ -2,6 +2,9 @@ name: Build
 on:
   pull_request:
   push:
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 jobs:
   tests:
     strategy:
@@ -10,6 +13,9 @@ jobs:
           - ubuntu-latest
           - macos-11
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v3.3.0
 
@@ -49,4 +55,31 @@ jobs:
           if [ -n "$ATTIC_TOKEN" ]; then
             nix build .#internal."$system".attic-tests .#internal."$system".cargoArtifacts --no-link --print-out-paths -L | \
               xargs attic push "ci:$ATTIC_CACHE"
+          fi
+      - name: Log in to the Container registry
+        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push build container image
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        continue-on-error: true
+        run: |
+          IMAGE_ID=ghcr.io/${IMAGE_NAME}
+          TARBALL=$(nix build --json .#attic-server-image | jq -r '.[].outputs.out')
+          BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          TAG="${{ github.sha }}"
+          [[ "${{ github.ref }}" == "refs/tags/"* ]] && TAG=$(echo $BRANCH | sed -e 's/^v//')
+          docker load < ${TARBALL}
+          echo IMAGE_ID=$IMAGE_ID
+          echo TAG=$TAG
+          docker tag attic-server:main "${IMAGE_ID}:${TAG}"
+          docker push ${IMAGE_ID}:${TAG}
+          if [ "$BRANCH" == "main" ]; then
+            TAG="latest"
+            docker tag attic-server:main "${IMAGE_ID}:${TAG}"
+            docker push ${IMAGE_ID}:${TAG}
           fi
