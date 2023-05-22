@@ -62,7 +62,7 @@ pub struct StructuredApiError {
 
 impl ApiClient {
     pub fn from_server_config(config: ServerConfig) -> Result<Self> {
-        let client = build_http_client(config.token.as_deref());
+        let client = build_http_client(config.token()?.as_deref());
 
         Ok(Self {
             endpoint: Url::parse(&config.endpoint)?,

@@ -5,13 +5,13 @@
 //! experience (e.g., `attic login`).
 
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions, Permissions};
+use std::fs::{self, read_to_string, OpenOptions, Permissions};
 use std::io::Write;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
 
@@ -52,7 +52,38 @@ pub struct ConfigData {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
     pub endpoint: String,
-    pub token: Option<String>,
+    #[serde(flatten)]
+    pub token: Option<ServerTokenConfig>,
+}
+
+impl ServerConfig {
+    pub fn token(&self) -> Result<Option<String>> {
+        self.token.as_ref().map(|token| token.get()).transpose()
+    }
+}
+
+/// Configured server token
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ServerTokenConfig {
+    Raw {
+        token: String,
+    },
+    File {
+        #[serde(rename = "token-file")]
+        token_file: String,
+    },
+}
+
+impl ServerTokenConfig {
+    /// Get the token either directly from the config or through the token file
+    pub fn get(&self) -> Result<String> {
+        match self {
+            ServerTokenConfig::Raw { token } => Ok(token.clone()),
+            ServerTokenConfig::File { token_file } => Ok(read_to_string(token_file)
+                .with_context(|| format!("Failed to read token from {token_file}"))?),
+        }
+    }
 }
 
 /// Wrapper that automatically saves the config once dropped.
