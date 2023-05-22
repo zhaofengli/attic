@@ -93,6 +93,7 @@ impl Config {
             let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
+                .truncate(true)
                 .mode(FILE_MODE)
                 .open(path)?;
 
