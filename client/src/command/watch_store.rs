@@ -127,6 +127,6 @@ pub async fn run(opts: Opts) -> Result<()> {
 fn strip_lock_file(p: &Path) -> Option<PathBuf> {
     p.to_str()
         .and_then(|p| p.strip_suffix(".lock"))
-        .filter(|t| !t.ends_with(".drv"))
+        .filter(|t| !t.ends_with(".drv") && !t.ends_with("-source"))
         .map(PathBuf::from)
 }
