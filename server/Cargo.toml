@@ -50,7 +50,7 @@ ryu = "1.0.13"
 sha2 = { version = "0.10.6", features = ["asm"] }
 serde = "1.0.163"
 serde_json = "1.0.96"
-serde_with = "2.3.3"
+serde_with = "3.0.0"
 tokio-util = { version = "0.7.8", features = [ "io" ] }
 toml = "0.7.4"
 tower-http = { version = "0.4.0", features = [ "catch-panic", "trace" ] }
