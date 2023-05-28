@@ -194,7 +194,7 @@ pub struct CompressionConfig {
     /// Compression level.
     ///
     /// If unspecified, Attic will choose a default one.
-    pub level: Option<u32>,
+    pub level: Option<i32>,
 }
 
 /// Compression type.
