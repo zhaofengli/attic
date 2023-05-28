@@ -164,8 +164,8 @@ in {
       server.wait_for_unit('atticd.service')
       client.wait_until_succeeds("curl -sL http://server:8080", timeout=40)
 
-      root_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --push '*' --pull '*' --delete '*' --create-cache '*' --destroy-cache '*' --configure-cache '*' --configure-cache-retention '*'")
-      readonly_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --pull 'test'")
+      root_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --push '*' --pull '*' --delete '*' --create-cache '*' --destroy-cache '*' --configure-cache '*' --configure-cache-retention '*'").strip()
+      readonly_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --pull 'test'").strip()
 
       client.succeed(f"attic login --set-default root http://server:8080 {root_token}")
       client.succeed(f"attic login readonly http://server:8080 {readonly_token}")
