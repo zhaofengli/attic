@@ -22,44 +22,44 @@ doc = false
 attic = { path = "../attic", default-features = false, features = [ "tokio" ] }
 attic-token = { path = "../token" }
 
-anyhow = "1.0.69"
-async-stream = "0.3.4"
-async-trait = "0.1.65"
+anyhow = "1.0.71"
+async-stream = "0.3.5"
+async-trait = "0.1.68"
 aws-config = "0.54.1"
 aws-sdk-s3 = "0.24.0"
-axum = "0.6.10"
-axum-macros = "0.3.5"
-base64 = "0.21.0"
+axum = "0.6.18"
+axum-macros = "0.3.7"
+base64 = "0.21.2"
 bytes = "1.4.0"
-chrono = "0.4.23"
-clap = { version = "4.1", features = ["derive"] }
+chrono = "0.4.24"
+clap = { version = "4.3", features = ["derive"] }
 derivative = "2.2.0"
-digest = "0.10.6"
-displaydoc = "0.2.3"
-enum-as-inner = "0.5.1"
-fastcdc = "3.0.1"
-futures = "0.3.26"
+digest = "0.10.7"
+displaydoc = "0.2.4"
+enum-as-inner = "0.5.2"
+fastcdc = "3.0.3"
+futures = "0.3.28"
 hex = "0.4.3"
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
 itoa = "=1.0.5"
 maybe-owned = "0.3.4"
 rand = "0.8.5"
-regex = "1.7.1"
+regex = "1.8.3"
 ryu = "1.0.13"
 sha2 = { version = "0.10.6", features = ["asm"] }
-serde = "1.0.152"
-serde_json = "1.0.93"
-serde_with = "2.2.0"
-tokio-util = { version = "0.7.7", features = [ "io" ] }
-toml = "0.7.2"
+serde = "1.0.163"
+serde_json = "1.0.96"
+serde_with = "2.3.3"
+tokio-util = { version = "0.7.8", features = [ "io" ] }
+toml = "0.7.4"
 tower-http = { version = "0.4.0", features = [ "catch-panic", "trace" ] }
 tracing = "0.1.37"
 tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.16", features = [ "json" ] }
-uuid = { version = "1.3.0", features = ["v4"] }
-console-subscriber = "0.1.8"
-xdg = "2.4.1"
+tracing-subscriber = { version = "0.3.17", features = [ "json" ] }
+uuid = { version = "1.3.3", features = ["v4"] }
+console-subscriber = "0.1.9"
+xdg = "2.5.0"
 
 [dependencies.async-compression]
 version = "0.3.15"
@@ -94,7 +94,7 @@ branch = "attic"
 version = "0.10.5"
 
 [dependencies.tokio]
-version = "1.26.0"
+version = "1.28.2"
 features = [
 	"fs",
 	"io-util",

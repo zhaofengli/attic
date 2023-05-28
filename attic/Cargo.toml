@@ -5,31 +5,31 @@ edition = "2021"
 publish = false
 
 [dependencies]
-async-stream = { version = "0.3.4", optional = true }
-base64 = "0.21.0"
+async-stream = { version = "0.3.5", optional = true }
+base64 = "0.21.2"
 bytes = "1.4.0"
-displaydoc = "0.2.3"
-digest = "0.10.6"
+displaydoc = "0.2.4"
+digest = "0.10.7"
 ed25519-compact = "2.0.4"
-futures = "0.3.26"
+futures = "0.3.28"
 hex = "0.4.3"
 lazy_static = "1.4.0"
-log = "0.4.17"
+log = "0.4.18"
 nix-base32 = { git = "https://github.com/zhaofengli/nix-base32.git", rev = "b850c6e9273d1c39bd93abb704a53345f5be92eb" }
-regex = "1.7.1"
-serde = { version = "1.0.152", features = ["derive"] }
-serde_yaml = "0.9.18"
-serde_with = "2.2.0"
+regex = "1.8.3"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_yaml = "0.9.21"
+serde_with = "2.3.3"
 sha2 = "0.10.6"
 tempfile = "3"
 wildmatch = "2.1.1"
-xdg = "2.4.1"
+xdg = "2.5.0"
 
 # Native libnixstore bindings.
 cxx = { version = "1.0", optional = true }
 
 [dependencies.tokio]
-version = "1.26.0"
+version = "1.28.2"
 optional = true
 features = [
 	"fs",
@@ -39,13 +39,13 @@ features = [
 ]
 
 [dev-dependencies]
-serde_json = "1.0.93"
+serde_json = "1.0.96"
 tokio-test = "0.4.2"
 
 [build-dependencies]
 bindgen = { version = "0.64.0", optional = true }
 cxx-build = { version = "1.0", optional = true }
-pkg-config = "0.3.26"
+pkg-config = "0.3.27"
 
 [features]
 default = [ "nix_store", "tokio" ]
