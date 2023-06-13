@@ -41,8 +41,14 @@ void RustSink::eof() {
 
 CPathInfo::CPathInfo(nix::ref<const nix::ValidPathInfo> pi) : pi(pi) {}
 
-nix::Hash CPathInfo::nar_hash() {
-	return this->pi->narHash;
+RHashSlice CPathInfo::nar_sha256_hash() {
+	auto &hash = this->pi->narHash;
+
+	if (hash.type != nix::htSHA256) {
+		throw nix::Error("Only SHA-256 hashes are supported at the moment");
+	}
+
+	return RHashSlice(hash.hash, hash.hashSize);
 }
 
 uint64_t CPathInfo::nar_size() {

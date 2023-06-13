@@ -32,7 +32,6 @@ let
   };
 
   nativeBuildInputs = [
-    rustPlatform.bindgenHook
     pkg-config
     installShellFiles
   ];

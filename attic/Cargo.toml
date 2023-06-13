@@ -43,7 +43,6 @@ serde_json = "1.0.96"
 tokio-test = "0.4.2"
 
 [build-dependencies]
-bindgen = { version = "0.65.1", optional = true }
 cxx-build = { version = "1.0", optional = true }
 pkg-config = "0.3.27"
 
@@ -53,7 +52,7 @@ default = [ "nix_store", "tokio" ]
 # Native libnixstore bindings.
 #
 # When disabled, the native Rust portions of nix_store can still be used.
-nix_store = [ "dep:cxx", "dep:bindgen", "dep:cxx-build" ]
+nix_store = [ "dep:cxx", "dep:cxx-build" ]
 
 # Tokio.
 #

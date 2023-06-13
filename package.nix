@@ -31,7 +31,6 @@ in rustPlatform.buildRustPackage rec {
   };
 
   nativeBuildInputs = [
-    rustPlatform.bindgenHook
     pkg-config
     installShellFiles
   ];

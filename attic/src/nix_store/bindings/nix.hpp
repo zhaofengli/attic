@@ -29,6 +29,7 @@ template<class T> using RSlice = rust::Slice<T>;
 using RString = rust::String;
 using RStr = rust::Str;
 using RBasePathSlice = RSlice<const unsigned char>;
+using RHashSlice = RSlice<const unsigned char>;
 
 struct AsyncWriteSender;
 
@@ -46,7 +47,7 @@ class CPathInfo {
 	nix::ref<const nix::ValidPathInfo> pi;
 public:
 	CPathInfo(nix::ref<const nix::ValidPathInfo> pi);
-	nix::Hash nar_hash();
+	RHashSlice nar_sha256_hash();
 	uint64_t nar_size();
 	std::unique_ptr<std::vector<std::string>> sigs();
 	std::unique_ptr<std::vector<std::string>> references();

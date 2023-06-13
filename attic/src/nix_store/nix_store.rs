@@ -9,6 +9,7 @@ use tokio::task::spawn_blocking;
 
 use super::bindings::{open_nix_store, AsyncWriteAdapter, FfiNixStore};
 use super::{to_base_name, StorePath, ValidPathInfo};
+use crate::hash::Hash;
 use crate::error::AtticResult;
 
 /// High-level wrapper for the Unix Domain Socket Nix Store.
@@ -200,7 +201,7 @@ impl NixStore {
 
             // FIXME: Make this more ergonomic and efficient
             let nar_size = c_path_info.pin_mut().nar_size();
-            let nar_hash = c_path_info.pin_mut().nar_hash();
+            let nar_sha256_hash: [u8; 32] = c_path_info.pin_mut().nar_sha256_hash().try_into().unwrap();
             let references = c_path_info
                 .pin_mut()
                 .references()
@@ -224,7 +225,7 @@ impl NixStore {
             Ok(ValidPathInfo {
                 path: store_path,
                 nar_size,
-                nar_hash: nar_hash.into_rust()?,
+                nar_hash: Hash::Sha256(nar_sha256_hash),
                 references,
                 sigs,
                 ca: if ca.is_empty() { None } else { Some(ca) },

@@ -9,9 +9,6 @@ use sha2::{Digest, Sha256};
 
 use crate::error::AtticResult;
 
-#[cfg(feature = "nix_store")]
-use crate::nix_store::{FfiHash, FfiHashType};
-
 /// A hash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Hash {
@@ -94,14 +91,6 @@ impl Hash {
     /// Returns the hash in Nix-specific Base32 format.
     fn to_base32(&self) -> String {
         nix_base32::to_nix_base32(self.data())
-    }
-
-    #[cfg(feature = "nix_store")]
-    pub(super) fn from_ffi_hash(hash: FfiHash) -> AtticResult<Self> {
-        match hash.type_ {
-            FfiHashType::Sha256 => Ok(Self::Sha256(hash.hash[..32].try_into().unwrap())),
-            typ => Err(Error::UnsupportedHashAlgorithm(typ.as_str().to_owned()).into()),
-        }
     }
 }
 

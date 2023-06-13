@@ -59,9 +59,6 @@ use crate::error::{AtticError, AtticResult};
 use crate::hash::Hash;
 
 #[cfg(feature = "nix_store")]
-pub use bindings::{FfiHash, FfiHashType};
-
-#[cfg(feature = "nix_store")]
 pub use nix_store::NixStore;
 
 #[cfg(test)]

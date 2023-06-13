@@ -1,29 +1,14 @@
 //! `libnixstore` Bindings
 
-mod bindgen;
-
 use std::cell::UnsafeCell;
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use cxx::{type_id, ExternType};
 use futures::stream::{Stream, StreamExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::{AtticError, AtticResult};
-
-pub use bindgen::{Hash as FfiHash, HashType as FfiHashType};
-
-unsafe impl ExternType for FfiHash {
-    type Id = type_id!("nix::Hash");
-    type Kind = cxx::kind::Trivial;
-}
-
-unsafe impl ExternType for FfiHashType {
-    type Id = type_id!("nix::HashType");
-    type Kind = cxx::kind::Trivial;
-}
 
 // The C++ implementation takes care of concurrency
 #[repr(transparent)]
@@ -182,9 +167,6 @@ mod ffi {
     unsafe extern "C++" {
         include!("attic/src/nix_store/bindings/nix.hpp");
 
-        #[namespace = "nix"]
-        type Hash = super::FfiHash;
-
         // =========
         // CNixStore
         // =========
@@ -254,8 +236,8 @@ mod ffi {
         /// Mid-level wrapper for the `nix::ValidPathInfo` struct.
         type CPathInfo;
 
-        /// Returns the NAR hash of the store path.
-        fn nar_hash(self: Pin<&mut CPathInfo>) -> Hash;
+        /// Returns the SHA-256 hash of the store path.
+        fn nar_sha256_hash(self: Pin<&mut CPathInfo>) -> &[u8];
 
         /// Returns the size of the NAR.
         fn nar_size(self: Pin<&mut CPathInfo>) -> u64;
