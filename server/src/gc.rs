@@ -76,7 +76,7 @@ async fn run_time_based_garbage_collection(state: &State) -> Result<()> {
         .column(cache::Column::Id)
         .column(cache::Column::Name)
         .column_as(retention_period.clone(), "retention_period")
-        .filter(retention_period.not_equals(0))
+        .filter(retention_period.ne(0))
         .into_model::<CacheIdAndRetentionPeriod>()
         .all(db)
         .await?;
