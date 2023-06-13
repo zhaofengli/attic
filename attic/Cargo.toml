@@ -45,6 +45,7 @@ tokio-test = "0.4.2"
 [build-dependencies]
 cxx-build = { version = "1.0", optional = true }
 pkg-config = "0.3.27"
+tempfile = "3"
 
 [features]
 default = [ "nix_store", "tokio" ]
