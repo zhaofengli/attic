@@ -46,7 +46,7 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly {
     pname = "attic";
-    inherit src nativeBuildInputs buildInputs;
+    inherit src version nativeBuildInputs buildInputs;
 
     # By default it's "use-symlink", which causes Crane's `inheritCargoArtifactsHook`
     # to copy the artifacts using `cp --no-preserve=mode` which breaks the executable
