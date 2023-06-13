@@ -20,7 +20,7 @@ fn build_bridge() {
 
     cxx_build::bridge("src/nix_store/bindings/mod.rs")
         .file("src/nix_store/bindings/nix.cpp")
-        .flag("-std=c++17")
+        .flag("-std=c++2a")
         .flag("-O2")
         .flag("-include")
         .flag("nix/config.h")
