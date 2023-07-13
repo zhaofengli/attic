@@ -92,7 +92,7 @@ CNixStore::CNixStore() {
 		g_init_nix_done = true;
 	}
 
-	this->store = nix::openStore("auto", params);
+	this->store = nix::openStore(nix::settings.storeUri.get(), params);
 }
 
 RString CNixStore::store_dir() {
