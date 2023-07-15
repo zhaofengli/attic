@@ -177,16 +177,21 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
     // ... and transition their state to Deleted
     //
     // Deleted chunks are essentially invisible from our normal queries
-    let change_state = Query::update()
-        .table(Chunk)
-        .value(chunk::Column::State, ChunkState::Deleted)
-        .and_where(chunk::Column::Id.in_subquery(orphan_chunk_ids))
-        .returning_all()
-        .to_owned();
+    let transition_statement = {
+        let change_state = Query::update()
+            .table(Chunk)
+            .value(chunk::Column::State, ChunkState::Deleted)
+            .and_where(chunk::Column::Id.in_subquery(orphan_chunk_ids))
+            .to_owned();
+        db.get_database_backend().build(&change_state)
+    };
 
-    let stmt = db.get_database_backend().build(&change_state);
+    db.execute(transition_statement).await?;
 
-    let orphan_chunks = chunk::Model::find_by_statement(stmt).all(db).await?;
+    let orphan_chunks: Vec<chunk::Model> = Chunk::find()
+        .filter(chunk::Column::State.eq(ChunkState::Deleted))
+        .all(db)
+        .await?;
 
     if orphan_chunks.is_empty() {
         return Ok(());
