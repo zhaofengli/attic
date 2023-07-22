@@ -116,6 +116,24 @@ in
         defaultText = "generated from `services.atticd.settings`";
       };
 
+      mode = lib.mkOption {
+        description = ''
+          Mode in which to run the server.
+
+          'monolithic' runs all components, and is suitable for single-node deployments.
+
+          'api-server' runs only the API server, and is suitable for clustering.
+
+          'garbage-collector' only runs the garbage collector periodically.
+
+          A simple NixOS-based Attic deployment will typically have one 'monolithic' and any number of 'api-server' nodes.
+
+          There are several other supported modes that perform one-off operations, but these are the only ones that make sense to run via the NixOS module.
+        '';
+        type = lib.types.enum ["monolithic" "api-server" "garbage-collector"];
+        default = "monolithic";
+      };
+
       # Internal flags
       useFlakeCompatOverlay = lib.mkOption {
         description = ''
@@ -168,7 +186,7 @@ in
         after = [ "network.target" ]
           ++ lib.optionals hasLocalPostgresDB [ "postgresql.service" "nss-lookup.target" ];
         serviceConfig = {
-          ExecStart = "${cfg.package}/bin/atticd -f ${checkedConfigFile}";
+          ExecStart = "${cfg.package}/bin/atticd -f ${checkedConfigFile} --mode ${cfg.mode}";
           EnvironmentFile = cfg.credentialsFile;
           StateDirectory = "atticd"; # for usage with local storage and sqlite
           DynamicUser = true;
