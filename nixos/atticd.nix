@@ -36,6 +36,7 @@ let
   atticadmWrapper = pkgs.writeShellScriptBin "atticd-atticadm" ''
     exec systemd-run \
       --quiet \
+      --pipe \
       --pty \
       --same-dir \
       --wait \
