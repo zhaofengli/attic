@@ -67,7 +67,7 @@ pub async fn run_oobe() -> Result<()> {
         let in_two_years = Utc::now().checked_add_months(Months::new(24)).unwrap();
         let mut token = Token::new("root".to_string(), &in_two_years);
         let any_cache = CacheNamePattern::new("*".to_string()).unwrap();
-        let mut perm = token.get_or_insert_permission_mut(any_cache);
+        let perm = token.get_or_insert_permission_mut(any_cache);
         perm.pull = true;
         perm.push = true;
         perm.delete = true;
