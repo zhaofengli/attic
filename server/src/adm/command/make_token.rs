@@ -85,7 +85,7 @@ pub struct MakeToken {
 macro_rules! grant_permissions {
     ($token:ident, $list:expr, $perm:ident) => {
         for pattern in $list {
-            let mut perm = $token.get_or_insert_permission_mut(pattern.to_owned());
+            let perm = $token.get_or_insert_permission_mut(pattern.to_owned());
             perm.$perm = true;
         }
     };
