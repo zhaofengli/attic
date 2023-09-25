@@ -43,7 +43,7 @@ let
       --service-type=exec \
       --property=EnvironmentFile=${cfg.credentialsFile} \
       --property=DynamicUser=yes \
-      --property=User=atticd \
+      --property=User=${cfg.user} \
       --property=Environment=ATTICADM_PWD=$(pwd) \
       --working-directory / \
       -- \
