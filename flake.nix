@@ -47,6 +47,15 @@
 
       attic-nixpkgs = pkgs.callPackage ./package.nix { };
 
+      attic-ci-installer = pkgs.callPackage ./ci-installer.nix {
+        inherit self;
+      };
+
+      book = pkgs.callPackage ./book {
+        attic = packages.attic;
+      };
+    } // (lib.optionalAttrs (system != "x86_64-darwin") {
+      # Unfortunately, x86_64-darwin fails to evaluate static builds
       # TODO: Make this work with Crane
       attic-static = (pkgs.pkgsStatic.callPackage ./package.nix {
         nix = pkgs.pkgsStatic.nix.overrideAttrs (old: {
@@ -78,15 +87,7 @@
       attic-client-static = packages.attic-static.override {
         clientOnly = true;
       };
-
-      attic-ci-installer = pkgs.callPackage ./ci-installer.nix {
-        inherit self;
-      };
-
-      book = pkgs.callPackage ./book {
-        attic = packages.attic;
-      };
-    } // (lib.optionalAttrs pkgs.stdenv.isLinux {
+    }) // (lib.optionalAttrs pkgs.stdenv.isLinux {
       attic-server-image = pkgs.dockerTools.buildImage {
         name = "attic-server";
         tag = "main";
