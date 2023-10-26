@@ -186,6 +186,8 @@
           self.overlays.default
         ];
       };
+
+      attic-client = import ./nixos/attic-client.nix;
     };
   };
 }
