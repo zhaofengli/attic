@@ -18,6 +18,7 @@ mod api;
 mod chunking;
 pub mod config;
 pub mod database;
+mod decompression;
 pub mod error;
 pub mod gc;
 mod middleware;

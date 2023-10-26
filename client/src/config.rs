@@ -48,11 +48,45 @@ pub struct ConfigData {
     pub servers: HashMap<ServerName, ServerConfig>,
 }
 
+/// Compression Settings
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, Default)]
+pub enum CompressionConfig {
+    /// No compression.
+    None,
+    /// Brotli compression.
+    Brotli,
+    /// Deflate compression.
+    Deflate,
+    /// Gzip compression.
+    Gzip,
+    /// Xz compression.
+    Xz,
+    /// Zstd compression.
+    #[default]
+    Zstd,
+}
+
+impl CompressionConfig {
+    /// Returns the HTTP representation of this compression setting.
+    pub fn http_value(self) -> &'static str {
+        match self {
+            Self::None => "identity",
+            Self::Brotli => "br",
+            Self::Deflate => "deflate",
+            Self::Gzip => "gzip",
+            Self::Xz => "xz",
+            Self::Zstd => "zstd",
+        }
+    }
+}
+
 /// Configuration of a server.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
     pub endpoint: String,
     pub token: Option<String>,
+    #[serde(default)]
+    pub compression: CompressionConfig,
 }
 
 /// Wrapper that automatically saves the config once dropped.

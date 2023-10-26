@@ -3,7 +3,7 @@ use clap::Parser;
 
 use crate::cache::ServerName;
 use crate::cli::Opts;
-use crate::config::{Config, ServerConfig};
+use crate::config::{CompressionConfig, Config, ServerConfig};
 
 /// Log into an Attic server.
 #[derive(Debug, Parser)]
@@ -43,6 +43,7 @@ pub async fn run(opts: Opts) -> Result<()> {
             ServerConfig {
                 endpoint: sub.endpoint.to_owned(),
                 token: sub.token.to_owned(),
+                compression: CompressionConfig::Zstd,
             },
         );
     }

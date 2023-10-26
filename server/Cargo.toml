@@ -36,7 +36,7 @@ clap = { version = "4.3", features = ["derive"] }
 derivative = "2.2.0"
 digest = "0.10.7"
 displaydoc = "0.2.4"
-enum-as-inner = "0.5.2"
+enum-as-inner = "0.5.1"
 fastcdc = "3.0.3"
 futures = "0.3.28"
 hex = "0.4.3"
@@ -44,6 +44,7 @@ humantime = "2.1.0"
 humantime-serde = "1.1.1"
 itoa = "=1.0.5"
 maybe-owned = "0.3.4"
+pin-project = "1.0.12"
 rand = "0.8.5"
 regex = "1.8.3"
 ryu = "1.0.13"
@@ -68,6 +69,8 @@ features = [
 	"xz",
 	"zstd",
 	"brotli",
+	"deflate",
+	"gzip"
 ]
 
 [dependencies.sea-orm]
