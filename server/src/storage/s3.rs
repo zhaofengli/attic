@@ -12,6 +12,7 @@ use aws_sdk_s3::{
     config::{Credentials, Region},
     Client,
 };
+use aws_smithy_http::futures_stream_adapter::FuturesStreamCompatByteStream;
 use bytes::BytesMut;
 use futures::future::join_all;
 use futures::stream::StreamExt;
@@ -127,7 +128,7 @@ impl S3Backend {
         };
 
         // FIXME: Ugly
-        let client = if self.client.conf().region().unwrap().as_ref() == file.region {
+        let client = if self.client.config().region().unwrap().as_ref() == file.region {
             self.client.clone()
         } else {
             // FIXME: Cache the client instance
@@ -145,7 +146,7 @@ impl S3Backend {
         if prefer_stream {
             let output = req.send().await.map_err(ServerError::storage_error)?;
 
-            let stream = StreamExt::map(output.body, |item| {
+            let stream = StreamExt::map(FuturesStreamCompatByteStream::new(output.body), |item| {
                 item.map_err(|e| IoError::new(IoErrorKind::Other, e))
             });
 
