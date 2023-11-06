@@ -89,11 +89,8 @@ use std::error::Error as StdError;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
-pub use jwt_simple::{
-    algorithms::{HS256Key, MACLike},
-    claims::{Claims, JWTClaims},
-    prelude::UnixTimeStamp,
-};
+use jsonwebtoken::{Algorithm, Validation};
+pub use jsonwebtoken::{DecodingKey, EncodingKey};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, BoolFromInt};
 
@@ -124,6 +121,60 @@ macro_rules! require_permission_function {
             }
         }
     };
+}
+
+/// A set of JWT claims.
+///
+/// The `CustomClaims` parameter can be set to `NoCustomClaims` if only standard
+/// claims are used, or to a user-defined type that must be `serde`-serializable
+/// if custom claims are required.
+///
+/// NOTE: This has been lifted from jwt_simple, but UnixTimeStamp has been
+/// changed to i64, and Audiences is now a string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JWTClaims<CustomClaims> {
+    /// Time the claims were created at
+    #[serde(rename = "iat", default, skip_serializing_if = "Option::is_none")]
+    pub issued_at: Option<i64>,
+
+    /// Time the claims expire at
+    #[serde(rename = "exp", default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+
+    /// Time the claims will be invalid until
+    #[serde(rename = "nbf", default, skip_serializing_if = "Option::is_none")]
+    pub invalid_before: Option<i64>,
+
+    /// Issuer - This can be set to anything application-specific
+    #[serde(rename = "iss", default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+
+    /// Subject - This can be set to anything application-specific
+    #[serde(rename = "sub", default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+
+    /// Audience
+    #[serde(rename = "aud", default, skip_serializing_if = "Option::is_none")]
+    pub audiences: Option<String>,
+
+    /// JWT identifier
+    ///
+    /// That property was originally designed to avoid replay attacks, but
+    /// keeping all previously sent JWT token IDs is unrealistic.
+    ///
+    /// Replay attacks are better addressed by keeping only the timestamp of the
+    /// last valid token for a user, and rejecting anything older in future
+    /// tokens.
+    #[serde(rename = "jti", default, skip_serializing_if = "Option::is_none")]
+    pub jwt_id: Option<String>,
+
+    /// Nonce
+    #[serde(rename = "nonce", default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+
+    /// Custom (application-defined) claims
+    #[serde(flatten)]
+    pub custom: CustomClaims,
 }
 
 /// A validated JSON Web Token.
@@ -219,7 +270,7 @@ pub enum Error {
     PermissionDenied,
 
     /// JWT error: {0}
-    TokenError(jwt_simple::Error),
+    TokenError(jsonwebtoken::errors::Error),
 
     /// Base64 decode error: {0}
     Base64Error(base64::DecodeError),
@@ -227,9 +278,18 @@ pub enum Error {
 
 impl Token {
     /// Verifies and decodes a token.
-    pub fn from_jwt(token: &str, key: &HS256Key) -> Result<Self> {
-        key.verify_token(token, None)
+    pub fn from_jwt(token: &str, key: &jsonwebtoken::DecodingKey) -> Result<Self> {
+        // TODO: create a static validator for us so we don't have to construct a new one every time?
+
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_nbf = true;
+        // validation.set_issuer(&[ctx.config.flakehub_jwt_bound_issuer.clone()]);
+        // validation.set_audience(&[ctx.config.jwt_bound_audience.clone()]);
+        validation.set_required_spec_claims(&["exp", "nbf", "aud", "iss", "sub"]);
+
+        jsonwebtoken::decode::<JWTClaims<TokenClaims>>(token, &key, &validation)
             .map_err(Error::TokenError)
+            .map(|tokendata| tokendata.claims)
             .map(Token)
     }
 
@@ -241,9 +301,7 @@ impl Token {
 
         Self(JWTClaims {
             issued_at: None,
-            expires_at: Some(UnixTimeStamp::from_secs(
-                exp.timestamp().try_into().unwrap(),
-            )),
+            expires_at: Some(exp.timestamp()),
             invalid_before: None,
             issuer: None,
             subject: Some(sub),
@@ -255,8 +313,9 @@ impl Token {
     }
 
     /// Encodes the token.
-    pub fn encode(&self, key: &HS256Key) -> Result<String> {
-        key.authenticate(self.0.clone()).map_err(Error::TokenError)
+    pub fn encode(&self, key: &jsonwebtoken::EncodingKey) -> Result<String> {
+        let header = jsonwebtoken::Header::default();
+        jsonwebtoken::encode(&header, &self.0, key).map_err(Error::TokenError)
     }
 
     /// Returns the subject of the token.
@@ -361,9 +420,12 @@ impl CachePermission {
 
 impl StdError for Error {}
 
-pub fn decode_token_hs256_secret_base64(s: &str) -> Result<HS256Key> {
+pub fn decode_token_hs256_secret_base64(s: &str) -> Result<(EncodingKey, DecodingKey)> {
     let secret = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
-    Ok(HS256Key::from_bytes(&secret))
+    Ok((
+        EncodingKey::from_secret(&secret),
+        DecodingKey::from_secret(&secret),
+    ))
 }
 
 // bruh

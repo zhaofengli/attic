@@ -77,7 +77,7 @@ pub async fn run_oobe() -> Result<()> {
         perm.destroy_cache = true;
 
         let key = decode_token_hs256_secret_base64(&hs256_secret_base64).unwrap();
-        token.encode(&key)?
+        token.encode(&key.0)?
     };
 
     eprintln!();

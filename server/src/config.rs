@@ -12,7 +12,7 @@ use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
 
-use crate::access::{decode_token_hs256_secret_base64, HS256Key};
+use crate::access::{decode_token_hs256_secret_base64, DecodingKey, EncodingKey};
 use crate::narinfo::Compression as NixCompression;
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
 
@@ -115,7 +115,7 @@ pub struct Config {
     #[serde(deserialize_with = "deserialize_token_hs256_secret_base64")]
     #[serde(default = "load_token_hs256_secret_from_env")]
     #[derivative(Debug = "ignore")]
-    pub token_hs256_secret: HS256Key,
+    pub token_hs256_secret: (EncodingKey, DecodingKey),
 }
 
 /// Database connection configuration.
@@ -240,7 +240,7 @@ pub struct GarbageCollectionConfig {
     pub default_retention_period: Duration,
 }
 
-fn load_token_hs256_secret_from_env() -> HS256Key {
+fn load_token_hs256_secret_from_env() -> (EncodingKey, DecodingKey) {
     let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64)
         .expect("The HS256 secret must be specified in either token_hs256_secret or the ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 environment.");
 
@@ -296,7 +296,9 @@ impl Default for GarbageCollectionConfig {
     }
 }
 
-fn deserialize_token_hs256_secret_base64<'de, D>(deserializer: D) -> Result<HS256Key, D::Error>
+fn deserialize_token_hs256_secret_base64<'de, D>(
+    deserializer: D,
+) -> Result<(EncodingKey, DecodingKey), D::Error>
 where
     D: de::Deserializer<'de>,
 {
