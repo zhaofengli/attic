@@ -11,16 +11,16 @@ Attic provides [a NixOS module](https://github.com/zhaofengli/attic/blob/main/ni
 
 ## Generating the Credentials File
 
-The HS256 JWT secret can be generated with the `openssl` utility:
+The RS256 JWT secret can be generated with the `openssl` utility:
 
 ```bash
-openssl rand 64 | base64 -w0
+openssl genrsa -traditional -out private_key.pem 4096
 ```
 
 Create a file on the server containing the following contents:
 
 ```
-ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="output from openssl"
+ATTIC_SERVER_TOKEN_RS256_SECRET="output from openssl"
 ```
 
 Ensure the file is only accessible by root.

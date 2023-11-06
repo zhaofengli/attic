@@ -6,7 +6,7 @@ let
 
   cmd = {
     atticadm = "atticd-atticadm";
-    atticd = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 && atticd -f ${serverConfigFile}";
+    atticd = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_RS256_SECRET && atticd -f ${serverConfigFile}";
   };
 
   makeTestDerivation = pkgs.writeShellScript "make-drv" ''
@@ -125,7 +125,7 @@ in {
 
         # For testing only - Don't actually do this
         environment.etc."atticd.env".text = ''
-          ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
+          ATTIC_SERVER_TOKEN_RS256_SECRET="$(openssl genrsa -traditional -out - 512)"
         '';
 
         services.atticd = {
@@ -143,7 +143,7 @@ in {
           };
         };
 
-        environment.systemPackages = [ pkgs.attic-server ];
+        environment.systemPackages = [ pkgs.openssl pkgs.attic-server ];
 
         networking.firewall.allowedTCPPorts = [ 8080 ];
       };

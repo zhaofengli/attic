@@ -13,7 +13,7 @@ fn test_basic() {
     // "very secure secret"
     let base64_secret = "dmVyeSBzZWN1cmUgc2VjcmV0";
 
-    let dec_key = decode_token_hs256_secret_base64(base64_secret).unwrap();
+    let dec_key = decode_token_rs256_secret(base64_secret).unwrap().1;
 
     /*
       {

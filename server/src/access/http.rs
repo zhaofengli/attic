@@ -101,7 +101,7 @@ pub async fn apply_auth<B>(req: Request<B>, next: Next<B>) -> Response {
         .and_then(parse_authorization_header)
         .and_then(|jwt| {
             let state = req.extensions().get::<State>().unwrap();
-            let res_token = Token::from_jwt(&jwt, &state.config.token_hs256_secret.1);
+            let res_token = Token::from_jwt(&jwt, &state.config.token_rs256_secret.1);
             if let Err(e) = &res_token {
                 tracing::debug!("Ignoring bad JWT token: {}", e);
             }

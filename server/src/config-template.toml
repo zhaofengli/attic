@@ -36,10 +36,10 @@ allowed-hosts = []
 
 # JWT signing token
 #
-# Set this to the Base64 encoding of some random data.
-# You can also set it via the `ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64` environment
+# Set this to the PEM encoding of some random data.
+# You can also set it via the `ATTIC_SERVER_TOKEN_RS256_SECRET` environment
 # variable.
-token-hs256-secret-base64 = "%token_hs256_secret_base64%"
+token-rs256-secret = "%token_rs256_secret%"
 
 # Database connection
 [database]
@@ -85,7 +85,7 @@ path = "%storage_path%"
 #[storage.credentials]
 #  access_key_id = ""
 #  secret_access_key = ""
- 
+
 # Data chunking
 #
 # Warning: If you change any of the values here, it will be

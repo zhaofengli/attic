@@ -18,7 +18,7 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use tokio::fs::{self, OpenOptions};
 
-use crate::access::{decode_token_hs256_secret_base64, Token};
+use crate::access::{decode_token_rs256_secret, Token};
 use crate::config;
 use attic::cache::CacheNamePattern;
 
@@ -45,7 +45,7 @@ pub async fn run_oobe() -> Result<()> {
     let storage_path = data_path.join("storage");
     fs::create_dir_all(&storage_path).await?;
 
-    let hs256_secret_base64 = {
+    let rs256_secret = {
         let random: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(128)
@@ -58,7 +58,7 @@ pub async fn run_oobe() -> Result<()> {
     let config_content = CONFIG_TEMPLATE
         .replace("%database_url%", &database_url)
         .replace("%storage_path%", storage_path.to_str().unwrap())
-        .replace("%token_hs256_secret_base64%", &hs256_secret_base64);
+        .replace("%token_rs256_secret%", &rs256_secret);
 
     fs::write(&config_path, config_content.as_bytes()).await?;
 
@@ -76,7 +76,7 @@ pub async fn run_oobe() -> Result<()> {
         perm.configure_cache_retention = true;
         perm.destroy_cache = true;
 
-        let key = decode_token_hs256_secret_base64(&hs256_secret_base64).unwrap();
+        let key = decode_token_rs256_secret(&rs256_secret).unwrap();
         token.encode(&key.0)?
     };
 

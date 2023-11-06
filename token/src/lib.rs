@@ -1,7 +1,7 @@
 //! Access control.
 //!
 //! Access control in Attic is simple and stateless [0] - The server validates
-//! the JWT against a HS256 key and allows access based on the `https://jwt.attic.rs/v1`
+//! the JWT against a RS256 key and allows access based on the `https://jwt.attic.rs/v1`
 //! claim.
 //!
 //! One primary goal of the Attic Server is easy scalability. It's designed
@@ -86,11 +86,11 @@ mod tests;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
 use jsonwebtoken::{Algorithm, Validation};
 pub use jsonwebtoken::{DecodingKey, EncodingKey};
+use rsa::pkcs1::{DecodeRsaPrivateKey, EncodeRsaPublicKey};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, BoolFromInt};
 
@@ -272,8 +272,8 @@ pub enum Error {
     /// JWT error: {0}
     TokenError(jsonwebtoken::errors::Error),
 
-    /// Base64 decode error: {0}
-    Base64Error(base64::DecodeError),
+    /// RSA Key error: {0}
+    RsaKeyError(rsa::pkcs1::Error),
 }
 
 impl Token {
@@ -281,13 +281,13 @@ impl Token {
     pub fn from_jwt(token: &str, key: &jsonwebtoken::DecodingKey) -> Result<Self> {
         // TODO: create a static validator for us so we don't have to construct a new one every time?
 
-        let mut validation = Validation::new(Algorithm::HS256);
+        let mut validation = Validation::new(Algorithm::RS256);
         validation.validate_nbf = true;
         // validation.set_issuer(&[ctx.config.flakehub_jwt_bound_issuer.clone()]);
         // validation.set_audience(&[ctx.config.jwt_bound_audience.clone()]);
         validation.set_required_spec_claims(&["exp", "nbf", "aud", "iss", "sub"]);
 
-        jsonwebtoken::decode::<JWTClaims<TokenClaims>>(token, &key, &validation)
+        jsonwebtoken::decode::<JWTClaims<TokenClaims>>(token, key, &validation)
             .map_err(Error::TokenError)
             .map(|tokendata| tokendata.claims)
             .map(Token)
@@ -420,12 +420,18 @@ impl CachePermission {
 
 impl StdError for Error {}
 
-pub fn decode_token_hs256_secret_base64(s: &str) -> Result<(EncodingKey, DecodingKey)> {
-    let secret = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
-    Ok((
-        EncodingKey::from_secret(&secret),
-        DecodingKey::from_secret(&secret),
-    ))
+pub fn decode_token_rs256_secret(secret: &str) -> Result<(EncodingKey, DecodingKey)> {
+    let private_key = rsa::RsaPrivateKey::from_pkcs1_pem(secret).map_err(Error::RsaKeyError)?;
+    let public_key = private_key.to_public_key();
+    let public_pkcs1_pem = public_key
+        .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
+        .map_err(Error::RsaKeyError)?;
+
+    let encoding_key = EncodingKey::from_rsa_pem(secret.as_bytes()).map_err(Error::TokenError)?;
+    let decoding_key =
+        DecodingKey::from_rsa_pem(public_pkcs1_pem.as_bytes()).map_err(Error::TokenError)?;
+
+    Ok((encoding_key, decoding_key))
 }
 
 // bruh

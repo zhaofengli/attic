@@ -12,7 +12,7 @@ use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
 
-use crate::access::{decode_token_hs256_secret_base64, DecodingKey, EncodingKey};
+use crate::access::{decode_token_rs256_secret, DecodingKey, EncodingKey};
 use crate::narinfo::Compression as NixCompression;
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
 
@@ -26,8 +26,8 @@ const XDG_PREFIX: &str = "attic";
 /// This is useful for deploying to certain application platforms like Fly.io
 const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 
-/// Environment variable storing the Base64-encoded HS256 JWT secret.
-const ENV_TOKEN_HS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64";
+/// Environment variable storing the PEM-encoded RS256 JWT secret.
+const ENV_TOKEN_RS256_SECRET: &str = "ATTIC_SERVER_TOKEN_RS256_SECRET";
 
 /// Environment variable storing the database connection string.
 const ENV_DATABASE_URL: &str = "ATTIC_SERVER_DATABASE_URL";
@@ -110,12 +110,12 @@ pub struct Config {
 
     /// JSON Web Token HMAC secret.
     ///
-    /// Set this to the base64 encoding of a randomly generated secret.
-    #[serde(rename = "token-hs256-secret-base64")]
-    #[serde(deserialize_with = "deserialize_token_hs256_secret_base64")]
-    #[serde(default = "load_token_hs256_secret_from_env")]
+    /// Set this to the PEM encoding of a randomly generated secret.
+    #[serde(rename = "token-rs256-secret")]
+    #[serde(deserialize_with = "deserialize_token_rs256_secret")]
+    #[serde(default = "load_token_rs256_secret_from_env")]
     #[derivative(Debug = "ignore")]
-    pub token_hs256_secret: (EncodingKey, DecodingKey),
+    pub token_rs256_secret: (EncodingKey, DecodingKey),
 }
 
 /// Database connection configuration.
@@ -240,11 +240,11 @@ pub struct GarbageCollectionConfig {
     pub default_retention_period: Duration,
 }
 
-fn load_token_hs256_secret_from_env() -> (EncodingKey, DecodingKey) {
-    let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64)
-        .expect("The HS256 secret must be specified in either token_hs256_secret or the ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 environment.");
+fn load_token_rs256_secret_from_env() -> (EncodingKey, DecodingKey) {
+    let s = env::var(ENV_TOKEN_RS256_SECRET)
+        .expect("The RS256 secret must be specified in either token_rs256_secret or the ATTIC_SERVER_TOKEN_RS256_SECRET environment.");
 
-    decode_token_hs256_secret_base64(&s).expect("Failed to load as decoding key")
+    decode_token_rs256_secret(&s).expect("Failed to load as decoding key")
 }
 
 fn load_database_url_from_env() -> String {
@@ -296,7 +296,7 @@ impl Default for GarbageCollectionConfig {
     }
 }
 
-fn deserialize_token_hs256_secret_base64<'de, D>(
+fn deserialize_token_rs256_secret<'de, D>(
     deserializer: D,
 ) -> Result<(EncodingKey, DecodingKey), D::Error>
 where
@@ -305,7 +305,7 @@ where
     use de::Error;
 
     let s = String::deserialize(deserializer)?;
-    let key = decode_token_hs256_secret_base64(&s).map_err(Error::custom)?;
+    let key = decode_token_rs256_secret(&s).map_err(Error::custom)?;
 
     Ok(key)
 }
