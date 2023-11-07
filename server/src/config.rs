@@ -26,7 +26,7 @@ const XDG_PREFIX: &str = "attic";
 /// This is useful for deploying to certain application platforms like Fly.io
 const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 
-/// Environment variable storing the PEM-encoded RS256 JWT secret.
+/// Environment variable storing the base64 encoded, then PEM-encoded RS256 JWT secret.
 const ENV_TOKEN_RS256_SECRET: &str = "ATTIC_SERVER_TOKEN_RS256_SECRET";
 
 /// Environment variable storing the database connection string.

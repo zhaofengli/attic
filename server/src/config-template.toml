@@ -36,7 +36,7 @@ allowed-hosts = []
 
 # JWT signing token
 #
-# Set this to the PEM encoding of some random data.
+# Set this to the base64-encoded, then PEM encoding of an RSA key.
 # You can also set it via the `ATTIC_SERVER_TOKEN_RS256_SECRET` environment
 # variable.
 token-rs256-secret = "%token_rs256_secret%"
