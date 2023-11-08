@@ -285,14 +285,27 @@ pub enum Error {
 
 impl Token {
     /// Verifies and decodes a token.
-    pub fn from_jwt(token: &str, key: &jsonwebtoken::DecodingKey) -> Result<Self> {
-        // TODO: create a static validator for us so we don't have to construct a new one every time?
+    pub fn from_jwt(
+        token: &str,
+        key: &jsonwebtoken::DecodingKey,
+        maybe_bound_issuer: &Option<String>,
+        maybe_bound_audiences: &Option<Vec<String>>,
+    ) -> Result<Self> {
+        let mut required_spec_claims = vec!["exp", "nbf", "sub"];
 
         let mut validation = Validation::new(Algorithm::RS256);
         validation.validate_nbf = true;
-        // validation.set_issuer(&[ctx.config.flakehub_jwt_bound_issuer.clone()]);
-        // validation.set_audience(&[ctx.config.jwt_bound_audience.clone()]);
-        //validation.set_required_spec_claims(&["exp", "nbf", "aud", "iss", "sub"]);
+
+        if let Some(bound_issuer) = maybe_bound_issuer {
+            validation.set_issuer(&[bound_issuer]);
+            required_spec_claims.push("iss");
+        }
+        if let Some(bound_audiences) = maybe_bound_audiences {
+            validation.set_audience(&bound_audiences);
+            required_spec_claims.push("aud");
+        }
+
+        validation.set_required_spec_claims(&required_spec_claims);
 
         jsonwebtoken::decode::<JWTClaims<TokenClaims>>(token, key, &validation)
             .map_err(Error::TokenError)
@@ -320,10 +333,19 @@ impl Token {
     }
 
     /// Encodes the token.
-    pub fn encode(&self, key: &jsonwebtoken::EncodingKey) -> Result<String> {
-        let mut header = jsonwebtoken::Header::default();
-        header.alg = Algorithm::RS256;
-        jsonwebtoken::encode(&header, &self.0, key).map_err(Error::TokenError)
+    pub fn encode(
+        &self,
+        key: &jsonwebtoken::EncodingKey,
+        maybe_bound_issuer: &Option<String>,
+        maybe_bound_audiences: &Option<Vec<String>>,
+    ) -> Result<String> {
+        let header = jsonwebtoken::Header::new(Algorithm::RS256);
+
+        let mut claims = self.0.clone();
+        claims.issuer = maybe_bound_issuer.to_owned();
+        claims.audiences = maybe_bound_audiences.to_owned();
+
+        jsonwebtoken::encode(&header, &claims, key).map_err(Error::TokenError)
     }
 
     /// Returns the subject of the token.

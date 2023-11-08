@@ -45,7 +45,7 @@ pub async fn run_oobe() -> Result<()> {
     let storage_path = data_path.join("storage");
     fs::create_dir_all(&storage_path).await?;
 
-    let rs256_secret = {
+    let rs256_secret_base64 = {
         let random: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(128)
@@ -58,7 +58,7 @@ pub async fn run_oobe() -> Result<()> {
     let config_content = CONFIG_TEMPLATE
         .replace("%database_url%", &database_url)
         .replace("%storage_path%", storage_path.to_str().unwrap())
-        .replace("%token_rs256_secret%", &rs256_secret);
+        .replace("%token_rs256_secret_base64%", &rs256_secret_base64);
 
     fs::write(&config_path, config_content.as_bytes()).await?;
 
@@ -76,8 +76,8 @@ pub async fn run_oobe() -> Result<()> {
         perm.configure_cache_retention = true;
         perm.destroy_cache = true;
 
-        let key = decode_token_rs256_secret(&rs256_secret).unwrap();
-        token.encode(&key.0)?
+        let key = decode_token_rs256_secret(&rs256_secret_base64).unwrap();
+        token.encode(&key.0, &None, &None)?
     };
 
     eprintln!();

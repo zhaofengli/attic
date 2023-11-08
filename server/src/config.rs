@@ -109,12 +109,38 @@ pub struct Config {
     #[serde(default = "Default::default")]
     pub garbage_collection: GarbageCollectionConfig,
 
+    /// JSON Web Token.
+    pub jwt: JWTConfig,
+}
+
+/// JSON Web Token configuration.
+#[derive(Clone, Derivative, Deserialize)]
+#[derivative(Debug)]
+pub struct JWTConfig {
+    /// JSON Web Token RSA secret.
+    ///
+    /// Set this to the base64-encoded RSA PEM PKCS1 private key.
     #[serde(rename = "token-rs256-secret-base64")]
     #[serde(deserialize_with = "deserialize_token_rs256_secret_base64")]
     #[serde(default = "load_token_rs256_secret_from_env")]
     #[derivative(Debug = "ignore")]
-    // FIXME: move into jwtconfig struct
     pub token_rs256_secret: (EncodingKey, DecodingKey),
+
+    /// The `iss` claim of the JWT.
+    ///
+    /// If specified, received JWTs must have this claim, and its value must match this
+    /// configuration.
+    #[serde(rename = "token-bound-issuer")]
+    #[serde(default = "Default::default")]
+    pub token_bound_issuer: Option<String>,
+
+    /// The `aud` claim of the JWT.
+    ///
+    /// If specified, received JWTs must have this claim, and must contain one of the configured
+    /// values.
+    #[serde(rename = "token-bound-audiences")]
+    #[serde(default = "Default::default")]
+    pub token_bound_audiences: Option<Vec<String>>,
 }
 
 /// Database connection configuration.

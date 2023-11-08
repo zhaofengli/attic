@@ -34,13 +34,6 @@ allowed-hosts = []
 # cache.
 #require-proof-of-possession = true
 
-# JWT signing token
-#
-# Set this to the base64-encoded, then PEM encoding of an RSA key.
-# You can also set it via the `ATTIC_SERVER_TOKEN_RS256_SECRET` environment
-# variable.
-token-rs256-secret = "%token_rs256_secret%"
-
 # Database connection
 [database]
 # Connection URL
@@ -134,3 +127,29 @@ interval = "12 hours"
 # Zero (default) means time-based garbage-collection is
 # disabled by default. You can enable it on a per-cache basis.
 #default-retention-period = "6 months"
+
+[jwt]
+# WARNING: Changing _anything_ in this section will break any existing
+# tokens. If you need to regenerate them, ensure that you use the the
+# RS256 secret configured below and include the `iss` and `aud` claims.
+
+# JWT signing token
+#
+# Set this to the base64-encoded private half of an RSA PEM PKCS1.
+# You can also set it via the `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`
+# environment variable.
+token-rs256-secret-base64 = "%token_rs256_secret_base64%"
+
+# JWT `iss` claim
+#
+# Set this to the JWT issuer that you want to validate.
+# If this is set, all received JWTs will validate that the `iss` claim
+# matches this value.
+#token-bound-issuer = "some-issuer"
+
+# JWT `aud` claim
+#
+# Set this to the JWT audience(s) that you want to validate.
+# If this is set, all received JWTs will validate that the `aud` claim
+# contains at least one of these values.
+#token-bound-audiences = ["some-audience1", "some-audience2"]
