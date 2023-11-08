@@ -319,10 +319,12 @@ impl Token {
             attic_ns: Default::default(),
         };
 
+        let now_epoch = Utc::now().signed_duration_since(DateTime::UNIX_EPOCH);
+
         Self(JWTClaims {
             issued_at: None,
             expires_at: Some(exp.timestamp()),
-            invalid_before: None,
+            invalid_before: Some(now_epoch.num_seconds()),
             issuer: None,
             subject: Some(sub),
             audiences: None,
