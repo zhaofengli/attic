@@ -154,9 +154,9 @@ pub struct JWTClaims<CustomClaims> {
     #[serde(rename = "sub", default, skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
 
-    /// Audience
+    /// Audiences
     #[serde(rename = "aud", default, skip_serializing_if = "Option::is_none")]
-    pub audiences: Option<String>,
+    pub audiences: Option<Vec<String>>,
 
     /// JWT identifier
     ///
