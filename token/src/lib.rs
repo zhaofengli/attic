@@ -86,6 +86,7 @@ mod tests;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
 use jsonwebtoken::{Algorithm, Validation};
@@ -93,7 +94,6 @@ pub use jsonwebtoken::{DecodingKey, EncodingKey};
 use rsa::pkcs1::{DecodeRsaPrivateKey, EncodeRsaPublicKey};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, BoolFromInt};
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 
 use attic::cache::{CacheName, CacheNamePattern};
 

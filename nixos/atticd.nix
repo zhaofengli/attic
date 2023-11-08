@@ -16,7 +16,7 @@ let
   } ''
     cat $configFile
 
-    export ATTIC_SERVER_TOKEN_RS256_SECRET="$(${pkgs.openssl}/bin/openssl genrsa -traditional -out - 1024 | ${pkgs.coreutils}/bin/base64 -w0)"
+    export ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64="$(${pkgs.openssl}/bin/openssl genrsa -traditional 4096 | ${pkgs.coreutils}/bin/base64 -w0)"
     export ATTIC_SERVER_DATABASE_URL="sqlite://:memory:"
     ${cfg.package}/bin/atticd --mode check-config -f $configFile
     cat <$configFile >$out
@@ -78,8 +78,8 @@ in
           Path to an EnvironmentFile containing required environment
           variables:
 
-          - ATTIC_SERVER_TOKEN_RS256_SECRET: The PEM-encoded version of the
-            RS256 JWT secret. Generate it with `openssl genrsa -traditional -out - 4096 | base64 -w0`.
+          - ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64: The base64-encoded RSA PEM PKCS1 of the
+            RS256 JWT secret. Generate it with `openssl genrsa -traditional 4096 | base64 -w0`.
         '';
         type = types.nullOr types.path;
         default = null;

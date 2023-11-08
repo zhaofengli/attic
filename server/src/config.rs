@@ -26,8 +26,9 @@ const XDG_PREFIX: &str = "attic";
 /// This is useful for deploying to certain application platforms like Fly.io
 const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 
-/// Environment variable storing the base64 encoded, then PEM-encoded RS256 JWT secret.
-const ENV_TOKEN_RS256_SECRET: &str = "ATTIC_SERVER_TOKEN_RS256_SECRET";
+/// Environment variable storing the base64-encoded RSA PEM PKCS1 private key (used for signing and
+/// verifying received JWTs).
+const ENV_TOKEN_RS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64";
 
 /// Environment variable storing the database connection string.
 const ENV_DATABASE_URL: &str = "ATTIC_SERVER_DATABASE_URL";
@@ -108,13 +109,11 @@ pub struct Config {
     #[serde(default = "Default::default")]
     pub garbage_collection: GarbageCollectionConfig,
 
-    /// JSON Web Token HMAC secret.
-    ///
-    /// Set this to the PEM encoding of a randomly generated secret.
-    #[serde(rename = "token-rs256-secret")]
-    #[serde(deserialize_with = "deserialize_token_rs256_secret")]
+    #[serde(rename = "token-rs256-secret-base64")]
+    #[serde(deserialize_with = "deserialize_token_rs256_secret_base64")]
     #[serde(default = "load_token_rs256_secret_from_env")]
     #[derivative(Debug = "ignore")]
+    // FIXME: move into jwtconfig struct
     pub token_rs256_secret: (EncodingKey, DecodingKey),
 }
 
@@ -241,15 +240,19 @@ pub struct GarbageCollectionConfig {
 }
 
 fn load_token_rs256_secret_from_env() -> (EncodingKey, DecodingKey) {
-    let s = env::var(ENV_TOKEN_RS256_SECRET)
-        .expect("The RS256 secret must be specified in either token_rs256_secret or the ATTIC_SERVER_TOKEN_RS256_SECRET environment.");
+    let s = env::var(ENV_TOKEN_RS256_SECRET_BASE64).expect(&format!(
+        "The RS256 secret must be specified in either jwt.token-rs256-secret-base64 \
+        or the {ENV_TOKEN_RS256_SECRET_BASE64} environment."
+    ));
 
     decode_token_rs256_secret(&s).expect("Failed to load as decoding key")
 }
 
 fn load_database_url_from_env() -> String {
-    env::var(ENV_DATABASE_URL)
-        .expect("Database URL must be specified in either database.url or the ATTIC_SERVER_DATABASE_URL environment.")
+    env::var(ENV_DATABASE_URL).expect(&format!(
+        "Database URL must be specified in either database.url \
+        or the {ENV_DATABASE_URL} environment."
+    ))
 }
 
 impl CompressionConfig {
@@ -296,7 +299,7 @@ impl Default for GarbageCollectionConfig {
     }
 }
 
-fn deserialize_token_rs256_secret<'de, D>(
+fn deserialize_token_rs256_secret_base64<'de, D>(
     deserializer: D,
 ) -> Result<(EncodingKey, DecodingKey), D::Error>
 where
