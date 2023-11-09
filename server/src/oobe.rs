@@ -77,7 +77,7 @@ pub async fn run_oobe() -> Result<()> {
         perm.destroy_cache = true;
 
         let key = decode_token_rs256_secret(&rs256_secret_base64).unwrap();
-        token.encode(&key.0, &None, &None)?
+        token.encode(jsonwebtoken::Algorithm::RS256, &key.0, &None, &None)?
     };
 
     eprintln!();

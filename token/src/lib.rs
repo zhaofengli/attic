@@ -1,7 +1,7 @@
 //! Access control.
 //!
 //! Access control in Attic is simple and stateless [0] - The server validates
-//! the JWT against a RS256 key and allows access based on the `https://jwt.attic.rs/v1`
+//! the JWT against the configured key and allows access based on the `https://jwt.attic.rs/v1`
 //! claim.
 //!
 //! One primary goal of the Attic Server is easy scalability. It's designed
@@ -287,13 +287,14 @@ impl Token {
     /// Verifies and decodes a token.
     pub fn from_jwt(
         token: &str,
+        key_algorithm: Algorithm,
         key: &jsonwebtoken::DecodingKey,
         maybe_bound_issuer: &Option<String>,
         maybe_bound_audiences: &Option<Vec<String>>,
     ) -> Result<Self> {
         let mut required_spec_claims = vec!["exp", "nbf", "sub"];
 
-        let mut validation = Validation::new(Algorithm::RS256);
+        let mut validation = Validation::new(key_algorithm);
         validation.validate_nbf = true;
 
         if let Some(bound_issuer) = maybe_bound_issuer {
@@ -337,11 +338,12 @@ impl Token {
     /// Encodes the token.
     pub fn encode(
         &self,
+        key_algorithm: Algorithm,
         key: &jsonwebtoken::EncodingKey,
         maybe_bound_issuer: &Option<String>,
         maybe_bound_audiences: &Option<Vec<String>>,
     ) -> Result<String> {
-        let header = jsonwebtoken::Header::new(Algorithm::RS256);
+        let header = jsonwebtoken::Header::new(key_algorithm);
 
         let mut claims = self.0.clone();
         claims.issuer = maybe_bound_issuer.to_owned();
@@ -451,6 +453,15 @@ impl CachePermission {
 }
 
 impl StdError for Error {}
+
+pub fn decode_token_hs256_secret(s: &str) -> Result<(EncodingKey, DecodingKey)> {
+    let secret = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
+
+    let encoding_key = EncodingKey::from_secret(&secret);
+    let decoding_key = DecodingKey::from_secret(&secret);
+
+    Ok((encoding_key, decoding_key))
+}
 
 pub fn decode_token_rs256_secret(s: &str) -> Result<(EncodingKey, DecodingKey)> {
     let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;

@@ -301,6 +301,7 @@ dependencies = [
  "humantime",
  "humantime-serde",
  "itoa",
+ "jsonwebtoken",
  "maybe-owned",
  "rand",
  "regex",

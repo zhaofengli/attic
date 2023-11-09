@@ -35,7 +35,14 @@ fn test_basic() {
     // TOKEN=$(jq -c < json | jwt encode --alg RS256 --secret @./rs256 -)
     let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJjYWNoZS1ybyI6eyJyIjoxfSwiY2FjaGUtcnciOnsiciI6MSwidyI6MX0sInRlYW0tKiI6eyJjYyI6MSwiciI6MSwidyI6MX19fSwiaWF0IjoxNjk5NzM0NTU3LCJuYmYiOjAsInN1YiI6Im1lb3cifQ.k1TCqAg5_yaBQByKnYn5zSvMsYi8XrHe1h8T2hijZiP1SsYYnKphKKm0e61lmr3tSM-3dtRRCNGB7elhetpuz2jz8fWyBmpjO-yIX2uB787iRKVjaVCEKSPjcKO9lGp9LlxKdNH0SLRmdwkJGQUHbzN6QurfiV4C54cPxC_43EamkOqFUFmmwohi_r76RZtMb8uyt-9t7Canpm7GfJg4uVg3MLgbvCKxJ4BSu4UgXPz-MYupHS_pIEtlCY8FjlVrXlBLAleUvcBPY2qML9gxpqBrh9s1qfLpCeTZkG-vDjb_Y8X0gXa0OshFrvnoIyHwDc9jmj1X35T0YslyjbQXWQ";
 
-    let decoded = Token::from_jwt(token, &dec_key, &None, &None).unwrap();
+    let decoded = Token::from_jwt(
+        token,
+        jsonwebtoken::Algorithm::RS256,
+        &dec_key,
+        &None,
+        &None,
+    )
+    .unwrap();
 
     let perm_rw = decoded.get_permission_for_cache(&cache! { "cache-rw" });
 

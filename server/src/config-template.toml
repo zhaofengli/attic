@@ -131,14 +131,7 @@ interval = "12 hours"
 [jwt]
 # WARNING: Changing _anything_ in this section will break any existing
 # tokens. If you need to regenerate them, ensure that you use the the
-# RS256 secret configured below and include the `iss` and `aud` claims.
-
-# JWT signing token
-#
-# Set this to the base64-encoded private half of an RSA PEM PKCS1.
-# You can also set it via the `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`
-# environment variable.
-token-rs256-secret-base64 = "%token_rs256_secret_base64%"
+# correct secret and include the `iss` and `aud` claims.
 
 # JWT `iss` claim
 #
@@ -153,3 +146,18 @@ token-rs256-secret-base64 = "%token_rs256_secret_base64%"
 # If this is set, all received JWTs will validate that the `aud` claim
 # contains at least one of these values.
 #token-bound-audiences = ["some-audience1", "some-audience2"]
+
+[jwt.signing]
+# JWT RS256 secret key
+#
+# Set this to the base64-encoded private half of an RSA PEM PKCS1 key.
+# You can also set it via the `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`
+# environment variable.
+token-rs256-secret-base64 = "%token_rs256_secret_base64%"
+
+# JWT HS256 secret key
+#
+# Set this to the base64-encoded HMAC secret key.
+# You can also set it via the `ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64`
+# environment variable.
+#token-hs256-secret-base64 = ""
