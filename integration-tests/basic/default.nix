@@ -212,9 +212,9 @@ in {
 
       ${lib.optionalString (config.storage == "local") ''
       with subtest("Check that all chunks are actually deleted after GC"):
-          files = server.succeed("find /var/lib/atticd/storage -type f")
+          files = server.succeed("find /var/lib/atticd/storage -type f ! -name 'VERSION'")
           print(f"Remaining files: {files}")
-          assert files.strip() == ""
+          assert files.strip() == "", "Some files remain after GC: " + files
       ''}
 
       with subtest("Check that we can include the upload info in the payload"):
