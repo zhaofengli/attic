@@ -253,6 +253,7 @@ dependencies = [
  "futures",
  "humantime",
  "indicatif",
+ "indoc",
  "lazy_static",
  "notify",
  "regex",
@@ -260,6 +261,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-util",
  "toml 0.7.4",
  "tracing",
  "tracing-subscriber",
@@ -2119,6 +2121,12 @@ dependencies = [
  "portable-atomic 0.3.20",
  "unicode-width",
 ]
+
+[[package]]
+name = "indoc"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e186cfbae8084e513daff4240b4797e342f988cecda4fb6c939150f96315fd8"
 
 [[package]]
 name = "inotify"
