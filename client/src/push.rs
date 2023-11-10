@@ -74,6 +74,7 @@ pub struct Pusher {
     cache_config: CacheConfig,
     workers: Vec<JoinHandle<HashMap<StorePath, Result<()>>>>,
     sender: JobSender,
+    active_jobs: Arc<Mutex<usize>>,
 }
 
 /// A wrapper over a `Pusher` that accepts a stream of `StorePath`s.
@@ -98,9 +99,12 @@ pub struct Pusher {
 /// closure computations and API calls. It also remembers which paths already
 /// exist on the remote cache. By default, it submits a batch if it's been 2
 /// seconds since the last path is queued or it's been 10 seconds in total.
+#[derive(Clone)]
 pub struct PushSession {
     /// Sender to the batching future.
     sender: channel::Sender<Vec<StorePath>>,
+    active_push_jobs: Arc<Mutex<usize>>,
+    pending_jobs: Arc<Mutex<usize>>,
 }
 
 enum SessionQueuePoll {
@@ -141,6 +145,7 @@ impl Pusher {
     ) -> Self {
         let (sender, receiver) = channel::unbounded();
         let mut workers = Vec::new();
+        let active_jobs = Arc::new(Mutex::new(0usize));
 
         for _ in 0..config.num_workers {
             workers.push(spawn(Self::worker(
@@ -149,6 +154,7 @@ impl Pusher {
                 api.clone(),
                 cache.clone(),
                 mp.clone(),
+                active_jobs.clone(),
                 config,
             )));
         }
@@ -160,6 +166,7 @@ impl Pusher {
             cache_config,
             workers,
             sender,
+            active_jobs,
         }
     }
 
@@ -220,6 +227,7 @@ impl Pusher {
         api: ApiClient,
         cache: CacheName,
         mp: MultiProgress,
+        active_jobs: Arc<Mutex<usize>>,
         config: PushConfig,
     ) -> HashMap<StorePath, Result<()>> {
         let mut results = HashMap::new();
@@ -233,6 +241,10 @@ impl Pusher {
                 }
             };
 
+            {
+                let mut jobs = active_jobs.lock().await;
+                *jobs += 1;
+            }
             let store_path = path_info.path.clone();
 
             let r = upload_path(
@@ -246,6 +258,11 @@ impl Pusher {
             .await;
 
             results.insert(store_path, r);
+
+            {
+                let mut jobs = active_jobs.lock().await;
+                *jobs -= 1;
+            }
         }
 
         results
@@ -255,6 +272,10 @@ impl Pusher {
 impl PushSession {
     pub fn with_pusher(pusher: Pusher, config: PushSessionConfig) -> Self {
         let (sender, receiver) = channel::unbounded();
+        let pending_jobs = Arc::new(Mutex::new(0usize));
+
+        let active_push_jobs = pusher.active_jobs.clone();
+        let pending_jobs_clone = pending_jobs.clone();
 
         let known_paths_mutex = Arc::new(Mutex::new(HashSet::new()));
 
@@ -267,6 +288,7 @@ impl PushSession {
                     config,
                     known_paths_mutex.clone(),
                     receiver.clone(),
+                    pending_jobs_clone.clone(),
                 )
                 .await
                 {
@@ -277,7 +299,25 @@ impl PushSession {
             }
         });
 
-        Self { sender }
+        Self {
+            sender,
+            active_push_jobs,
+            pending_jobs,
+        }
+    }
+
+    pub async fn wait_finished(&self) {
+        // maybe add a counter and require the jobs to be zero for a couple of iterations to prevent
+        // a single race condition from interrupting remaining uploads
+        loop {
+            time::sleep(Duration::from_millis(500)).await;
+            let pending = *self.pending_jobs.lock().await;
+            let active = *self.active_push_jobs.lock().await;
+
+            if (active + pending) == 0 {
+                break;
+            }
+        }
     }
 
     async fn worker(
@@ -285,6 +325,7 @@ impl PushSession {
         config: PushSessionConfig,
         known_paths_mutex: Arc<Mutex<HashSet<StorePathHash>>>,
         receiver: channel::Receiver<Vec<StorePath>>,
+        pending_jobs: Arc<Mutex<usize>>,
     ) -> Result<()> {
         let mut roots = HashSet::new();
 
@@ -304,6 +345,8 @@ impl PushSession {
 
                         match poll {
                             SessionQueuePoll::Paths(store_paths) => {
+                                let mut pending = pending_jobs.lock().await;
+                                *pending += store_paths.len();
                                 roots.extend(store_paths.into_iter());
                             }
                             SessionQueuePoll::Closed => {
@@ -321,6 +364,8 @@ impl PushSession {
                     false
                 },
             };
+
+            let pending_count = roots.len();
 
             // Compute push plan
             let roots_vec: Vec<StorePath> = {
@@ -347,6 +392,10 @@ impl PushSession {
             for (store_path_hash, path_info) in plan.store_path_map.into_iter() {
                 pusher.queue(path_info).await?;
                 known_paths.insert(store_path_hash);
+            }
+            {
+                let mut pending = pending_jobs.lock().await;
+                *pending -= pending_count;
             }
 
             drop(known_paths);
