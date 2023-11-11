@@ -280,7 +280,7 @@ pub enum Error {
     RsaKeyError(rsa::pkcs1::Error),
 
     /// Failure decoding the base64 layer of the base64 encoded PEM
-    Utf8Error(std::str::Utf8Error)
+    Utf8Error(std::str::Utf8Error),
 }
 
 impl Token {
