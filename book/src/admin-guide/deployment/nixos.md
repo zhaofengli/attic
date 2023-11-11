@@ -14,13 +14,13 @@ Attic provides [a NixOS module](https://github.com/zhaofengli/attic/blob/main/ni
 The RS256 JWT secret can be generated with the `openssl` utility:
 
 ```bash
-nix run nixpkgs#openssl -- genrsa -traditional -out - 4096 | base64 -w0
+nix run nixpkgs#openssl -- genrsa -traditional 4096 | base64 -w0
 ```
 
 Create a file on the server containing the following contents:
 
 ```
-ATTIC_SERVER_TOKEN_RS256_SECRET="output from above"
+ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64="output from above"
 ```
 
 Ensure the file is only accessible by root.
