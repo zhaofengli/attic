@@ -207,49 +207,49 @@ pub struct AtticAccess {
 pub struct CachePermission {
     /// Can pull objects from the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "r")]
     #[serde_as(as = "BoolFromInt")]
     pub pull: bool,
 
     /// Can push objects to the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "w")]
     #[serde_as(as = "BoolFromInt")]
     pub push: bool,
 
     /// Can delete objects from the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "d")]
     #[serde_as(as = "BoolFromInt")]
     pub delete: bool,
 
     /// Can create the cache itself.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cc")]
     #[serde_as(as = "BoolFromInt")]
     pub create_cache: bool,
 
     /// Can reconfigure the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cr")]
     #[serde_as(as = "BoolFromInt")]
     pub configure_cache: bool,
 
     /// Can configure retention/quota settings.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cq")]
     #[serde_as(as = "BoolFromInt")]
     pub configure_cache_retention: bool,
 
     /// Can destroy the cache itself.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cd")]
     #[serde_as(as = "BoolFromInt")]
     pub destroy_cache: bool,
@@ -478,9 +478,4 @@ pub fn decode_token_rs256_secret(s: &str) -> Result<(EncodingKey, DecodingKey)> 
         DecodingKey::from_rsa_pem(public_pkcs1_pem.as_bytes()).map_err(Error::TokenError)?;
 
     Ok((encoding_key, decoding_key))
-}
-
-// bruh
-fn is_false(b: &bool) -> bool {
-    !b
 }
