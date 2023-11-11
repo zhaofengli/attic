@@ -47,6 +47,8 @@ You can import the module in one of two ways:
     settings = {
       listen = "[::]:8080";
 
+      jwt = { };
+
       # Data chunking
       #
       # Warning: If you change any of the values here, it will be
