@@ -14,8 +14,7 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{Months, Utc};
-use rand::distributions::Alphanumeric;
-use rand::Rng;
+use rsa::pkcs1::EncodeRsaPrivateKey;
 use tokio::fs::{self, OpenOptions};
 
 use crate::access::{decode_token_rs256_secret, Token};
@@ -46,13 +45,11 @@ pub async fn run_oobe() -> Result<()> {
     fs::create_dir_all(&storage_path).await?;
 
     let rs256_secret_base64 = {
-        let random: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(128)
-            .map(char::from)
-            .collect();
+        let mut rng = rand::thread_rng();
+        let private_key = rsa::RsaPrivateKey::new(&mut rng, 4096)?;
+        let pkcs1_pem = private_key.to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)?;
 
-        BASE64_STANDARD.encode(random)
+        BASE64_STANDARD.encode(pkcs1_pem.as_bytes())
     };
 
     let config_content = CONFIG_TEMPLATE

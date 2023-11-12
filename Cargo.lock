@@ -305,6 +305,7 @@ dependencies = [
  "maybe-owned",
  "rand",
  "regex",
+ "rsa",
  "ryu",
  "sea-orm",
  "sea-orm-migration",
