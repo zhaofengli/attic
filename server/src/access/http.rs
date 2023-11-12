@@ -1,17 +1,15 @@
 //! HTTP middlewares for access control.
 
+use attic::cache::CacheName;
+use attic_token::util::parse_authorization_header;
 use axum::{http::Request, middleware::Next, response::Response};
-use jsonwebtoken::Algorithm;
 use sea_orm::DatabaseConnection;
 use tokio::sync::OnceCell;
 
 use crate::access::{CachePermission, Token};
-use crate::config::JWTSigningConfig;
 use crate::database::{entity::cache::CacheModel, AtticDatabase};
 use crate::error::ServerResult;
 use crate::{RequestState, State};
-use attic::cache::CacheName;
-use attic_token::util::parse_authorization_header;
 
 /// Auth state.
 #[derive(Debug)]
@@ -103,25 +101,19 @@ pub async fn apply_auth<B>(req: Request<B>, next: Next<B>) -> Response {
         .and_then(parse_authorization_header)
         .and_then(|jwt| {
             let state = req.extensions().get::<State>().unwrap();
-            let (algorithm, decoding_key) = match &state.config.jwt.signing_config {
-                JWTSigningConfig::HS256SignAndVerify { decoding_key, .. } => {
-                    (Algorithm::HS256, decoding_key)
-                }
-                JWTSigningConfig::RS256SignAndVerify { decoding_key, .. } => {
-                    (Algorithm::RS256, decoding_key)
-                }
-            };
+            let signature_type = state.config.jwt.signing_config.clone().into();
 
             let res_token = Token::from_jwt(
                 &jwt,
-                algorithm,
-                decoding_key,
+                &signature_type,
                 &state.config.jwt.token_bound_issuer,
                 &state.config.jwt.token_bound_audiences,
             );
+
             if let Err(e) = &res_token {
                 tracing::debug!("Ignoring bad JWT token: {}", e);
             }
+
             res_token.ok()
         });
 

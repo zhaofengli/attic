@@ -17,7 +17,7 @@ use chrono::{Months, Utc};
 use rsa::pkcs1::EncodeRsaPrivateKey;
 use tokio::fs::{self, OpenOptions};
 
-use crate::access::{decode_token_rs256_secret, Token};
+use crate::access::{decode_token_rs256_secret_base64, SignatureType, Token};
 use crate::config;
 use attic::cache::CacheNamePattern;
 
@@ -73,8 +73,8 @@ pub async fn run_oobe() -> Result<()> {
         perm.configure_cache_retention = true;
         perm.destroy_cache = true;
 
-        let key = decode_token_rs256_secret(&rs256_secret_base64).unwrap();
-        token.encode(jsonwebtoken::Algorithm::RS256, &key.0, &None, &None)?
+        let key = decode_token_rs256_secret_base64(&rs256_secret_base64).unwrap();
+        token.encode(&SignatureType::RS256(key), &None, &None)?
     };
 
     eprintln!();

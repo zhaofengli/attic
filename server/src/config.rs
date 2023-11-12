@@ -1,5 +1,6 @@
 //! Server configuration.
 
+use std::collections::HashSet;
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -7,13 +8,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_compression::Level as CompressionLevel;
+use attic_token::SignatureType;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
 
 use crate::access::{
-    decode_token_hs256_secret, decode_token_rs256_secret, DecodingKey, EncodingKey,
+    decode_token_hs256_secret_base64, decode_token_rs256_secret_base64, HS256Key, RS256KeyPair,
 };
 use crate::narinfo::Compression as NixCompression;
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
@@ -137,7 +139,7 @@ pub struct JWTConfig {
     /// values.
     #[serde(rename = "token-bound-audiences")]
     #[serde(default = "Default::default")]
-    pub token_bound_audiences: Option<Vec<String>>,
+    pub token_bound_audiences: Option<HashSet<String>>,
 
     #[serde(rename = "signing")]
     #[serde(default = "load_jwt_signing_config_from_env")]
@@ -152,10 +154,7 @@ pub enum JWTSigningConfig {
     /// Set this to the base64-encoded HMAC secret to use for signing and verifying JWTs.
     #[serde(rename = "token-hs256-secret-base64")]
     #[serde(deserialize_with = "deserialize_token_hs256_secret_base64")]
-    HS256SignAndVerify {
-        encoding_key: EncodingKey,
-        decoding_key: DecodingKey,
-    },
+    HS256SignAndVerify(HS256Key),
 
     /// JSON Web Token RSA secret.
     ///
@@ -163,10 +162,16 @@ pub enum JWTSigningConfig {
     /// JWTs.
     #[serde(rename = "token-rs256-secret-base64")]
     #[serde(deserialize_with = "deserialize_token_rs256_secret_base64")]
-    RS256SignAndVerify {
-        encoding_key: EncodingKey,
-        decoding_key: DecodingKey,
-    },
+    RS256SignAndVerify(RS256KeyPair),
+}
+
+impl From<JWTSigningConfig> for SignatureType {
+    fn from(value: JWTSigningConfig) -> Self {
+        match value {
+            JWTSigningConfig::HS256SignAndVerify(key) => Self::HS256(key),
+            JWTSigningConfig::RS256SignAndVerify(key) => Self::RS256(key),
+        }
+    }
 }
 
 /// Database connection configuration.
@@ -324,27 +329,17 @@ fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
 fn load_token_hs256_secret_from_env() -> Option<JWTSigningConfig> {
     let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64).ok()?;
 
-    decode_token_hs256_secret(&s)
+    decode_token_hs256_secret_base64(&s)
         .ok()
-        .map(
-            |(encoding_key, decoding_key)| JWTSigningConfig::HS256SignAndVerify {
-                encoding_key,
-                decoding_key,
-            },
-        )
+        .map(JWTSigningConfig::HS256SignAndVerify)
 }
 
 fn load_token_rs256_secret_from_env() -> Option<JWTSigningConfig> {
     let s = env::var(ENV_TOKEN_RS256_SECRET_BASE64).ok()?;
 
-    decode_token_rs256_secret(&s)
+    decode_token_rs256_secret_base64(&s)
         .ok()
-        .map(
-            |(encoding_key, decoding_key)| JWTSigningConfig::RS256SignAndVerify {
-                encoding_key,
-                decoding_key,
-            },
-        )
+        .map(JWTSigningConfig::RS256SignAndVerify)
 }
 
 fn load_database_url_from_env() -> String {
@@ -398,30 +393,26 @@ impl Default for GarbageCollectionConfig {
     }
 }
 
-fn deserialize_token_hs256_secret_base64<'de, D>(
-    deserializer: D,
-) -> Result<(EncodingKey, DecodingKey), D::Error>
+fn deserialize_token_hs256_secret_base64<'de, D>(deserializer: D) -> Result<HS256Key, D::Error>
 where
     D: de::Deserializer<'de>,
 {
     use de::Error;
 
     let s = String::deserialize(deserializer)?;
-    let key = decode_token_hs256_secret(&s).map_err(Error::custom)?;
+    let key = decode_token_hs256_secret_base64(&s).map_err(Error::custom)?;
 
     Ok(key)
 }
 
-fn deserialize_token_rs256_secret_base64<'de, D>(
-    deserializer: D,
-) -> Result<(EncodingKey, DecodingKey), D::Error>
+fn deserialize_token_rs256_secret_base64<'de, D>(deserializer: D) -> Result<RS256KeyPair, D::Error>
 where
     D: de::Deserializer<'de>,
 {
     use de::Error;
 
     let s = String::deserialize(deserializer)?;
-    let key = decode_token_rs256_secret(&s).map_err(Error::custom)?;
+    let key = decode_token_rs256_secret_base64(&s).map_err(Error::custom)?;
 
     Ok(key)
 }

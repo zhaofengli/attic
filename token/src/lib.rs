@@ -83,15 +83,18 @@ pub mod util;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
-use jsonwebtoken::{Algorithm, Validation};
-pub use jsonwebtoken::{DecodingKey, EncodingKey};
-use rsa::pkcs1::{DecodeRsaPrivateKey, EncodeRsaPublicKey};
+use jwt_simple::prelude::{Duration, RSAKeyPairLike, RSAPublicKeyLike, VerificationOptions};
+pub use jwt_simple::{
+    algorithms::{HS256Key, MACLike, RS256KeyPair},
+    claims::{Claims, JWTClaims},
+    prelude::UnixTimeStamp,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, BoolFromInt};
 
@@ -122,60 +125,6 @@ macro_rules! require_permission_function {
             }
         }
     };
-}
-
-/// A set of JWT claims.
-///
-/// The `CustomClaims` parameter can be set to `NoCustomClaims` if only standard
-/// claims are used, or to a user-defined type that must be `serde`-serializable
-/// if custom claims are required.
-///
-/// NOTE: This has been lifted from jwt_simple, but UnixTimeStamp has been
-/// changed to i64, and Audiences is now a string.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JWTClaims<CustomClaims> {
-    /// Time the claims were created at
-    #[serde(rename = "iat", default, skip_serializing_if = "Option::is_none")]
-    pub issued_at: Option<i64>,
-
-    /// Time the claims expire at
-    #[serde(rename = "exp", default, skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<i64>,
-
-    /// Time the claims will be invalid until
-    #[serde(rename = "nbf", default, skip_serializing_if = "Option::is_none")]
-    pub invalid_before: Option<i64>,
-
-    /// Issuer - This can be set to anything application-specific
-    #[serde(rename = "iss", default, skip_serializing_if = "Option::is_none")]
-    pub issuer: Option<String>,
-
-    /// Subject - This can be set to anything application-specific
-    #[serde(rename = "sub", default, skip_serializing_if = "Option::is_none")]
-    pub subject: Option<String>,
-
-    /// Audiences
-    #[serde(rename = "aud", default, skip_serializing_if = "Option::is_none")]
-    pub audiences: Option<Vec<String>>,
-
-    /// JWT identifier
-    ///
-    /// That property was originally designed to avoid replay attacks, but
-    /// keeping all previously sent JWT token IDs is unrealistic.
-    ///
-    /// Replay attacks are better addressed by keeping only the timestamp of the
-    /// last valid token for a user, and rejecting anything older in future
-    /// tokens.
-    #[serde(rename = "jti", default, skip_serializing_if = "Option::is_none")]
-    pub jwt_id: Option<String>,
-
-    /// Nonce
-    #[serde(rename = "nonce", default, skip_serializing_if = "Option::is_none")]
-    pub nonce: Option<String>,
-
-    /// Custom (application-defined) claims
-    #[serde(flatten)]
-    pub custom: CustomClaims,
 }
 
 /// A validated JSON Web Token.
@@ -271,7 +220,7 @@ pub enum Error {
     PermissionDenied,
 
     /// JWT error: {0}
-    TokenError(jsonwebtoken::errors::Error),
+    TokenError(jwt_simple::Error),
 
     /// Base64 decode error: {0}
     Base64Error(base64::DecodeError),
@@ -283,35 +232,51 @@ pub enum Error {
     Utf8Error(std::str::Utf8Error),
 }
 
+/// The supported JWT signature types.
+pub enum SignatureType {
+    HS256(HS256Key),
+    RS256(RS256KeyPair),
+}
+
 impl Token {
     /// Verifies and decodes a token.
     pub fn from_jwt(
         token: &str,
-        key_algorithm: Algorithm,
-        key: &jsonwebtoken::DecodingKey,
+        signature_type: &SignatureType,
         maybe_bound_issuer: &Option<String>,
-        maybe_bound_audiences: &Option<Vec<String>>,
+        maybe_bound_audiences: &Option<HashSet<String>>,
     ) -> Result<Self> {
-        let mut required_spec_claims = vec!["exp", "nbf", "sub"];
+        let opts = VerificationOptions {
+            reject_before: None,
+            accept_future: false,
+            required_subject: None,
+            required_key_id: None,
+            required_public_key: None,
+            required_nonce: None,
+            allowed_issuers: maybe_bound_issuer
+                .as_ref()
+                .map(|s| [s.to_owned()].into())
+                .to_owned(),
+            allowed_audiences: maybe_bound_audiences.to_owned(),
+            time_tolerance: None,
+            max_validity: None,
+            max_token_length: None,
+            max_header_length: None,
+        };
 
-        let mut validation = Validation::new(key_algorithm);
-        validation.validate_nbf = true;
-
-        if let Some(bound_issuer) = maybe_bound_issuer {
-            validation.set_issuer(&[bound_issuer]);
-            required_spec_claims.push("iss");
+        match signature_type {
+            SignatureType::HS256(key) => key
+                .verify_token(token, Some(opts))
+                .map_err(Error::TokenError)
+                .map(Token),
+            SignatureType::RS256(key) => {
+                let public_key = key.public_key();
+                public_key
+                    .verify_token(token, Some(opts))
+                    .map_err(Error::TokenError)
+                    .map(Token)
+            }
         }
-        if let Some(bound_audiences) = maybe_bound_audiences {
-            validation.set_audience(&bound_audiences);
-            required_spec_claims.push("aud");
-        }
-
-        validation.set_required_spec_claims(&required_spec_claims);
-
-        jsonwebtoken::decode::<JWTClaims<TokenClaims>>(token, key, &validation)
-            .map_err(Error::TokenError)
-            .map(|tokendata| tokendata.claims)
-            .map(Token)
     }
 
     /// Creates a new token with an expiration timestamp.
@@ -324,8 +289,13 @@ impl Token {
 
         Self(JWTClaims {
             issued_at: None,
-            expires_at: Some(exp.timestamp()),
-            invalid_before: Some(now_epoch.num_seconds()),
+            expires_at: Some(UnixTimeStamp::from_secs(
+                exp.timestamp().try_into().unwrap(),
+            )),
+            invalid_before: Some(Duration::new(
+                now_epoch.num_seconds().try_into().unwrap(),
+                0,
+            )),
             issuer: None,
             subject: Some(sub),
             audiences: None,
@@ -338,18 +308,23 @@ impl Token {
     /// Encodes the token.
     pub fn encode(
         &self,
-        key_algorithm: Algorithm,
-        key: &jsonwebtoken::EncodingKey,
+        signature_type: &SignatureType,
         maybe_bound_issuer: &Option<String>,
-        maybe_bound_audiences: &Option<Vec<String>>,
+        maybe_bound_audiences: &Option<HashSet<String>>,
     ) -> Result<String> {
-        let header = jsonwebtoken::Header::new(key_algorithm);
+        let mut token = self.0.clone();
 
-        let mut claims = self.0.clone();
-        claims.issuer = maybe_bound_issuer.to_owned();
-        claims.audiences = maybe_bound_audiences.to_owned();
+        if let Some(issuer) = maybe_bound_issuer {
+            token = token.with_issuer(issuer);
+        }
+        if let Some(audiences) = maybe_bound_audiences {
+            token = token.with_audiences(audiences.to_owned());
+        }
 
-        jsonwebtoken::encode(&header, &claims, key).map_err(Error::TokenError)
+        match signature_type {
+            SignatureType::HS256(key) => key.authenticate(token).map_err(Error::TokenError),
+            SignatureType::RS256(key) => key.sign(token).map_err(Error::TokenError),
+        }
     }
 
     /// Returns the subject of the token.
@@ -454,28 +429,16 @@ impl CachePermission {
 
 impl StdError for Error {}
 
-pub fn decode_token_hs256_secret(s: &str) -> Result<(EncodingKey, DecodingKey)> {
-    let secret = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
-
-    let encoding_key = EncodingKey::from_secret(&secret);
-    let decoding_key = DecodingKey::from_secret(&secret);
-
-    Ok((encoding_key, decoding_key))
-}
-
-pub fn decode_token_rs256_secret(s: &str) -> Result<(EncodingKey, DecodingKey)> {
+pub fn decode_token_hs256_secret_base64(s: &str) -> Result<HS256Key> {
     let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
     let secret = std::str::from_utf8(&decoded).map_err(Error::Utf8Error)?;
+    Ok(HS256Key::from_bytes(&secret.as_bytes()))
+}
 
-    let private_key = rsa::RsaPrivateKey::from_pkcs1_pem(secret).map_err(Error::RsaKeyError)?;
-    let public_key = private_key.to_public_key();
-    let public_pkcs1_pem = public_key
-        .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
-        .map_err(Error::RsaKeyError)?;
+pub fn decode_token_rs256_secret_base64(s: &str) -> Result<RS256KeyPair> {
+    let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
+    let secret = std::str::from_utf8(&decoded).map_err(Error::Utf8Error)?;
+    let keypair = RS256KeyPair::from_pem(secret).map_err(Error::TokenError)?;
 
-    let encoding_key = EncodingKey::from_rsa_pem(&secret.as_bytes()).map_err(Error::TokenError)?;
-    let decoding_key =
-        DecodingKey::from_rsa_pem(public_pkcs1_pem.as_bytes()).map_err(Error::TokenError)?;
-
-    Ok((encoding_key, decoding_key))
+    Ok(keypair)
 }

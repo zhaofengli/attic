@@ -2,12 +2,11 @@ use anyhow::{anyhow, Result};
 use chrono::{Duration as ChronoDuration, Utc};
 use clap::Parser;
 use humantime::Duration;
-use jsonwebtoken::Algorithm;
 
 use crate::Opts;
 use attic::cache::CacheNamePattern;
 use attic_server::access::Token;
-use attic_server::config::{Config, JWTSigningConfig};
+use attic_server::config::Config;
 
 /// Generate a new token.
 ///
@@ -116,18 +115,10 @@ pub async fn run(config: Config, opts: Opts) -> Result<()> {
     if sub.dump_claims {
         println!("{}", serde_json::to_string(token.opaque_claims())?);
     } else {
-        let (algorithm, encoding_key) = match &config.jwt.signing_config {
-            JWTSigningConfig::HS256SignAndVerify { encoding_key, .. } => {
-                (Algorithm::HS256, encoding_key)
-            }
-            JWTSigningConfig::RS256SignAndVerify { encoding_key, .. } => {
-                (Algorithm::RS256, encoding_key)
-            }
-        };
+        let signature_type = config.jwt.signing_config.into();
 
         let encoded_token = token.encode(
-            algorithm,
-            &encoding_key,
+            &signature_type,
             &config.jwt.token_bound_issuer,
             &config.jwt.token_bound_audiences,
         )?;
