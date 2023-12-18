@@ -49,9 +49,6 @@ let
           ensureUsers = [
             {
               name = "atticd";
-              ensurePermissions = {
-                "DATABASE attic" = "ALL PRIVILEGES";
-              };
             }
 
             # For testing only - Don't actually do this
@@ -63,6 +60,10 @@ let
             }
           ];
         };
+
+        systemd.services.postgresql.postStart = lib.mkAfter ''
+          $PSQL -tAc 'ALTER DATABASE "attic" OWNER TO "atticd"'
+        '';
 
         services.atticd.settings = {
           database.url = "postgresql:///attic?host=/run/postgresql";
