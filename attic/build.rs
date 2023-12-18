@@ -11,10 +11,8 @@ fn main() {
 fn build_bridge() {
     // Temporary workaround for issue in <https://github.com/NixOS/nix/pull/8484>
     let hacky_include = {
-        let dir = tempfile::tempdir()
-            .expect("Failed to create temporary directory for workaround");
-        std::fs::write(dir.path().join("uds-remote-store.md"), "\"\"")
-            .unwrap();
+        let dir = tempfile::tempdir().expect("Failed to create temporary directory for workaround");
+        std::fs::write(dir.path().join("uds-remote-store.md"), "\"\"").unwrap();
         dir
     };
 

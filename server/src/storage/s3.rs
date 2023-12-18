@@ -5,11 +5,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use aws_sdk_s3::{
-    operation::get_object::builders::GetObjectFluentBuilder,
     config::Builder as S3ConfigBuilder,
-    types::{CompletedMultipartUpload, CompletedPart},
-    presigning::PresigningConfig,
     config::{Credentials, Region},
+    operation::get_object::builders::GetObjectFluentBuilder,
+    presigning::PresigningConfig,
+    types::{CompletedMultipartUpload, CompletedPart},
     Client,
 };
 use bytes::BytesMut;
@@ -141,7 +141,11 @@ impl S3Backend {
         Ok((client, file))
     }
 
-    async fn get_download(&self, req: GetObjectFluentBuilder, prefer_stream: bool) -> ServerResult<Download> {
+    async fn get_download(
+        &self,
+        req: GetObjectFluentBuilder,
+        prefer_stream: bool,
+    ) -> ServerResult<Download> {
         if prefer_stream {
             let output = req.send().await.map_err(ServerError::storage_error)?;
 
