@@ -29,7 +29,18 @@ let
   '';
 
   databaseModules = {
-    sqlite = {};
+    sqlite = {
+      testScriptPost = ''
+        from pathlib import Path
+        import os
+
+        schema = server.succeed("${pkgs.sqlite}/bin/sqlite3 /var/lib/atticd/server.db '.schema --indent'")
+
+        schema_path = Path(os.environ.get("out", os.getcwd())) / "schema.sql"
+        with open(schema_path, 'w') as f:
+            f.write(schema)
+      '';
+    };
     postgres = {
       server = {
         services.postgresql = {
@@ -57,6 +68,16 @@ let
           database.url = "postgresql:///attic?host=/run/postgresql";
         };
       };
+      testScriptPost = ''
+        from pathlib import Path
+        import os
+
+        schema = server.succeed("pg_dump --schema-only attic")
+
+        schema_path = Path(os.environ.get("out", os.getcwd())) / "schema.sql"
+        with open(schema_path, 'w') as f:
+            f.write(schema)
+      '';
     };
   };
 
@@ -229,6 +250,9 @@ in {
           client.succeed("attic cache destroy --no-confirm test")
           client.fail("attic cache info test")
           client.fail("curl -sL --fail-with-body http://server:8080/test/nix-cache-info")
+
+      ${databaseModules.${config.database}.testScriptPost or ""}
+      ${storageModules.${config.storage}.testScriptPost or ""}
     '';
   };
 }
