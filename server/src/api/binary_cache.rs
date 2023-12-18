@@ -215,10 +215,6 @@ async fn get_nar(
         let storage = state.storage().await?;
         match storage.download_file_db(remote_file, false).await? {
             Download::Url(url) => Ok(Redirect::temporary(&url).into_response()),
-            Download::Stream(stream) => {
-                let body = StreamBody::new(stream);
-                Ok(body.into_response())
-            }
             Download::AsyncRead(stream) => {
                 let stream = ReaderStream::new(stream);
                 let body = StreamBody::new(stream);
@@ -241,7 +237,6 @@ async fn get_nar(
                     IoErrorKind::Other,
                     "URLs not supported for NAR reassembly",
                 )),
-                Download::Stream(stream) => Ok(stream),
                 Download::AsyncRead(stream) => {
                     let stream: BoxStream<_> = Box::pin(ReaderStream::new(stream));
                     Ok(stream)
