@@ -3,7 +3,7 @@ use clap::Parser;
 
 use crate::cache::ServerName;
 use crate::cli::Opts;
-use crate::config::{Config, ServerConfig};
+use crate::config::{Config, ServerConfig, ServerTokenConfig};
 
 /// Log into an Attic server.
 #[derive(Debug, Parser)]
@@ -32,8 +32,10 @@ pub async fn run(opts: Opts) -> Result<()> {
 
         server.endpoint = sub.endpoint.to_owned();
 
-        if sub.token.is_some() {
-            server.token = sub.token.to_owned();
+        if let Some(token) = &sub.token {
+            server.token = Some(ServerTokenConfig::Raw {
+                token: token.clone(),
+            });
         }
     } else {
         eprintln!("✍️ Configuring server \"{}\"", sub.name.as_str());
@@ -42,7 +44,10 @@ pub async fn run(opts: Opts) -> Result<()> {
             sub.name.to_owned(),
             ServerConfig {
                 endpoint: sub.endpoint.to_owned(),
-                token: sub.token.to_owned(),
+                token: sub
+                    .token
+                    .to_owned()
+                    .map(|token| ServerTokenConfig::Raw { token }),
             },
         );
     }

@@ -49,7 +49,7 @@ pub async fn run(opts: Opts) -> Result<()> {
     nix_config.add_trusted_public_key(&public_key);
 
     // Modify netrc
-    if let Some(token) = &server.token {
+    if let Some(token) = server.token()? {
         eprintln!("+ Access Token");
 
         let mut nix_netrc = NixNetrc::load().await?;
