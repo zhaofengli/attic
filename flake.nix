@@ -101,7 +101,6 @@
         ];
         config = {
           Entrypoint = [ "${packages.attic-server}/bin/atticd" ];
-          Cmd = [ "--mode" "api-server" ];
           Env = [
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
           ];
