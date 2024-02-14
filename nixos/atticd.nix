@@ -199,6 +199,8 @@ in
           ProtectKernelTunables = true;
           ProtectProc = "invisible";
           ProtectSystem = "strict";
+          Restart = "on-failure";
+          RestartSec = 10;
           RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
           RestrictNamespaces = true;
           RestrictRealtime = true;
