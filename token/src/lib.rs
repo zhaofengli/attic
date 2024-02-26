@@ -266,6 +266,7 @@ impl Token {
             max_validity: None,
             max_token_length: None,
             max_header_length: None,
+            artificial_time: None,
         };
 
         match signature_type {
