@@ -115,7 +115,13 @@ pub async fn run(config: Config, opts: Opts) -> Result<()> {
     if sub.dump_claims {
         println!("{}", serde_json::to_string(token.opaque_claims())?);
     } else {
-        let encoded_token = token.encode(&config.token_hs256_secret)?;
+        let signature_type = config.jwt.signing_config.into();
+
+        let encoded_token = token.encode(
+            &signature_type,
+            &config.jwt.token_bound_issuer,
+            &config.jwt.token_bound_audiences,
+        )?;
         println!("{}", encoded_token);
     }
 
