@@ -3,8 +3,6 @@
 mod local;
 mod s3;
 
-use bytes::Bytes;
-use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
@@ -37,9 +35,6 @@ pub enum RemoteFile {
 pub enum Download {
     /// A possibly ephemeral URL.
     Url(String),
-
-    /// A stream.
-    Stream(BoxStream<'static, std::io::Result<Bytes>>),
 
     /// An AsyncRead.
     AsyncRead(Box<dyn AsyncRead + Unpin + Send>),

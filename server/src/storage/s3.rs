@@ -1,6 +1,5 @@
 //! S3 remote files.
 
-use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -14,7 +13,6 @@ use aws_sdk_s3::{
 };
 use bytes::BytesMut;
 use futures::future::join_all;
-use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
@@ -127,7 +125,7 @@ impl S3Backend {
         };
 
         // FIXME: Ugly
-        let client = if self.client.conf().region().unwrap().as_ref() == file.region {
+        let client = if self.client.config().region().unwrap().as_ref() == file.region {
             self.client.clone()
         } else {
             // FIXME: Cache the client instance
@@ -149,11 +147,7 @@ impl S3Backend {
         if prefer_stream {
             let output = req.send().await.map_err(ServerError::storage_error)?;
 
-            let stream = StreamExt::map(output.body, |item| {
-                item.map_err(|e| IoError::new(IoErrorKind::Other, e))
-            });
-
-            Ok(Download::Stream(Box::pin(stream)))
+            Ok(Download::AsyncRead(Box::new(output.body.into_async_read())))
         } else {
             // FIXME: Configurable expiration
             let presign_config = PresigningConfig::expires_in(Duration::from_secs(600))

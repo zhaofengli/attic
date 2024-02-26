@@ -17,9 +17,9 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v3.3.0
+      - uses: actions/checkout@v4.1.1
 
-      - uses: DeterminateSystems/nix-installer-action@v1
+      - uses: DeterminateSystems/nix-installer-action@v9
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -57,7 +57,7 @@ jobs:
               xargs attic push "ci:$ATTIC_CACHE"
           fi
       - name: Log in to the Container registry
-        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        uses: docker/login-action@v3.0.0
         if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         with:
           registry: ${{ env.REGISTRY }}

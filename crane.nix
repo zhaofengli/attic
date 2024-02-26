@@ -62,6 +62,11 @@ let
 
     ATTIC_DISTRIBUTOR = "attic";
 
+    # Workaround for https://github.com/NixOS/nixpkgs/issues/166205
+    env = lib.optionalAttrs stdenv.cc.isClang {
+      NIX_LDFLAGS = "-l${stdenv.cc.libcxx.cxxabi.libName}";
+    };
+
     # See comment in `attic-tests`
     doCheck = false;
 
@@ -129,6 +134,11 @@ let
     inherit src version buildInputs cargoArtifacts;
 
     nativeBuildInputs = nativeBuildInputs ++ [ jq ];
+
+    # Workaround for https://github.com/NixOS/nixpkgs/issues/166205
+    env = lib.optionalAttrs stdenv.cc.isClang {
+      NIX_LDFLAGS = "-l${stdenv.cc.libcxx.cxxabi.libName}";
+    };
 
     doCheck = true;
 

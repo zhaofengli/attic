@@ -3,14 +3,12 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-23.05";
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-23.11";
     flake-utils.url = "github:numtide/flake-utils";
 
     crane = {
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-compat.follows = "flake-compat";
-      inputs.flake-utils.follows = "flake-utils";
     };
 
     flake-compat = {
@@ -20,7 +18,7 @@
   };
 
   outputs = { self, nixpkgs, nixpkgs-stable, flake-utils, crane, ... }: let
-    supportedSystems = flake-utils.lib.defaultSystems;
+    supportedSystems = flake-utils.lib.defaultSystems ++ [ "riscv64-linux" ];
 
     makeCranePkgs = pkgs: let
       craneLib = crane.mkLib pkgs;
@@ -101,7 +99,6 @@
         ];
         config = {
           Entrypoint = [ "${packages.attic-server}/bin/atticd" ];
-          Cmd = [ "--mode" "api-server" ];
           Env = [
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
           ];
