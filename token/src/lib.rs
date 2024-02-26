@@ -91,7 +91,7 @@ use chrono::{DateTime, Utc};
 use displaydoc::Display;
 use jwt_simple::prelude::{Duration, RSAKeyPairLike, RSAPublicKeyLike, VerificationOptions};
 pub use jwt_simple::{
-    algorithms::{HS256Key, MACLike, RS256KeyPair},
+    algorithms::{HS256Key, MACLike, RS256KeyPair, RS256PublicKey},
     claims::{Claims, JWTClaims},
     prelude::UnixTimeStamp,
 };
@@ -230,12 +230,16 @@ pub enum Error {
 
     /// Failure decoding the base64 layer of the base64 encoded PEM
     Utf8Error(std::str::Utf8Error),
+
+    /// Pubkey-only JWT authentication cannot create signed JWTs
+    PubkeyOnlyCannotCreateToken,
 }
 
 /// The supported JWT signature types.
 pub enum SignatureType {
     HS256(HS256Key),
     RS256(RS256KeyPair),
+    RS256PubkeyOnly(RS256PublicKey),
 }
 
 impl Token {
@@ -276,6 +280,10 @@ impl Token {
                     .map_err(Error::TokenError)
                     .map(Token)
             }
+            SignatureType::RS256PubkeyOnly(key) => key
+                .verify_token(token, Some(opts))
+                .map_err(Error::TokenError)
+                .map(Token),
         }
     }
 
@@ -324,6 +332,9 @@ impl Token {
         match signature_type {
             SignatureType::HS256(key) => key.authenticate(token).map_err(Error::TokenError),
             SignatureType::RS256(key) => key.sign(token).map_err(Error::TokenError),
+            SignatureType::RS256PubkeyOnly(_) => {
+                return Err(Error::PubkeyOnlyCannotCreateToken);
+            }
         }
     }
 
@@ -441,4 +452,12 @@ pub fn decode_token_rs256_secret_base64(s: &str) -> Result<RS256KeyPair> {
     let keypair = RS256KeyPair::from_pem(secret).map_err(Error::TokenError)?;
 
     Ok(keypair)
+}
+
+pub fn decode_token_rs256_pubkey_base64(s: &str) -> Result<RS256PublicKey> {
+    let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
+    let pubkey = std::str::from_utf8(&decoded).map_err(Error::Utf8Error)?;
+    let pubkey = RS256PublicKey::from_pem(pubkey).map_err(Error::TokenError)?;
+
+    Ok(pubkey)
 }
