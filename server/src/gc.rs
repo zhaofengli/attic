@@ -159,8 +159,8 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
     let storage = state.storage().await?;
 
     let orphan_chunk_limit = match db.get_database_backend() {
-        // Default value of --max-allowed-packet https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_max_allowed_packet
-        sea_orm::DatabaseBackend::MySql    => 67108864,
+        // Arbitrarily chosen sensible value since there's no good default to choose from for MySQL 
+        sea_orm::DatabaseBackend::MySql    => 1000,
         // Panic limit set by sqlx for postgresql: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
         sea_orm::DatabaseBackend::Postgres => u64::from(u16::MAX),
         // Default statement limit imposed by sqlite: https://www.sqlite.org/limits.html#max_variable_number 
