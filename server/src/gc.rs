@@ -158,6 +158,15 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
     let db = state.database().await?;
     let storage = state.storage().await?;
 
+    let orphan_chunk_id_limit = match db.get_database_backend() {
+        // Default value of --max-allowed-packet https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_max_allowed_packet
+        sea_orm::DatabaseBackend::MySql    => 67108864,
+        // Panic limit set by sqlx for postgresql: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
+        sea_orm::DatabaseBackend::Postgres => u64::from(u16::MAX),
+        // Default statement limit imposed by sqlite: https://www.sqlite.org/limits.html#max_variable_number 
+        sea_orm::DatabaseBackend::Sqlite   => 500,
+    };
+
     // find all orphan chunks...
     let orphan_chunk_ids = Query::select()
         .from(Chunk)
@@ -171,6 +180,7 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
         .and_where(chunkref::Column::Id.is_null())
         .and_where(chunk::Column::State.eq(ChunkState::Valid))
         .and_where(chunk::Column::HoldersCount.eq(0))
+        .limit(orphan_chunk_id_limit)
         .lock_with_tables_behavior(LockType::Update, [Chunk], LockBehavior::SkipLocked)
         .to_owned();
 
