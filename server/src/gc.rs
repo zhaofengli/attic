@@ -158,7 +158,7 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
     let db = state.database().await?;
     let storage = state.storage().await?;
 
-    let orphan_chunk_id_limit = match db.get_database_backend() {
+    let orphan_chunk_limit = match db.get_database_backend() {
         // Default value of --max-allowed-packet https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_max_allowed_packet
         sea_orm::DatabaseBackend::MySql    => 67108864,
         // Panic limit set by sqlx for postgresql: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
@@ -180,7 +180,6 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
         .and_where(chunkref::Column::Id.is_null())
         .and_where(chunk::Column::State.eq(ChunkState::Valid))
         .and_where(chunk::Column::HoldersCount.eq(0))
-        .limit(orphan_chunk_id_limit)
         .lock_with_tables_behavior(LockType::Update, [Chunk], LockBehavior::SkipLocked)
         .to_owned();
 
@@ -200,6 +199,7 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
 
     let orphan_chunks: Vec<chunk::Model> = Chunk::find()
         .filter(chunk::Column::State.eq(ChunkState::Deleted))
+        .limit(orphan_chunk_limit)
         .all(db)
         .await?;
 
