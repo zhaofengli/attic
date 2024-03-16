@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use indicatif::MultiProgress;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::api::ApiClient;
 use crate::cache::CacheRef;
@@ -49,9 +50,21 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     let config = Config::load()?;
 
+    let mut paths = vec![];
+    let paths: &Vec<PathBuf> = match sub.paths.len() {
+        0 => {
+            let mut stdin_lines = BufReader::new(tokio::io::stdin()).lines();
+            while let Some(line) = stdin_lines.next_line().await? {
+                paths.push(line.into())
+            }
+            eprintln!("⚙️ No paths specified, pushing {} paths from stdin", paths.len());
+            &paths
+        },
+        _ => &sub.paths,
+    };
+
     let store = Arc::new(NixStore::connect()?);
-    let roots = sub
-        .paths
+    let roots = paths
         .clone()
         .into_iter()
         .map(|p| store.follow_store_path(p))
