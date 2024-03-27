@@ -49,11 +49,6 @@ in rustPlatform.buildRustPackage rec {
 
   ATTIC_DISTRIBUTOR = "attic";
 
-  # Workaround for https://github.com/NixOS/nixpkgs/issues/166205
-  env = lib.optionalAttrs stdenv.cc.isClang {
-    NIX_LDFLAGS = "-l${stdenv.cc.libcxx.cxxabi.libName}";
-  };
-
   # Recursive Nix is not stable yet
   doCheck = false;
 
