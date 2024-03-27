@@ -62,6 +62,9 @@ let
 
     ATTIC_DISTRIBUTOR = "attic";
 
+    # See comment in `attic/build.rs`
+    NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
+
     # See comment in `attic-tests`
     doCheck = false;
 
