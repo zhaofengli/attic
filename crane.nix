@@ -62,10 +62,8 @@ let
 
     ATTIC_DISTRIBUTOR = "attic";
 
-    # Workaround for https://github.com/NixOS/nixpkgs/issues/166205
-    env = lib.optionalAttrs stdenv.cc.isClang {
-      NIX_LDFLAGS = "-l${stdenv.cc.libcxx.cxxabi.libName}";
-    };
+    # See comment in `attic/build.rs`
+    NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
 
     # See comment in `attic-tests`
     doCheck = false;
@@ -135,16 +133,14 @@ let
 
     nativeBuildInputs = nativeBuildInputs ++ [ jq ];
 
-    # Workaround for https://github.com/NixOS/nixpkgs/issues/166205
-    env = lib.optionalAttrs stdenv.cc.isClang {
-      NIX_LDFLAGS = "-l${stdenv.cc.libcxx.cxxabi.libName}";
-    };
-
     doCheck = true;
 
     buildPhaseCargoCommand = "";
     checkPhaseCargoCommand = "cargoWithProfile test --no-run --message-format=json >cargo-test.json";
     doInstallCargoArtifacts = false;
+
+    # See comment in `attic/build.rs`
+    NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
 
     installPhase = ''
       runHook preInstall
