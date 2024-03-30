@@ -14,11 +14,10 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{Months, Utc};
-use rand::distributions::Alphanumeric;
-use rand::Rng;
+use rsa::pkcs1::EncodeRsaPrivateKey;
 use tokio::fs::{self, OpenOptions};
 
-use crate::access::{decode_token_hs256_secret_base64, Token};
+use crate::access::{decode_token_rs256_secret_base64, SignatureType, Token};
 use crate::config;
 use attic::cache::CacheNamePattern;
 
@@ -45,20 +44,18 @@ pub async fn run_oobe() -> Result<()> {
     let storage_path = data_path.join("storage");
     fs::create_dir_all(&storage_path).await?;
 
-    let hs256_secret_base64 = {
-        let random: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(128)
-            .map(char::from)
-            .collect();
+    let rs256_secret_base64 = {
+        let mut rng = rand::thread_rng();
+        let private_key = rsa::RsaPrivateKey::new(&mut rng, 4096)?;
+        let pkcs1_pem = private_key.to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)?;
 
-        BASE64_STANDARD.encode(random)
+        BASE64_STANDARD.encode(pkcs1_pem.as_bytes())
     };
 
     let config_content = CONFIG_TEMPLATE
         .replace("%database_url%", &database_url)
         .replace("%storage_path%", storage_path.to_str().unwrap())
-        .replace("%token_hs256_secret_base64%", &hs256_secret_base64);
+        .replace("%token_rs256_secret_base64%", &rs256_secret_base64);
 
     fs::write(&config_path, config_content.as_bytes()).await?;
 
@@ -76,8 +73,8 @@ pub async fn run_oobe() -> Result<()> {
         perm.configure_cache_retention = true;
         perm.destroy_cache = true;
 
-        let key = decode_token_hs256_secret_base64(&hs256_secret_base64).unwrap();
-        token.encode(&key)?
+        let key = decode_token_rs256_secret_base64(&rs256_secret_base64).unwrap();
+        token.encode(&SignatureType::RS256(key), &None, &None)?
     };
 
     eprintln!();
