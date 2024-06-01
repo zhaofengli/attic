@@ -21,6 +21,8 @@ fn test_basic() {
         "exp": 4102324986,
         "https://jwt.attic.rs/v1": {
           "caches": {
+            "all-*": {"r":1},
+            "all-ci-*": {"w":1},
             "cache-rw": {"r":1,"w":1},
             "cache-ro": {"r":1},
             "team-*": {"r":1,"w":1,"cc":1}
@@ -29,7 +31,29 @@ fn test_basic() {
       }
     */
 
-    let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtZW93IiwiZXhwIjo0MTAyMzI0OTg2LCJodHRwczovL2p3dC5hdHRpYy5ycy92MSI6eyJjYWNoZXMiOnsiY2FjaGUtcnciOnsiciI6MSwidyI6MX0sImNhY2hlLXJvIjp7InIiOjF9LCJ0ZWFtLSoiOnsiciI6MSwidyI6MSwiY2MiOjF9fX19.UlsIM9bQHr9SXGAcSQcoVPo9No8Zhh6Y5xfX8vCmKmA";
+    let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJhbGwtKiI6eyJyIjoxfSwiYWxsLWNpLSoiOnsidyI6MX0sImNhY2hlLXJvIjp7InIiOjF9LCJjYWNoZS1ydyI6eyJyIjoxLCJ3IjoxfSwidGVhbS0qIjp7ImNjIjoxLCJyIjoxLCJ3IjoxfX19LCJpYXQiOjE3MTY2NjA1ODksInN1YiI6Im1lb3cifQ.8vtxp_1OEYdcnkGPM4c9ORXooJZV7DOTS4NRkMKN8mw";
+
+    // NOTE(cole-h): check that we get a consistent iteration order when getting permissions for
+    // caches -- this depends on the order of the fields in the token, but should otherwise be
+    // consistent between iterations
+    let mut was_ever_wrong = false;
+    for _ in 0..=1_000 {
+        // NOTE(cole-h): we construct a new Token every iteration in order to get different "random
+        // state"
+        let decoded = Token::from_jwt(token, &dec_key).unwrap();
+        let perm_all_ci = decoded.get_permission_for_cache(&cache! { "all-ci-abc" });
+
+        // NOTE(cole-h): if the iteration order of the token is inconsistent, the permissions may be
+        // retrieved from the `all-ci-*` pattern (which only allows writing/pushing), even though
+        // the `all-*` pattern (which only allows reading/pulling) is specified first
+        if perm_all_ci.require_pull().is_err() || perm_all_ci.require_push().is_ok() {
+            was_ever_wrong = true;
+        }
+    }
+    assert!(
+        !was_ever_wrong,
+        "Iteration order should be consistent to prevent random auth failures (and successes)"
+    );
 
     let decoded = Token::from_jwt(token, &dec_key).unwrap();
 

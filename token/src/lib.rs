@@ -83,12 +83,12 @@ pub mod util;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
 use std::error::Error as StdError;
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
+use indexmap::IndexMap;
 pub use jwt_simple::{
     algorithms::{HS256Key, MACLike},
     claims::{Claims, JWTClaims},
@@ -146,7 +146,7 @@ pub struct AtticAccess {
     /// Cache permissions.
     ///
     /// Keys here may include wildcards.
-    caches: HashMap<CacheNamePattern, CachePermission>,
+    caches: IndexMap<CacheNamePattern, CachePermission>,
 }
 
 /// Permission to a single cache.
@@ -274,7 +274,7 @@ impl Token {
         &mut self,
         pattern: CacheNamePattern,
     ) -> &mut CachePermission {
-        use std::collections::hash_map::Entry;
+        use indexmap::map::Entry;
 
         let access = self.attic_access_mut();
         match access.caches.entry(pattern) {
