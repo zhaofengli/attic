@@ -26,6 +26,7 @@ pub mod nix_manifest;
 pub mod oobe;
 mod storage;
 
+use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -38,6 +39,7 @@ use axum::{
     Router,
 };
 use sea_orm::{query::Statement, ConnectionTrait, Database, DatabaseConnection};
+use tokio::net::TcpListener;
 use tokio::sync::OnceCell;
 use tokio::time;
 use tower_http::catch_panic::CatchPanicLayer;
@@ -221,8 +223,10 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     eprintln!("Listening on {:?}...", listen);
 
+    let listener = TcpListener::bind(&listen).await?;
+
     let (server_ret, _) = tokio::join!(
-        axum::Server::bind(&listen).serve(rest.into_make_service()),
+        axum::serve(listener, rest).into_future(),
         async {
             if state.config.database.heartbeat {
                 let _ = state.run_db_heartbeat().await;

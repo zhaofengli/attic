@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use axum::{
-    extract::{Extension, Host},
-    http::{HeaderValue, Request},
+    extract::{Extension, Host, Request},
+    http::HeaderValue,
     middleware::Next,
     response::Response,
 };
@@ -14,11 +14,11 @@ use crate::error::{ErrorKind, ServerResult};
 use attic::api::binary_cache::ATTIC_CACHE_VISIBILITY;
 
 /// Initializes per-request state.
-pub async fn init_request_state<B>(
+pub async fn init_request_state(
     Extension(state): Extension<State>,
     Host(host): Host,
-    mut req: Request<B>,
-    next: Next<B>,
+    mut req: Request,
+    next: Next,
 ) -> Response {
     // X-Forwarded-Proto is an untrusted header
     let client_claims_https =
@@ -45,11 +45,11 @@ pub async fn init_request_state<B>(
 ///
 /// We also require that all request have a Host header in
 /// the first place.
-pub async fn restrict_host<B>(
+pub async fn restrict_host(
     Extension(state): Extension<State>,
     Host(host): Host,
-    req: Request<B>,
-    next: Next<B>,
+    req: Request,
+    next: Next,
 ) -> ServerResult<Response> {
     let allowed_hosts = &state.config.allowed_hosts;
 
@@ -61,10 +61,10 @@ pub async fn restrict_host<B>(
 }
 
 /// Sets the `X-Attic-Cache-Visibility` header in responses.
-pub(crate) async fn set_visibility_header<B>(
+pub(crate) async fn set_visibility_header(
     Extension(req_state): Extension<RequestState>,
-    req: Request<B>,
-    next: Next<B>,
+    req: Request,
+    next: Next,
 ) -> ServerResult<Response> {
     let mut response = next.run(req).await;
 
