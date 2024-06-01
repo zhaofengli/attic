@@ -81,6 +81,7 @@ impl ServerTokenConfig {
         match self {
             ServerTokenConfig::Raw { token } => Ok(token.clone()),
             ServerTokenConfig::File { token_file } => Ok(read_to_string(token_file)
+                .map(|t| t.trim().to_string())
                 .with_context(|| format!("Failed to read token from {token_file}"))?),
         }
     }
