@@ -8,7 +8,8 @@ use anyhow::anyhow;
 use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdEncoder};
 use async_compression::Level as CompressionLevel;
 use axum::{
-    extract::{BodyStream, Extension, Json},
+    body::Body,
+    extract::{Extension, Json},
     http::HeaderMap,
 };
 use bytes::{Bytes, BytesMut};
@@ -120,8 +121,9 @@ pub(crate) async fn upload_path(
     Extension(state): Extension<State>,
     Extension(req_state): Extension<RequestState>,
     headers: HeaderMap,
-    stream: BodyStream,
+    body: Body,
 ) -> ServerResult<Json<UploadPathResult>> {
+    let stream = body.into_data_stream();
     let mut stream = StreamReader::new(
         stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
     );

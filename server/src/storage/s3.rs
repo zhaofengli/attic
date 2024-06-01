@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
     config::Builder as S3ConfigBuilder,
     config::{Credentials, Region},
@@ -91,7 +92,7 @@ impl S3Backend {
     }
 
     async fn config_builder(config: &S3StorageConfig) -> ServerResult<S3ConfigBuilder> {
-        let shared_config = aws_config::load_from_env().await;
+        let shared_config = aws_config::load_defaults(BehaviorVersion::v2024_03_28()).await;
         let mut builder = S3ConfigBuilder::from(&shared_config);
 
         if let Some(credentials) = &config.credentials {
