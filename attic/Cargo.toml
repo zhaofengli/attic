@@ -53,7 +53,7 @@ default = [ "nix_store", "tokio" ]
 # Native libnixstore bindings.
 #
 # When disabled, the native Rust portions of nix_store can still be used.
-nix_store = [ "dep:cxx", "dep:cxx-build" ]
+nix_store = [ "dep:cxx", "dep:cxx-build", "tokio/rt" ]
 
 # Tokio.
 #
