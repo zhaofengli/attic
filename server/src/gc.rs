@@ -158,6 +158,15 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
     let db = state.database().await?;
     let storage = state.storage().await?;
 
+    let orphan_chunk_limit = match db.get_database_backend() {
+        // Arbitrarily chosen sensible value since there's no good default to choose from for MySQL 
+        sea_orm::DatabaseBackend::MySql    => 1000,
+        // Panic limit set by sqlx for postgresql: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
+        sea_orm::DatabaseBackend::Postgres => u64::from(u16::MAX),
+        // Default statement limit imposed by sqlite: https://www.sqlite.org/limits.html#max_variable_number 
+        sea_orm::DatabaseBackend::Sqlite   => 500,
+    };
+
     // find all orphan chunks...
     let orphan_chunk_ids = Query::select()
         .from(Chunk)
@@ -190,6 +199,7 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
 
     let orphan_chunks: Vec<chunk::Model> = Chunk::find()
         .filter(chunk::Column::State.eq(ChunkState::Deleted))
+        .limit(orphan_chunk_limit)
         .all(db)
         .await?;
 
