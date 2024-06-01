@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 async-stream = { version = "0.3.5", optional = true }
-base64 = "0.21.2"
+base64 = "0.22.1"
 bytes = "1.4.0"
 displaydoc = "0.2.4"
 digest = "0.10.7"

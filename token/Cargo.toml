@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 attic = { path = "../attic", default-features = false }
 
-base64 = "0.21.2"
+base64 = "0.22.1"
 chrono = "0.4.24"
 displaydoc = "0.2.4"
 indexmap = { version = "2.2.6", features = ["serde"] }
