@@ -107,9 +107,28 @@ impl StateInner {
     async fn database(&self) -> ServerResult<&DatabaseConnection> {
         self.database
             .get_or_try_init(|| async {
-                Database::connect(&self.config.database.url)
+                let db = Database::connect(&self.config.database.url)
                     .await
-                    .map_err(ServerError::database_error)
+                    .map_err(ServerError::database_error);
+                if let Ok(DatabaseConnection::SqlxSqlitePoolConnection(ref conn)) = db {
+                    // execute some sqlite-specific performance optimizations
+                    // see https://phiresky.github.io/blog/2020/sqlite-performance-tuning/ for
+                    // more details
+                    // intentionally ignore errors from this: this is purely for performance,
+                    // not for correctness, so we can live without this
+                    _ = conn
+                        .execute_unprepared(
+                            "
+                        pragma journal_mode=WAL;
+                        pragma synchronous=normal;
+                        pragma temp_store=memory;
+                        pragma mmap_size = 30000000000;
+                        ",
+                        )
+                        .await;
+                }
+
+                db
             })
             .await
     }
@@ -225,14 +244,11 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let listener = TcpListener::bind(&listen).await?;
 
-    let (server_ret, _) = tokio::join!(
-        axum::serve(listener, rest).into_future(),
-        async {
-            if state.config.database.heartbeat {
-                let _ = state.run_db_heartbeat().await;
-            }
-        },
-    );
+    let (server_ret, _) = tokio::join!(axum::serve(listener, rest).into_future(), async {
+        if state.config.database.heartbeat {
+            let _ = state.run_db_heartbeat().await;
+        }
+    },);
 
     server_ret?;
 
