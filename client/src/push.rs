@@ -28,6 +28,7 @@ use bytes::Bytes;
 use futures::future::join_all;
 use futures::stream::{Stream, TryStreamExt};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
+use regex::Regex;
 use tokio::sync::Mutex;
 use tokio::task::{spawn, JoinHandle};
 use tokio::time;
@@ -192,6 +193,7 @@ impl Pusher {
         roots: Vec<StorePath>,
         no_closure: bool,
         ignore_upstream_filter: bool,
+        filter: Option<Regex>,
     ) -> Result<PushPlan> {
         PushPlan::plan(
             self.store.clone(),
@@ -201,6 +203,7 @@ impl Pusher {
             roots,
             no_closure,
             ignore_upstream_filter,
+            filter,
         )
         .await
     }
@@ -336,6 +339,7 @@ impl PushSession {
                     roots_vec,
                     config.no_closure,
                     config.ignore_upstream_cache_filter,
+                    None,
                 )
                 .await?;
 
@@ -375,28 +379,34 @@ impl PushPlan {
         roots: Vec<StorePath>,
         no_closure: bool,
         ignore_upstream_filter: bool,
+        filter: Option<Regex>,
     ) -> Result<Self> {
         // Compute closure
         let closure = if no_closure {
             roots
         } else {
             store
-                .compute_fs_closure_multi(roots, false, false, false)
+                .compute_fs_closure_multi(roots, false, false, false, None)
                 .await?
         };
 
         let mut store_path_map: HashMap<StorePathHash, ValidPathInfo> = {
             let futures = closure
                 .iter()
-                .map(|path| {
+                .flat_map(|path| {
                     let store = store.clone();
                     let path = path.clone();
+                    if let Some(ref filter) = filter {
+                        if filter.is_match(&path.name()) {
+                            return None;
+                        }
+                    }
                     let path_hash = path.to_hash();
 
-                    async move {
+                    Some(async move {
                         let path_info = store.query_path_info(path).await?;
                         Ok((path_hash, path_info))
-                    }
+                    })
                 })
                 .collect::<Vec<_>>();
 

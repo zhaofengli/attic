@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use indicatif::MultiProgress;
+use regex::Regex;
 
 use crate::api::ApiClient;
 use crate::cache::CacheRef;
@@ -23,6 +24,10 @@ pub struct Push {
 
     /// The store paths to push.
     paths: Vec<PathBuf>,
+
+    /// Derivation names to be filted out.
+    #[clap(long)]
+    filter: Option<Regex>,
 
     /// Push the specified paths only and do not compute closures.
     #[clap(long)]
@@ -78,7 +83,12 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     let pusher = Pusher::new(store, api, cache.to_owned(), cache_config, mp, push_config);
     let plan = pusher
-        .plan(roots, sub.no_closure, sub.ignore_upstream_cache_filter)
+        .plan(
+            roots,
+            sub.no_closure,
+            sub.ignore_upstream_cache_filter,
+            sub.filter.clone(),
+        )
         .await?;
 
     if plan.store_path_map.is_empty() {
