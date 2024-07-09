@@ -25,7 +25,6 @@ let
           value = common // {
             inherit outputName;
             outPath = maybeStorePath (builtins.getAttr outputName outputs);
-            drvPath = maybeStorePath (builtins.getAttr outputName outputs);
           };
         };
       outputsList = map outputToAttrListElement outputNames;
