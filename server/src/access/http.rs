@@ -2,7 +2,7 @@
 
 use attic::cache::CacheName;
 use attic_token::util::parse_authorization_header;
-use axum::{http::Request, middleware::Next, response::Response};
+use axum::{extract::Request, middleware::Next, response::Response};
 use sea_orm::DatabaseConnection;
 use tokio::sync::OnceCell;
 
@@ -93,7 +93,7 @@ impl AuthState {
 }
 
 /// Performs auth.
-pub async fn apply_auth<B>(req: Request<B>, next: Next<B>) -> Response {
+pub async fn apply_auth(req: Request, next: Next) -> Response {
     let token: Option<Token> = req
         .headers()
         .get("Authorization")

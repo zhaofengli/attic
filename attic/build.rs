@@ -24,6 +24,9 @@ fn build_bridge() {
         .flag("nix/config.h")
         .flag("-idirafter")
         .flag(hacky_include.path().to_str().unwrap())
+        // In Nix 2.19+, nix/args/root.hh depends on being able to #include "args.hh" (which is in its parent directory), for some reason
+        .flag("-I")
+        .flag(concat!(env!("NIX_INCLUDE_PATH"), "/nix"))
         .compile("nixbinding");
 
     println!("cargo:rerun-if-changed=src/nix_store/bindings");

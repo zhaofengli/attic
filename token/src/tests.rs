@@ -18,6 +18,8 @@ fn test_basic() {
         "nbf": 0,
         "https://jwt.attic.rs/v1": {
           "caches": {
+            "all-*": {"r":1},
+            "all-ci-*": {"w":1},
             "cache-rw": {"r":1,"w":1},
             "cache-ro": {"r":1},
             "team-*": {"r":1,"w":1,"cc":1}
@@ -33,7 +35,30 @@ fn test_basic() {
     let dec_key = decode_token_rs256_secret_base64(base64_secret).unwrap();
 
     // TOKEN=$(jq -c < json | jwt encode --alg RS256 --secret @./rs256 -)
-    let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJjYWNoZS1ybyI6eyJyIjoxfSwiY2FjaGUtcnciOnsiciI6MSwidyI6MX0sInRlYW0tKiI6eyJjYyI6MSwiciI6MSwidyI6MX19fSwiaWF0IjoxNjk5NzM0NTU3LCJuYmYiOjAsInN1YiI6Im1lb3cifQ.k1TCqAg5_yaBQByKnYn5zSvMsYi8XrHe1h8T2hijZiP1SsYYnKphKKm0e61lmr3tSM-3dtRRCNGB7elhetpuz2jz8fWyBmpjO-yIX2uB787iRKVjaVCEKSPjcKO9lGp9LlxKdNH0SLRmdwkJGQUHbzN6QurfiV4C54cPxC_43EamkOqFUFmmwohi_r76RZtMb8uyt-9t7Canpm7GfJg4uVg3MLgbvCKxJ4BSu4UgXPz-MYupHS_pIEtlCY8FjlVrXlBLAleUvcBPY2qML9gxpqBrh9s1qfLpCeTZkG-vDjb_Y8X0gXa0OshFrvnoIyHwDc9jmj1X35T0YslyjbQXWQ";
+    let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJhbGwtKiI6eyJyIjoxfSwiYWxsLWNpLSoiOnsidyI6MX0sImNhY2hlLXJvIjp7InIiOjF9LCJjYWNoZS1ydyI6eyJyIjoxLCJ3IjoxfSwidGVhbS0qIjp7ImNjIjoxLCJyIjoxLCJ3IjoxfX19LCJpYXQiOjE3MTY2NjA1ODksInN1YiI6Im1lb3cifQ.8vtxp_1OEYdcnkGPM4c9ORXooJZV7DOTS4NRkMKN8mw";
+
+    // NOTE(cole-h): check that we get a consistent iteration order when getting permissions for
+    // caches -- this depends on the order of the fields in the token, but should otherwise be
+    // consistent between iterations
+    let mut was_ever_wrong = false;
+    for _ in 0..=1_000 {
+        // NOTE(cole-h): we construct a new Token every iteration in order to get different "random
+        // state"
+        let decoded =
+            Token::from_jwt(token, &SignatureType::RS256(dec_key.clone()), &None, &None).unwrap();
+        let perm_all_ci = decoded.get_permission_for_cache(&cache! { "all-ci-abc" });
+
+        // NOTE(cole-h): if the iteration order of the token is inconsistent, the permissions may be
+        // retrieved from the `all-ci-*` pattern (which only allows writing/pushing), even though
+        // the `all-*` pattern (which only allows reading/pulling) is specified first
+        if perm_all_ci.require_pull().is_err() || perm_all_ci.require_push().is_ok() {
+            was_ever_wrong = true;
+        }
+    }
+    assert!(
+        !was_ever_wrong,
+        "Iteration order should be consistent to prevent random auth failures (and successes)"
+    );
 
     let decoded = Token::from_jwt(token, &SignatureType::RS256(dec_key), &None, &None).unwrap();
 
