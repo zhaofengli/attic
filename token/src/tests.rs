@@ -35,7 +35,7 @@ fn test_basic() {
     let dec_key = decode_token_rs256_secret_base64(base64_secret).unwrap();
 
     // TOKEN=$(jq -c < json | jwt encode --alg RS256 --secret @./rs256 -)
-    let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJhbGwtKiI6eyJyIjoxfSwiYWxsLWNpLSoiOnsidyI6MX0sImNhY2hlLXJvIjp7InIiOjF9LCJjYWNoZS1ydyI6eyJyIjoxLCJ3IjoxfSwidGVhbS0qIjp7ImNjIjoxLCJyIjoxLCJ3IjoxfX19LCJpYXQiOjE3MTY2NjA1ODksInN1YiI6Im1lb3cifQ.8vtxp_1OEYdcnkGPM4c9ORXooJZV7DOTS4NRkMKN8mw";
+    let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJhbGwtKiI6eyJyIjoxfSwiYWxsLWNpLSoiOnsidyI6MX0sImNhY2hlLXJvIjp7InIiOjF9LCJjYWNoZS1ydyI6eyJyIjoxLCJ3IjoxfSwidGVhbS0qIjp7ImNjIjoxLCJyIjoxLCJ3IjoxfX19LCJpYXQiOjE3MjIwMDUwNzksIm5iZiI6MCwic3ViIjoibWVvdyJ9.Zs24IUbQOpOjhEe0sfsoSSJhDrzf4v-_wX_ceKqHeb2MERY8XSIQ1RPTNVeOW4LfJHumJj_rxh8Wv2BRGZSMldrTt0Ab_N7FnkhA37_jnRvgvEjSG3V4fC8aA4KoOa-43NRpg4HmPxiXte5-6LneBOR94Wss868wC1b_2yX2zCc1wQoZA3LNo-CRLnL4Yp5wY4Bbgyguv_9mfqXVYZykZnxumyGwVFD-Rub3KQ9d53Rf9tKcvRk9qxO2q8F2PKjeaUBG2xZtGwkWTMvSmwR1dKtkPUyPggOzbLoUG-6fxfo7D3NyL5qWCSN_7CkI-xlsRSLY1gTq-FqXvcpHeZbc8w";
 
     // NOTE(cole-h): check that we get a consistent iteration order when getting permissions for
     // caches -- this depends on the order of the fields in the token, but should otherwise be
