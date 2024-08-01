@@ -18,7 +18,7 @@ use axum::{
     Router,
 };
 use futures::stream::BoxStream;
-use http_body_util::BodyExt;
+use futures::TryStreamExt as _;
 use serde::Serialize;
 use tokio_util::io::ReaderStream;
 use tracing::instrument;
@@ -217,11 +217,11 @@ async fn get_nar(
         match storage.download_file_db(remote_file, false).await? {
             Download::Url(url) => Ok(Redirect::temporary(&url).into_response()),
             Download::AsyncRead(stream) => {
-                let stream = ReaderStream::new(stream);
-                let body = Body::from_stream(stream).map_err(|e| {
+                let stream = ReaderStream::new(stream).map_err(|e| {
                     tracing::error!("Stream error: {e}");
                     e
-                }).into_inner();
+                });
+                let body = Body::from_stream(stream);
 
                 Ok(body.into_response())
             }
@@ -254,11 +254,11 @@ async fn get_nar(
 
         // TODO: Make num_prefetch configurable
         // The ideal size depends on the average chunk size
-        let merged = merge_chunks(chunks, streamer, storage, 2);
-        let body = Body::from_stream(merged).map_err(|e| {
+        let merged = merge_chunks(chunks, streamer, storage, 2).map_err(|e| {
             tracing::error!("Stream error: {e}");
             e
-        }).into_inner();
+        });
+        let body = Body::from_stream(merged);
 
         Ok(body.into_response())
     }
