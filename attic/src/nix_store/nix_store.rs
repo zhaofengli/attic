@@ -5,6 +5,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use regex::Regex;
 use tokio::task::spawn_blocking;
 
 use super::bindings::{open_nix_store, AsyncWriteAdapter, FfiNixStore};
@@ -156,6 +157,7 @@ impl NixStore {
         flip_directions: bool,
         include_outputs: bool,
         include_derivers: bool,
+        filter: Option<Regex>,
     ) -> AtticResult<Vec<StorePath>> {
         let inner = self.inner.clone();
 
@@ -174,16 +176,20 @@ impl NixStore {
 
             Ok(cxx_vector
                 .iter()
-                .map(|s| {
+                .filter_map(|s| {
                     let osstr = OsStr::from_bytes(s.as_bytes());
                     let pb = PathBuf::from(osstr);
 
                     // Safety: The C++ implementation already checks the StorePath
                     // for correct format (which also implies valid UTF-8)
                     #[allow(unsafe_code)]
-                    unsafe {
-                        StorePath::from_base_name_unchecked(pb)
+                    let store_path = unsafe { StorePath::from_base_name_unchecked(pb) };
+                    if let Some(ref filter) = filter {
+                        if filter.is_match(&store_path.name()) {
+                            return None;
+                        }
                     }
+                    Some(store_path)
                 })
                 .collect())
         })

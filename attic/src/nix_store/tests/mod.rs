@@ -212,7 +212,7 @@ fn test_compute_fs_closure_multi() {
         ];
 
         let actual: HashSet<StorePath> = store
-            .compute_fs_closure_multi(paths, false, false, false)
+            .compute_fs_closure_multi(paths, false, false, false, None)
             .await
             .expect("Could not compute closure")
             .into_iter()
