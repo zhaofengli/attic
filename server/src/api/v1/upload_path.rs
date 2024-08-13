@@ -46,7 +46,7 @@ use crate::database::entity::cache;
 use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
-use crate::database::entity::object::{self, Entity as Object};
+use crate::database::entity::object::{self, Entity as Object, InsertExt};
 use crate::database::entity::Json as DbJson;
 use crate::database::{AtticDatabase, ChunkGuard, NarGuard};
 
@@ -257,12 +257,6 @@ async fn upload_path_dedup(
         .map_err(ServerError::database_error)?;
 
     // Create a mapping granting the local cache access to the NAR
-    Object::delete_many()
-        .filter(object::Column::CacheId.eq(cache.id))
-        .filter(object::Column::StorePathHash.eq(upload_info.store_path_hash.to_string()))
-        .exec(&txn)
-        .await
-        .map_err(ServerError::database_error)?;
     Object::insert({
         let mut new_object = upload_info.to_active_model();
         new_object.cache_id = Set(cache.id);
@@ -271,6 +265,7 @@ async fn upload_path_dedup(
         new_object.created_by = Set(username);
         new_object
     })
+    .on_conflict_do_update()
     .exec(&txn)
     .await
     .map_err(ServerError::database_error)?;
@@ -487,12 +482,6 @@ async fn upload_path_new_chunked(
     .map_err(ServerError::database_error)?;
 
     // Create a mapping granting the local cache access to the NAR
-    Object::delete_many()
-        .filter(object::Column::CacheId.eq(cache.id))
-        .filter(object::Column::StorePathHash.eq(upload_info.store_path_hash.to_string()))
-        .exec(&txn)
-        .await
-        .map_err(ServerError::database_error)?;
     Object::insert({
         let mut new_object = upload_info.to_active_model();
         new_object.cache_id = Set(cache.id);
@@ -501,6 +490,7 @@ async fn upload_path_new_chunked(
         new_object.created_by = Set(username);
         new_object
     })
+    .on_conflict_do_update()
     .exec(&txn)
     .await
     .map_err(ServerError::database_error)?;
@@ -594,12 +584,6 @@ async fn upload_path_new_unchunked(
     .map_err(ServerError::database_error)?;
 
     // Create a mapping granting the local cache access to the NAR
-    Object::delete_many()
-        .filter(object::Column::CacheId.eq(cache.id))
-        .filter(object::Column::StorePathHash.eq(upload_info.store_path_hash.to_string()))
-        .exec(&txn)
-        .await
-        .map_err(ServerError::database_error)?;
     Object::insert({
         let mut new_object = upload_info.to_active_model();
         new_object.cache_id = Set(cache.id);
@@ -608,6 +592,7 @@ async fn upload_path_new_unchunked(
         new_object.created_by = Set(username);
         new_object
     })
+    .on_conflict_do_update()
     .exec(&txn)
     .await
     .map_err(ServerError::database_error)?;

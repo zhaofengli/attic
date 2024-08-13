@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use sea_orm::entity::prelude::*;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::Insert;
 
 use super::nar::NarModel;
 use super::Json;
@@ -14,6 +16,10 @@ use crate::narinfo::{Compression, NarInfo};
 use attic::hash::Hash;
 
 pub type ObjectModel = Model;
+
+pub trait InsertExt {
+    fn on_conflict_do_update(self) -> Self;
+}
 
 /// An object in a binary cache.
 #[derive(Debug, Clone, PartialEq, Eq, DeriveEntityModel)]
@@ -85,6 +91,27 @@ pub enum Relation {
         to = "super::nar::Column::Id"
     )]
     Nar,
+}
+
+impl InsertExt for Insert<ActiveModel> {
+    fn on_conflict_do_update(self) -> Self {
+        self.on_conflict(
+            OnConflict::columns([Column::CacheId, Column::StorePathHash])
+                .update_columns([
+                    Column::NarId,
+                    Column::StorePath,
+                    Column::References,
+                    Column::System,
+                    Column::Deriver,
+                    Column::Sigs,
+                    Column::Ca,
+                    Column::CreatedAt,
+                    Column::LastAccessedAt,
+                    Column::CreatedBy,
+                ])
+                .to_owned(),
+        )
+    }
 }
 
 impl Model {
