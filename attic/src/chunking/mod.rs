@@ -9,7 +9,7 @@ use fastcdc::ronomon::FastCDC;
 use futures::stream::Stream;
 use tokio::io::AsyncRead;
 
-use attic::stream::read_chunk_async;
+use crate::stream::read_chunk_async;
 
 /// Splits a streams into content-defined chunks.
 ///

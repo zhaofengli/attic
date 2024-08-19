@@ -11,6 +11,7 @@ bytes = "1.4.0"
 displaydoc = "0.2.4"
 digest = "0.10.7"
 ed25519-compact = "2.0.4"
+fastcdc = "3.0.3"
 futures = "0.3.28"
 hex = "0.4.3"
 lazy_static = "1.4.0"
@@ -51,10 +52,14 @@ version-compare = "0.2.0"
 
 [features]
 default = [
+	"chunking",
 	"nix_store",
 	"stream",
 	"tokio",
 ]
+
+# Chunking.
+chunking = ["tokio", "dep:async-stream"]
 
 # Native libnixstore bindings.
 #

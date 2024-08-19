@@ -17,6 +17,8 @@
 
 pub mod api;
 pub mod cache;
+#[cfg(feature = "chunking")]
+pub mod chunking;
 pub mod error;
 pub mod hash;
 pub mod mime;
