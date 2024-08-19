@@ -50,14 +50,19 @@ tempfile = "3"
 version-compare = "0.2.0"
 
 [features]
-default = [ "nix_store", "tokio" ]
+default = [
+	"nix_store",
+	"stream",
+	"tokio",
+]
 
 # Native libnixstore bindings.
 #
 # When disabled, the native Rust portions of nix_store can still be used.
-nix_store = [ "dep:cxx", "dep:cxx-build", "tokio/rt" ]
+nix_store = ["tokio", "dep:cxx", "dep:cxx-build"]
 
-# Tokio.
-#
-# When disabled, any part depending on tokio is unavailable.
-tokio = [ "dep:tokio", "dep:async-stream" ]
+# Stream utilities.
+stream = ["tokio", "dep:async-stream"]
+
+# Tokio runtime.
+tokio = ["dep:tokio", "tokio/rt"]
