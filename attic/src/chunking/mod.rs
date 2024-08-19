@@ -72,33 +72,30 @@ mod tests {
     use std::io::Cursor;
 
     use futures::StreamExt;
-    use tokio_test::block_on;
 
     use crate::testing::get_fake_data;
 
     /// Chunks and reconstructs a file.
-    #[test]
-    fn test_chunking_basic() {
-        fn case(size: usize) {
-            block_on(async move {
-                let test_file = get_fake_data(size); // 32 MiB
-                let mut reconstructed_file = Vec::new();
+    #[tokio::test]
+    async fn test_chunking_basic() {
+        async fn case(size: usize) {
+            let test_file = get_fake_data(size); // 32 MiB
+            let mut reconstructed_file = Vec::new();
 
-                let cursor = Cursor::new(&test_file);
-                let mut chunks = chunk_stream(cursor, 8 * 1024, 16 * 1024, 32 * 1024);
+            let cursor = Cursor::new(&test_file);
+            let mut chunks = chunk_stream(cursor, 8 * 1024, 16 * 1024, 32 * 1024);
 
-                while let Some(chunk) = chunks.next().await {
-                    let chunk = chunk.unwrap();
-                    eprintln!("Got a {}-byte chunk", chunk.len());
-                    reconstructed_file.extend(chunk);
-                }
+            while let Some(chunk) = chunks.next().await {
+                let chunk = chunk.unwrap();
+                eprintln!("Got a {}-byte chunk", chunk.len());
+                reconstructed_file.extend(chunk);
+            }
 
-                assert_eq!(reconstructed_file, test_file);
-            });
+            assert_eq!(reconstructed_file, test_file);
         }
 
-        case(32 * 1024 * 1024 - 1);
-        case(32 * 1024 * 1024);
-        case(32 * 1024 * 1024 + 1);
+        case(32 * 1024 * 1024 - 1).await;
+        case(32 * 1024 * 1024).await;
+        case(32 * 1024 * 1024 + 1).await;
     }
 }

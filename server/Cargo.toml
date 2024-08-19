@@ -94,6 +94,3 @@ features = [
 	"rt-multi-thread",
 	"sync",
 ]
-
-[dev-dependencies]
-tokio-test = "0.4.2"
