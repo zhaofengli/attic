@@ -74,12 +74,14 @@ mod tests {
     use futures::StreamExt;
     use tokio_test::block_on;
 
+    use crate::testing::get_fake_data;
+
     /// Chunks and reconstructs a file.
     #[test]
     fn test_chunking_basic() {
         fn case(size: usize) {
             block_on(async move {
-                let test_file = get_data(size); // 32 MiB
+                let test_file = get_fake_data(size); // 32 MiB
                 let mut reconstructed_file = Vec::new();
 
                 let cursor = Cursor::new(&test_file);
@@ -98,19 +100,5 @@ mod tests {
         case(32 * 1024 * 1024 - 1);
         case(32 * 1024 * 1024);
         case(32 * 1024 * 1024 + 1);
-    }
-
-    /// Returns some fake data.
-    fn get_data(len: usize) -> Vec<u8> {
-        let mut state = 42u32;
-        let mut data = vec![0u8; len];
-
-        for i in 0..data.len() {
-            (state, _) = state.overflowing_mul(1664525u32);
-            (state, _) = state.overflowing_add(1013904223u32);
-            data[i] = ((state >> (i % 24)) & 0xff) as u8;
-        }
-
-        data
     }
 }
