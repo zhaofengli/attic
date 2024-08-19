@@ -12,6 +12,10 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+        nix:
+          - "2.20"
+          - "2.24"
+          - "default"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -45,7 +49,7 @@ jobs:
         run: |
           system=$(nix-instantiate --eval -E 'builtins.currentSystem')
           echo system=$system >>$GITHUB_ENV
-          tests=$(nix build .#internal."$system".attic-tests --no-link --print-out-paths -L)
+          tests=$(nix build .#internalMatrix."$system".\"${{ matrix.nix }}\".attic-tests --no-link --print-out-paths -L)
           find "$tests/bin" -exec {} \;
 
       # TODO: Just take a diff of the list of store paths, also abstract all of this out
@@ -53,8 +57,10 @@ jobs:
         run: |
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           if [ -n "$ATTIC_TOKEN" ]; then
-            nix build .#internal."$system".attic-tests .#internal."$system".cargoArtifacts --no-link --print-out-paths -L | \
-              xargs attic push "ci:$ATTIC_CACHE"
+            nix build --no-link --print-out-paths -L \
+              .#internalMatrix."$system".\"${{ matrix.nix }}\".attic-tests \
+              .#internalMatrix."$system".\"${{ matrix.nix }}\".cargoArtifacts \
+            | xargs attic push "ci:$ATTIC_CACHE"
           fi
       - name: Log in to the Container registry
         uses: docker/login-action@v3.0.0
