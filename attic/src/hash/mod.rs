@@ -118,7 +118,7 @@ impl Serialize for Hash {
 }
 
 /// Decodes a base16 or base32 encoded hash containing a specified number of bytes.
-fn decode_hash<'s>(s: &'s str, typ: &'static str, expected_bytes: usize) -> AtticResult<Vec<u8>> {
+fn decode_hash(s: &str, typ: &'static str, expected_bytes: usize) -> AtticResult<Vec<u8>> {
     let base16_len = expected_bytes * 2;
     let base32_len = (expected_bytes * 8 - 1) / 5 + 1;
 
