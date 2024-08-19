@@ -113,7 +113,10 @@
           rustc
 
           rustfmt clippy
-          cargo-expand cargo-outdated cargo-edit
+          cargo-expand
+          # Temporary broken: https://github.com/NixOS/nixpkgs/pull/335152
+          # cargo-outdated
+          cargo-edit
           tokio-console
 
           sqlite-interactive
@@ -131,7 +134,7 @@
         RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
 
         # See comment in `attic/build.rs`
-        NIX_INCLUDE_PATH = "${lib.getDev pkgs.nix}/include";
+        NIX_INCLUDE_PATH = "${lib.getDev pkgs.nixVersions.nix_2_24}/include";
 
         ATTIC_DISTRIBUTOR = "dev";
       };
