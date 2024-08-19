@@ -30,6 +30,16 @@
     };
     cranePkgs = makeCranePkgs pkgs;
 
+    internalMatrix = lib.mapAttrs (_: nix: let
+      cranePkgs' = cranePkgs.override { inherit nix; };
+    in {
+      inherit (cranePkgs') attic-tests cargoArtifacts;
+    }) {
+      "2.20" = pkgs.nixVersions.nix_2_20;
+      "2.24" = pkgs.nixVersions.nix_2_24;
+      "default" = pkgs.nix;
+    };
+
     pkgsStable = import nixpkgs-stable {
       inherit system;
       overlays = [];
@@ -38,6 +48,8 @@
 
     inherit (pkgs) lib;
   in rec {
+    inherit internalMatrix;
+
     packages = {
       default = packages.attic;
 
@@ -113,7 +125,10 @@
           rustc
 
           rustfmt clippy
-          cargo-expand cargo-outdated cargo-edit
+          cargo-expand
+          # Temporary broken: https://github.com/NixOS/nixpkgs/pull/335152
+          # cargo-outdated
+          cargo-edit
           tokio-console
 
           sqlite-interactive
@@ -131,7 +146,7 @@
         RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
 
         # See comment in `attic/build.rs`
-        NIX_INCLUDE_PATH = "${lib.getDev pkgs.nix}/include";
+        NIX_INCLUDE_PATH = "${lib.getDev pkgs.nixVersions.nix_2_24}/include";
 
         ATTIC_DISTRIBUTOR = "dev";
       };
@@ -149,10 +164,6 @@
       };
     };
     devShell = devShells.default;
-
-    internal = {
-      inherit (cranePkgs) attic-tests cargoArtifacts;
-    };
 
     checks = let
       makeIntegrationTests = pkgs: import ./integration-tests {
