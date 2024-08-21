@@ -79,8 +79,8 @@ async fn upgrade_0_to_1(storage_path: &Path) -> ServerResult<()> {
             let name = file.file_name();
             let name_bytes = name.as_os_str().as_bytes();
             let parents = storage_path
-              .join(OsStr::from_bytes(&name_bytes[0..1]))
-              .join(OsStr::from_bytes(&name_bytes[0..2]));
+                .join(OsStr::from_bytes(&name_bytes[0..1]))
+                .join(OsStr::from_bytes(&name_bytes[0..2]));
             let new_path = parents.join(name);
             fs::create_dir_all(&parents).await.map_err(|e| {
                 ErrorKind::StorageError(anyhow::anyhow!("Failed to create directory {}", e))

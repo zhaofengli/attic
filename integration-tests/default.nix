@@ -33,6 +33,6 @@ let
         }
       ];
     };
-  }) (lib.cartesianProductOfSets matrix));
+  }) (lib.cartesianProduct matrix));
 in {
 } // basicTests

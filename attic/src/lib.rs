@@ -17,12 +17,14 @@
 
 pub mod api;
 pub mod cache;
+#[cfg(feature = "chunking")]
+pub mod chunking;
 pub mod error;
 pub mod hash;
 pub mod mime;
 pub mod nix_store;
 pub mod signing;
-#[cfg(feature = "tokio")]
+#[cfg(feature = "stream")]
 pub mod stream;
 #[cfg(target_family = "unix")]
 pub mod testing;

@@ -18,7 +18,7 @@ unsafe impl Send for FfiNixStore {}
 unsafe impl Sync for FfiNixStore {}
 
 impl FfiNixStore {
-    pub fn store<'a>(&'a self) -> Pin<&'a mut ffi::CNixStore> {
+    pub fn store(&self) -> Pin<&mut ffi::CNixStore> {
         unsafe {
             let ptr = self.0.get().as_mut().unwrap();
             ptr.pin_mut()

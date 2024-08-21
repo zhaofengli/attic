@@ -138,6 +138,9 @@
           flyctl
 
           wrk
+
+          llvmPackages_latest.bintools
+          wrangler worker-build wasm-pack wasm-bindgen-cli
         ] ++ (lib.optionals pkgs.stdenv.isLinux [
           linuxPackages.perf
         ]);

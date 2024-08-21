@@ -37,11 +37,11 @@ use attic::api::v1::upload_path::{
     UploadPathNarInfo, UploadPathResult, UploadPathResultKind, ATTIC_NAR_INFO,
     ATTIC_NAR_INFO_PREAMBLE_SIZE,
 };
+use attic::chunking::chunk_stream;
 use attic::hash::Hash;
 use attic::stream::{read_chunk_async, StreamHasher};
 use attic::util::Finally;
 
-use crate::chunking::chunk_stream;
 use crate::database::entity::cache;
 use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};

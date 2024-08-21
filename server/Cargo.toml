@@ -19,7 +19,7 @@ path = "src/adm/main.rs"
 doc = false
 
 [dependencies]
-attic = { path = "../attic", default-features = false, features = [ "tokio" ] }
+attic = { path = "../attic", default-features = false, features = ["chunking", "stream", "tokio"] }
 attic-token = { path = "../token" }
 
 anyhow = "1.0.71"
@@ -37,7 +37,6 @@ derivative = "2.2.0"
 digest = "0.10.7"
 displaydoc = "0.2.4"
 enum-as-inner = "0.6.0"
-fastcdc = "3.0.3"
 futures = "0.3.28"
 hex = "0.4.3"
 http-body-util = "0.1.1"
@@ -95,6 +94,3 @@ features = [
 	"rt-multi-thread",
 	"sync",
 ]
-
-[dev-dependencies]
-tokio-test = "0.4.2"
