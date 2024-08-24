@@ -2778,8 +2778,9 @@ dependencies = [
 
 [[package]]
 name = "nix-base32"
-version = "0.1.2-alpha.0"
-source = "git+https://github.com/zhaofengli/nix-base32.git?rev=b850c6e9273d1c39bd93abb704a53345f5be92eb#b850c6e9273d1c39bd93abb704a53345f5be92eb"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2628953ed836273ee4262e3708a8ef63ca38bd8a922070626eef7f9e5d8d536"
 
 [[package]]
 name = "nom"
