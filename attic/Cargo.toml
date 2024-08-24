@@ -16,7 +16,7 @@ futures = "0.3.28"
 hex = "0.4.3"
 lazy_static = "1.4.0"
 log = "0.4.18"
-nix-base32 = { git = "https://github.com/zhaofengli/nix-base32.git", rev = "b850c6e9273d1c39bd93abb704a53345f5be92eb" }
+nix-base32 = "0.2.0"
 regex = "1.8.3"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_yaml = "0.9.21"
@@ -76,7 +76,7 @@ nix_store = [
 stream = ["tokio", "dep:async-stream"]
 
 # Tokio runtime.
-tokio = ["dep:tokio", "tokio/rt"]
+tokio = ["dep:tokio", "tokio/rt", "tokio/time"]
 
 [[bench]]
 name = "chunking"
