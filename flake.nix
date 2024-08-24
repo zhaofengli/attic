@@ -149,7 +149,7 @@
         RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
 
         # See comment in `attic/build.rs`
-        NIX_INCLUDE_PATH = "${lib.getDev pkgs.nixVersions.nix_2_24}/include";
+        NIX_INCLUDE_PATH = "${lib.getDev pkgs.nix}/include";
 
         ATTIC_DISTRIBUTOR = "dev";
       };
