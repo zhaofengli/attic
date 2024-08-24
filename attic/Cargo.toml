@@ -76,7 +76,7 @@ nix_store = [
 stream = ["tokio", "dep:async-stream"]
 
 # Tokio runtime.
-tokio = ["dep:tokio", "tokio/rt"]
+tokio = ["dep:tokio", "tokio/rt", "tokio/time"]
 
 [[bench]]
 name = "chunking"
