@@ -258,7 +258,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
- "tokio-test",
  "version-compare",
  "wildmatch",
  "xdg",
