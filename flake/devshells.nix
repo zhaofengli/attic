@@ -39,8 +39,7 @@ in
           rustc
 
           cargo-expand
-          # Temporary broken: https://github.com/NixOS/nixpkgs/pull/335152
-          # cargo-outdated
+          cargo-outdated
           cargo-edit
           tokio-console
         ];
