@@ -87,14 +87,6 @@
         stableTests = lib.mapAttrs' (name: lib.nameValuePair "stable-${name}") (makeIntegrationTests pkgsStable);
       in lib.optionalAttrs pkgs.stdenv.isLinux (unstableTests // stableTests);
     }) // {
-      overlays = {
-        default = final: prev: let
-          cranePkgs = makeCranePkgs final;
-        in {
-          inherit (cranePkgs) attic attic-client attic-server;
-        };
-      };
-
       nixosModules = {
         atticd = {
           imports = [
