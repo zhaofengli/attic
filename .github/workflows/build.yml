@@ -51,10 +51,9 @@ jobs:
           system=$(nix-instantiate --eval -E 'builtins.currentSystem')
           echo system=$system >>$GITHUB_ENV
 
-      - name: Build and run tests
+      - name: Run unit tests
         run: |
-          tests=$(nix build .#internalMatrix."$system".\"${{ matrix.nix }}\".attic-tests --no-link --print-out-paths -L)
-          find "$tests/bin" -exec {} \;
+          .ci/run just ci-unit-tests ${{ matrix.nix }}
 
       - name: Build WebAssembly crates
         if: runner.os == 'Linux'

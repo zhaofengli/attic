@@ -32,3 +32,12 @@ ci-build-wasm:
 	pushd token
 	cargo build --target wasm32-unknown-unknown
 	popd
+
+# (CI) Run unit tests
+ci-unit-tests matrix:
+	#!/usr/bin/env bash
+	set -euxo pipefail
+
+	system=$(nix-instantiate --eval -E 'builtins.currentSystem')
+	tests=$(nix build .#internalMatrix."$system".\"{{ matrix }}\".attic-tests --no-link --print-out-paths -L)
+	find "$tests/bin" -exec {} \;
