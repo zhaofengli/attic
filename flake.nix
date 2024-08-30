@@ -87,19 +87,6 @@
         stableTests = lib.mapAttrs' (name: lib.nameValuePair "stable-${name}") (makeIntegrationTests pkgsStable);
       in lib.optionalAttrs pkgs.stdenv.isLinux (unstableTests // stableTests);
     }) // {
-      nixosModules = {
-        atticd = {
-          imports = [
-            ./nixos/atticd.nix
-          ];
-
-          services.atticd.useFlakeCompatOverlay = false;
-
-          nixpkgs.overlays = [
-            self.overlays.default
-          ];
-        };
-      };
     };
   };
 }
