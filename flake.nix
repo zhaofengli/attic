@@ -27,10 +27,6 @@
 
     inherit (inputs.nixpkgs) lib;
 
-    makeCranePkgs = pkgs: let
-      craneLib = inputs.crane.mkLib pkgs;
-    in pkgs.callPackage ./crane.nix { inherit craneLib; };
-
     modules = builtins.foldl' (acc: f: f acc) ./flake [
       builtins.readDir
       (lib.filterAttrs (name: type:
@@ -46,36 +42,5 @@
     systems = supportedSystems;
 
     debug = true;
-
-    # old flake
-    flake = inputs.flake-utils.lib.eachSystem supportedSystems (system: let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [];
-      };
-      cranePkgs = makeCranePkgs pkgs;
-
-
-      pkgsStable = import inputs.nixpkgs-stable {
-        inherit system;
-        overlays = [];
-      };
-      cranePkgsStable = makeCranePkgs pkgsStable;
-
-      inherit (pkgs) lib;
-    in rec {
-      checks = let
-        makeIntegrationTests = pkgs: import ./integration-tests {
-          pkgs = import inputs.nixpkgs {
-            inherit system;
-            overlays = [ self.overlays.default ];
-          };
-          flake = self;
-        };
-        unstableTests = makeIntegrationTests pkgs;
-        stableTests = lib.mapAttrs' (name: lib.nameValuePair "stable-${name}") (makeIntegrationTests pkgsStable);
-      in lib.optionalAttrs pkgs.stdenv.isLinux (unstableTests // stableTests);
-    }) // {
-    };
   };
 }
