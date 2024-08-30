@@ -23,6 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4.1.1
 
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          command -v brew && brew install bash || true
+
       - uses: DeterminateSystems/nix-installer-action@v9
         continue-on-error: true # Self-hosted runners already have Nix installed
 
@@ -45,25 +50,20 @@ jobs:
           ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
           ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
 
-      - name: Build and run tests
+      - name: Cache dev shell
         run: |
+          .ci/cache-shell.sh
           system=$(nix-instantiate --eval -E 'builtins.currentSystem')
           echo system=$system >>$GITHUB_ENV
-          tests=$(nix build .#internalMatrix."$system".\"${{ matrix.nix }}\".attic-tests --no-link --print-out-paths -L)
-          find "$tests/bin" -exec {} \;
+
+      - name: Run unit tests
+        run: |
+          .ci/run just ci-unit-tests ${{ matrix.nix }}
 
       - name: Build WebAssembly crates
         if: runner.os == 'Linux'
         run: |
-          # https://github.com/rust-lang/rust/issues/122357
-          export RUST_MIN_STACK=16777216
-
-          pushd attic
-          nix develop .# --command -- cargo build --target wasm32-unknown-unknown --no-default-features -F chunking -F stream
-          popd
-          pushd token
-          nix develop .# --command -- cargo build --target wasm32-unknown-unknown
-          popd
+          .ci/run just ci-build-wasm
 
       # TODO: Just take a diff of the list of store paths, also abstract all of this out
       - name: Push build artifacts
