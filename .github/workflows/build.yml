@@ -23,6 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4.1.1
 
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          command -v brew && brew install bash || true
+
       - uses: DeterminateSystems/nix-installer-action@v9
         continue-on-error: true # Self-hosted runners already have Nix installed
 
