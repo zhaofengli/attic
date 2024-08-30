@@ -55,15 +55,6 @@
       };
       cranePkgs = makeCranePkgs pkgs;
 
-      internalMatrix = lib.mapAttrs (_: nix: let
-        cranePkgs' = cranePkgs.override { inherit nix; };
-      in {
-        inherit (cranePkgs') attic-tests cargoArtifacts;
-      }) {
-        "2.20" = pkgs.nixVersions.nix_2_20;
-        "2.24" = pkgs.nixVersions.nix_2_24;
-        "default" = pkgs.nix;
-      };
 
       pkgsStable = import inputs.nixpkgs-stable {
         inherit system;
@@ -73,8 +64,6 @@
 
       inherit (pkgs) lib;
     in rec {
-      inherit internalMatrix;
-
       checks = let
         makeIntegrationTests = pkgs: import ./integration-tests {
           pkgs = import inputs.nixpkgs {

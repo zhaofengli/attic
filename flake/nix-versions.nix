@@ -1,4 +1,4 @@
-{ lib, flake-parts-lib, ... }:
+{ lib, flake-parts-lib, config, ... }:
 let
   inherit (lib)
     mkOption
@@ -20,11 +20,17 @@ in
           type = types.package;
         };
       };
+
+      options.internalMatrix = mkOption {
+        type = types.attrsOf (types.attrsOf types.package);
+      };
     };
   };
 
   config = {
-    perSystem = { self', pkgs, config, ... }: let
+    flake.internalMatrix = lib.mapAttrs (system: ps: ps.internalMatrix) config.allSystems;
+
+    perSystem = { self', pkgs, config, cranePkgs, ... }: let
       cfg = config.attic.nix-versions;
     in {
       attic.nix-versions = {
@@ -47,6 +53,12 @@ in
           }) cfg.versions;
         in pkgs.writeText "nix-versions.json" (builtins.toJSON manifest);
       };
+
+      internalMatrix = lib.mapAttrs (_: nix: let
+        cranePkgs' = cranePkgs.override { inherit nix; };
+      in {
+        inherit (cranePkgs') attic-tests cargoArtifacts;
+      }) cfg.versions;
     };
   };
 }
