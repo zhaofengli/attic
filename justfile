@@ -41,3 +41,7 @@ ci-unit-tests matrix:
 	system=$(nix-instantiate --eval -E 'builtins.currentSystem')
 	tests=$(nix build .#internalMatrix."$system".\"{{ matrix }}\".attic-tests --no-link --print-out-paths -L)
 	find "$tests/bin" -exec {} \;
+
+# (CI) Run rustfmt check
+ci-rustfmt:
+	cargo fmt --check
