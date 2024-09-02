@@ -190,10 +190,22 @@ mod tests {
         // force multiple reads
         let mut buf = vec![0u8; 100];
         let mut bytes_read = 0;
-        bytes_read += read.read(&mut buf[bytes_read..bytes_read + 5]).await.unwrap();
-        bytes_read += read.read(&mut buf[bytes_read..bytes_read + 5]).await.unwrap();
-        bytes_read += read.read(&mut buf[bytes_read..bytes_read + 5]).await.unwrap();
-        bytes_read += read.read(&mut buf[bytes_read..bytes_read + 5]).await.unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
 
         assert_eq!(expected.len(), bytes_read);
         assert_eq!(expected, &buf[..bytes_read]);
