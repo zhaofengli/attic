@@ -35,9 +35,11 @@ in
       cfg = config.attic.devshell;
     in {
       attic.devshell.packageSets = with pkgs; {
-        rust = [
+        rustc = [
           rustc
+        ];
 
+        rust = [
           cargo-expand
           cargo-outdated
           cargo-edit
