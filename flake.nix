@@ -4,7 +4,6 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-24.05";
-    flake-utils.url = "github:numtide/flake-utils";
 
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
@@ -23,7 +22,13 @@
   };
 
   outputs = inputs @ { self, flake-parts, ... }: let
-    supportedSystems = inputs.flake-utils.lib.defaultSystems ++ [ "riscv64-linux" ];
+    supportedSystems = [
+      "x86_64-linux"
+      "aarch64-linux"
+      "riscv64-linux"
+      "aarch64-darwin"
+      "x86_64-darwin"
+    ];
 
     inherit (inputs.nixpkgs) lib;
 
