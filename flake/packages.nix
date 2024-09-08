@@ -1,11 +1,11 @@
-{ self, inputs, lib, ... }:
+{ self, inputs, lib, makeCranePkgs, ... }:
 let
-  makeCranePkgs = pkgs: let
+  defaultMakeCranePkgs = pkgs: let
     craneLib = inputs.crane.mkLib pkgs;
   in pkgs.callPackage ../crane.nix { inherit craneLib; };
 in
 {
-  _module.args.makeCranePkgs = makeCranePkgs;
+  _module.args.makeCranePkgs = lib.mkDefault defaultMakeCranePkgs;
 
   perSystem = { self', pkgs, cranePkgs, ... }: (lib.mkMerge [
     {
