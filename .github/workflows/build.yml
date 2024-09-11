@@ -18,14 +18,14 @@ jobs:
           - "default"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v4.1.7
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
         run: |
           command -v brew && brew install bash || true
 
-      - uses: DeterminateSystems/nix-installer-action@v9
+      - uses: DeterminateSystems/nix-installer-action@v14
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -83,14 +83,14 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v4.1.7
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
         run: |
           command -v brew && brew install bash || true
 
-      - uses: DeterminateSystems/nix-installer-action@v9
+      - uses: DeterminateSystems/nix-installer-action@v14
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -120,7 +120,7 @@ jobs:
           echo system=$system >>$GITHUB_ENV
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3.0.0
+        uses: docker/login-action@v3.3.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
