@@ -25,6 +25,10 @@ in
           type = types.nullOr types.package;
           default = null;
         };
+        extraPackageArgs = mkOption {
+          type = types.attrsOf types.anything;
+          default = {};
+        };
       };
     };
   };
@@ -41,6 +45,7 @@ in
       ];
     in pkgs.callPackage ../crane.nix {
       inherit craneLib;
+      inherit (perSystemConfig.attic) extraPackageArgs;
     });
 
     perSystem = { self', pkgs, config, cranePkgs, ... }: (lib.mkMerge [
