@@ -16,6 +16,17 @@ let
   inherit (flake-parts-lib)
     mkPerSystemOption
     ;
+
+  # Re-evaluate perSystem with cross nixpkgs
+  # HACK before https://github.com/hercules-ci/flake-parts/issues/95 is solved
+  evalCross = { system, pkgs }: config.allSystems.${system}.debug.extendModules {
+    modules = [
+      ({ config, lib, ... }: {
+        _module.args.pkgs = pkgs;
+        _module.args.self' = lib.mkForce config;
+      })
+    ];
+  };
 in
 {
   options = {
@@ -94,6 +105,18 @@ in
               ];
             };
           };
+        };
+      })
+
+      (lib.mkIf (pkgs.system == "x86_64-linux") {
+        packages = {
+          attic-server-image-aarch64 = let
+            eval = evalCross {
+              system = "aarch64-linux";
+              pkgs = pkgs.pkgsCross.aarch64-multiplatform;
+            };
+
+          in eval.config.packages.attic-server-image;
         };
       })
 
