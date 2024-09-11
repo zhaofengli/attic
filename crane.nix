@@ -109,6 +109,10 @@ let
       maintainers = with maintainers; [ zhaofengli ];
       platforms = platforms.linux ++ platforms.darwin;
     };
+
+    passthru = {
+      inherit nix;
+    };
   } // args // extraArgs);
 
   attic = mkAttic {

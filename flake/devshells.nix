@@ -97,7 +97,7 @@ in
           NIX_PATH = "nixpkgs=${pkgs.path}";
 
           # See comment in `attic/build.rs`
-          NIX_INCLUDE_PATH = "${lib.getDev pkgs.nixVersions.nix_2_24}/include";
+          NIX_INCLUDE_PATH = "${lib.getDev self'.packages.attic.passthru.nix}/include";
 
           # Used by `just with-nix` to build/test with alternative Nix versions.
           NIX_VERSIONS = config.attic.nix-versions.manifestFile;
