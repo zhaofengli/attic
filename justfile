@@ -45,3 +45,7 @@ ci-unit-tests matrix:
 # (CI) Run rustfmt check
 ci-rustfmt:
 	cargo fmt --check
+
+# (CI) Build and push images
+ci-build-and-push-images *args:
+	.ci/build-and-push-images.sh {{ args }}

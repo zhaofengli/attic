@@ -16,9 +16,9 @@ jobs:
     if: github.repository == 'zhaofengli/attic'
 
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v4.1.7
 
-      - uses: DeterminateSystems/nix-installer-action@v9
+      - uses: DeterminateSystems/nix-installer-action@v14
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -40,12 +40,12 @@ jobs:
           cp --recursive --dereference --no-preserve=mode,ownership result public
 
       - name: Upload book artifact
-        uses: actions/upload-pages-artifact@v2.0.0
+        uses: actions/upload-pages-artifact@v3.0.1
         with:
           path: public
 
       - name: Deploy book
-        uses: actions/deploy-pages@v3.0.1
+        uses: actions/deploy-pages@v4.0.5
 
       # TODO: Just take a diff of the list of store paths, also abstract all of this out
       - name: Push build artifacts

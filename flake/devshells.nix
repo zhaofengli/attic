@@ -35,7 +35,7 @@ in
       cfg = config.attic.devshell;
     in {
       attic.devshell.packageSets = with pkgs; {
-        rustc = [
+        rustc = lib.optionals (config.attic.toolchain == null) [
           rustc
         ];
 
@@ -63,6 +63,8 @@ in
           sqlite-interactive
 
           flyctl
+          skopeo
+          manifest-tool
         ] ++ lib.optionals pkgs.stdenv.isLinux [
           wrangler
         ];

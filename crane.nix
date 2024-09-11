@@ -7,8 +7,9 @@
 
 { stdenv
 , lib
+, buildPackages
 , craneLib
-, rustPlatform
+, rust
 , runCommand
 , writeReferencesToFile
 , pkg-config
@@ -19,12 +20,22 @@
 , boost
 , darwin
 , libiconv
+
+, extraPackageArgs ? {}
 }:
 
 let
   version = "0.1.0";
 
-  ignoredPaths = [ ".github" "target" "book" "nixos" "integration-tests" ];
+  ignoredPaths = [
+    ".ci"
+    ".github"
+    "book"
+    "flake"
+    "integration-tests"
+    "nixos"
+    "target"
+  ];
 
   src = lib.cleanSourceWith {
     filter = name: type: !(type == "directory" && builtins.elem (baseNameOf name) ignoredPaths);
@@ -43,7 +54,19 @@ let
     libiconv
   ];
 
-  cargoArtifacts = craneLib.buildDepsOnly {
+  crossArgs = let
+    rustTargetSpec = rust.toRustTargetSpec stdenv.hostPlatform;
+    rustTargetSpecEnv = lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] rustTargetSpec);
+  in lib.optionalAttrs (stdenv.hostPlatform != stdenv.buildPlatform) {
+    depsBuildBuild = [ buildPackages.stdenv.cc ];
+
+    CARGO_BUILD_TARGET = rustTargetSpec;
+    "CARGO_TARGET_${rustTargetSpecEnv}_LINKER" = "${stdenv.cc.targetPrefix}cc";
+  };
+
+  extraArgs = crossArgs // extraPackageArgs;
+
+  cargoArtifacts = craneLib.buildDepsOnly ({
     pname = "attic";
     inherit src version nativeBuildInputs buildInputs;
 
@@ -54,7 +77,7 @@ let
     # With `use-zstd`, the cargo artifacts are archived in a `tar.zstd`. This is
     # actually set if you use `buildPackage` without passing `cargoArtifacts`.
     installCargoArtifactsMode = "use-zstd";
-  };
+  } // extraArgs);
 
   mkAttic = args: craneLib.buildPackage ({
     pname = "attic";
@@ -86,7 +109,7 @@ let
       maintainers = with maintainers; [ zhaofengli ];
       platforms = platforms.linux ++ platforms.darwin;
     };
-  } // args);
+  } // args // extraArgs);
 
   attic = mkAttic {
     cargoExtraArgs = "-p attic-client -p attic-server";
@@ -106,7 +129,7 @@ let
   #
   # We don't enable fat LTO in the default `attic` package since it
   # dramatically increases build time.
-  attic-server = craneLib.buildPackage {
+  attic-server = craneLib.buildPackage ({
     pname = "attic-server";
 
     # We don't pull in the common cargoArtifacts because the feature flags
@@ -120,13 +143,13 @@ let
 
     CARGO_PROFILE_RELEASE_LTO = "fat";
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "1";
-  };
+  } // extraArgs);
 
   # Attic interacts with Nix directly and its tests require trusted-user access
   # to nix-daemon to import NARs, which is not possible in the build sandbox.
   # In the CI pipeline, we build the test executable inside the sandbox, then
   # run it outside.
-  attic-tests = craneLib.mkCargoDerivation {
+  attic-tests = craneLib.mkCargoDerivation ({
     pname = "attic-tests";
 
     inherit src version buildInputs cargoArtifacts;
@@ -151,7 +174,7 @@ let
 
       runHook postInstall
     '';
-  };
+  } // extraArgs);
 in {
   inherit cargoArtifacts attic attic-client attic-server attic-tests;
 }
