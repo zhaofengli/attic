@@ -63,6 +63,8 @@ in
           sqlite-interactive
 
           flyctl
+          skopeo
+          manifest-tool
         ] ++ lib.optionals pkgs.stdenv.isLinux [
           wrangler
         ];
