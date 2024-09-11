@@ -7,8 +7,9 @@
 
 { stdenv
 , lib
+, buildPackages
 , craneLib
-, rustPlatform
+, rust
 , runCommand
 , writeReferencesToFile
 , pkg-config
@@ -45,7 +46,17 @@ let
     libiconv
   ];
 
-  extraArgs = extraPackageArgs;
+  crossArgs = let
+    rustTargetSpec = rust.toRustTargetSpec stdenv.hostPlatform;
+    rustTargetSpecEnv = lib.toUpper (builtins.replaceStrings [ "-" ] [ "_" ] rustTargetSpec);
+  in lib.optionalAttrs (stdenv.hostPlatform != stdenv.buildPlatform) {
+    depsBuildBuild = [ buildPackages.stdenv.cc ];
+
+    CARGO_BUILD_TARGET = rustTargetSpec;
+    "CARGO_TARGET_${rustTargetSpecEnv}_LINKER" = "${stdenv.cc.targetPrefix}cc";
+  };
+
+  extraArgs = crossArgs // extraPackageArgs;
 
   cargoArtifacts = craneLib.buildDepsOnly ({
     pname = "attic";
