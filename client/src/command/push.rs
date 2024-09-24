@@ -1,3 +1,5 @@
+use std::io;
+use std::io::BufRead;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,6 +25,10 @@ pub struct Push {
 
     /// The store paths to push.
     paths: Vec<PathBuf>,
+
+    /// Read paths from stdin
+    #[clap(short = 'i', long)]
+    stdin: bool,
 
     /// Push the specified paths only and do not compute closures.
     #[clap(long)]
@@ -50,12 +56,20 @@ pub async fn run(opts: Opts) -> Result<()> {
     let config = Config::load()?;
 
     let store = Arc::new(NixStore::connect()?);
-    let roots = sub
-        .paths
-        .clone()
-        .into_iter()
-        .map(|p| store.follow_store_path(p))
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let roots = if sub.stdin {
+        io::stdin()
+            .lock()
+            .lines()
+            .flatten()
+            .map(|p| store.follow_store_path(p.trim()))
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    } else {
+        sub.paths
+            .clone()
+            .into_iter()
+            .map(|p| store.follow_store_path(p))
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    };
 
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
 
