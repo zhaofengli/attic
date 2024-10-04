@@ -26,8 +26,8 @@ pub struct Push {
     /// The store paths to push.
     paths: Vec<PathBuf>,
 
-    /// Read paths from stdin
-    #[clap(short = 'i', long)]
+    /// Read paths from the standard input.
+    #[clap(long)]
     stdin: bool,
 
     /// Push the specified paths only and do not compute closures.
