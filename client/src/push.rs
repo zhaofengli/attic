@@ -100,11 +100,17 @@ pub struct Pusher {
 /// seconds since the last path is queued or it's been 10 seconds in total.
 pub struct PushSession {
     /// Sender to the batching future.
-    sender: channel::Sender<Vec<StorePath>>,
+    sender: channel::Sender<SessionQueueCommand>,
+}
+
+enum SessionQueueCommand {
+    Paths(Vec<StorePath>),
+    Flush,
 }
 
 enum SessionQueuePoll {
     Paths(Vec<StorePath>),
+    Flush,
     Closed,
     TimedOut,
 }
@@ -284,7 +290,7 @@ impl PushSession {
         pusher: Arc<Pusher>,
         config: PushSessionConfig,
         known_paths_mutex: Arc<Mutex<HashSet<StorePathHash>>>,
-        receiver: channel::Receiver<Vec<StorePath>>,
+        receiver: channel::Receiver<SessionQueueCommand>,
     ) -> Result<()> {
         let mut roots = HashSet::new();
 
@@ -296,7 +302,8 @@ impl PushSession {
                     loop {
                         let poll = tokio::select! {
                             r = receiver.recv() => match r {
-                                Ok(paths) => SessionQueuePoll::Paths(paths),
+                                Ok(SessionQueueCommand::Paths(paths)) => SessionQueuePoll::Paths(paths),
+                                Ok(SessionQueueCommand::Flush) => SessionQueuePoll::Flush,
                                 _ => SessionQueuePoll::Closed,
                             },
                             _ = time::sleep(Duration::from_secs(2)) => SessionQueuePoll::TimedOut,
@@ -309,7 +316,7 @@ impl PushSession {
                             SessionQueuePoll::Closed => {
                                 break true;
                             }
-                            SessionQueuePoll::TimedOut => {
+                            SessionQueuePoll::Flush | SessionQueuePoll::TimedOut => {
                                 break false;
                             }
                         }
@@ -360,7 +367,14 @@ impl PushSession {
     /// Queues multiple store paths to be pushed.
     pub fn queue_many(&self, store_paths: Vec<StorePath>) -> Result<()> {
         self.sender
-            .send_blocking(store_paths)
+            .send_blocking(SessionQueueCommand::Paths(store_paths))
+            .map_err(|e| anyhow!(e))
+    }
+
+    /// Flushes the worker queue.
+    pub fn flush(&self) -> Result<()> {
+        self.sender
+            .send_blocking(SessionQueueCommand::Flush)
             .map_err(|e| anyhow!(e))
     }
 }
