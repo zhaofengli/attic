@@ -124,6 +124,16 @@ pub struct Config {
 
     /// JSON Web Token.
     pub jwt: JWTConfig,
+
+    /// (Deprecated Stub)
+    ///
+    /// This simply results in an error telling the user to update
+    /// their configuration.
+    #[serde(rename = "token-hs256-secret-base64")]
+    #[serde(default = "Default::default")]
+    #[serde(deserialize_with = "deserialize_deprecated_token_hs256_secret")]
+    #[derivative(Debug = "ignore")]
+    pub _depreated_token_hs256_secret: Option<String>,
 }
 
 /// JSON Web Token configuration.
@@ -431,6 +441,30 @@ impl Default for GarbageCollectionConfig {
             default_retention_period: Duration::ZERO,
         }
     }
+}
+
+fn deserialize_deprecated_token_hs256_secret<'de, D>(
+    _deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error;
+
+    Err(Error::custom(
+        "\n\
+            The token-hs256-secret-base64 field has been moved to [jwt.signing].\n\
+            \n\
+            To continue using HS256 signing, move your current config:\n\
+            \n\
+            token-hs256-secret-base64 = \"your token\"\n\
+            \n\
+            To the bottom of the file like so:\n\
+            \n\
+            [jwt.signing]\n\
+            token-hs256-secret-base64 = \"your token\"\n\
+            ",
+    ))
 }
 
 fn deserialize_token_hs256_secret_base64<'de, D>(deserializer: D) -> Result<HS256Key, D::Error>
