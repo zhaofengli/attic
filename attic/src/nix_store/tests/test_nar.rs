@@ -19,7 +19,7 @@ use crate::nix_store::StorePath;
 /// Expected values for `nm1w9sdm6j6icmhd2q3260hl1w9zj6li-attic-test-no-deps`.
 pub const NO_DEPS: TestNar = TestNar {
     store_path: "/nix/store/nm1w9sdm6j6icmhd2q3260hl1w9zj6li-attic-test-no-deps",
-    original_file: include_bytes!("nar/nm1w9sdm6j6icmhd2q3260hl1w9zj6li-attic-test-no-deps"),
+    _original_file: include_bytes!("nar/nm1w9sdm6j6icmhd2q3260hl1w9zj6li-attic-test-no-deps"),
     nar: include_bytes!("nar/nm1w9sdm6j6icmhd2q3260hl1w9zj6li-attic-test-no-deps.nar"),
     export: include_bytes!("nar/nm1w9sdm6j6icmhd2q3260hl1w9zj6li-attic-test-no-deps.export"),
     closure: &["nm1w9sdm6j6icmhd2q3260hl1w9zj6li-attic-test-no-deps"],
@@ -31,7 +31,7 @@ pub const NO_DEPS: TestNar = TestNar {
 /// as `3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final`.
 pub const WITH_DEPS_A: TestNar = TestNar {
     store_path: "/nix/store/n7q4i7rlmbk4xz8qdsxpm6jbhrnxraq2-attic-test-with-deps-a",
-    original_file: include_bytes!("nar/n7q4i7rlmbk4xz8qdsxpm6jbhrnxraq2-attic-test-with-deps-a"),
+    _original_file: include_bytes!("nar/n7q4i7rlmbk4xz8qdsxpm6jbhrnxraq2-attic-test-with-deps-a"),
     nar: include_bytes!("nar/n7q4i7rlmbk4xz8qdsxpm6jbhrnxraq2-attic-test-with-deps-a.nar"),
     export: include_bytes!("nar/n7q4i7rlmbk4xz8qdsxpm6jbhrnxraq2-attic-test-with-deps-a.export"),
     closure: &[
@@ -46,7 +46,7 @@ pub const WITH_DEPS_A: TestNar = TestNar {
 /// This depends on `3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final`.
 pub const WITH_DEPS_B: TestNar = TestNar {
     store_path: "/nix/store/544qcchwgcgpz3xi1bbml28f8jj6009p-attic-test-with-deps-b",
-    original_file: include_bytes!("nar/544qcchwgcgpz3xi1bbml28f8jj6009p-attic-test-with-deps-b"),
+    _original_file: include_bytes!("nar/544qcchwgcgpz3xi1bbml28f8jj6009p-attic-test-with-deps-b"),
     nar: include_bytes!("nar/544qcchwgcgpz3xi1bbml28f8jj6009p-attic-test-with-deps-b.nar"),
     export: include_bytes!("nar/544qcchwgcgpz3xi1bbml28f8jj6009p-attic-test-with-deps-b.export"),
     closure: &[
@@ -58,7 +58,7 @@ pub const WITH_DEPS_B: TestNar = TestNar {
 /// Expected values for `3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final`.
 pub const WITH_DEPS_C: TestNar = TestNar {
     store_path: "/nix/store/3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final",
-    original_file: include_bytes!(
+    _original_file: include_bytes!(
         "nar/3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final"
     ),
     nar: include_bytes!("nar/3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final.nar"),
@@ -75,7 +75,7 @@ pub struct TestNar {
     store_path: &'static str,
 
     /// The original file.
-    original_file: &'static [u8],
+    _original_file: &'static [u8],
 
     /// A NAR dump without path metadata.
     nar: &'static [u8],

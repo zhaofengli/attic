@@ -1,5 +1,6 @@
 //! Server configuration.
 
+use std::collections::HashSet;
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -7,12 +8,16 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_compression::Level as CompressionLevel;
+use attic_token::SignatureType;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
 
-use crate::access::{decode_token_hs256_secret_base64, HS256Key};
+use crate::access::{
+    decode_token_hs256_secret_base64, decode_token_rs256_pubkey_base64,
+    decode_token_rs256_secret_base64, HS256Key, RS256KeyPair, RS256PublicKey,
+};
 use crate::narinfo::Compression as NixCompression;
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
 
@@ -26,8 +31,17 @@ const XDG_PREFIX: &str = "attic";
 /// This is useful for deploying to certain application platforms like Fly.io
 const ENV_CONFIG_BASE64: &str = "ATTIC_SERVER_CONFIG_BASE64";
 
-/// Environment variable storing the Base64-encoded HS256 JWT secret.
+/// Environment variable storing the base64-encoded HMAC secret (used for signing and verifying
+/// received JWTs).
 const ENV_TOKEN_HS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64";
+
+/// Environment variable storing the base64-encoded RSA PEM PKCS1 private key (used for signing and
+/// verifying received JWTs).
+const ENV_TOKEN_RS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64";
+
+/// Environment variable storing the base64-encoded RSA PEM PKCS1 public key (used for verifying
+/// received JWTs only).
+const ENV_TOKEN_RS256_PUBKEY_BASE64: &str = "ATTIC_SERVER_TOKEN_RS256_PUBKEY_BASE64";
 
 /// Environment variable storing the database connection string.
 const ENV_DATABASE_URL: &str = "ATTIC_SERVER_DATABASE_URL";
@@ -108,14 +122,81 @@ pub struct Config {
     #[serde(default = "Default::default")]
     pub garbage_collection: GarbageCollectionConfig,
 
+    /// JSON Web Token.
+    pub jwt: JWTConfig,
+
+    /// (Deprecated Stub)
+    ///
+    /// This simply results in an error telling the user to update
+    /// their configuration.
+    #[serde(rename = "token-hs256-secret-base64")]
+    #[serde(default = "Default::default")]
+    #[serde(deserialize_with = "deserialize_deprecated_token_hs256_secret")]
+    #[derivative(Debug = "ignore")]
+    pub _depreated_token_hs256_secret: Option<String>,
+}
+
+/// JSON Web Token configuration.
+#[derive(Clone, Derivative, Deserialize)]
+#[derivative(Debug)]
+pub struct JWTConfig {
+    /// The `iss` claim of the JWT.
+    ///
+    /// If specified, received JWTs must have this claim, and its value must match this
+    /// configuration.
+    #[serde(rename = "token-bound-issuer")]
+    #[serde(default = "Default::default")]
+    pub token_bound_issuer: Option<String>,
+
+    /// The `aud` claim of the JWT.
+    ///
+    /// If specified, received JWTs must have this claim, and must contain one of the configured
+    /// values.
+    #[serde(rename = "token-bound-audiences")]
+    #[serde(default = "Default::default")]
+    pub token_bound_audiences: Option<HashSet<String>>,
+
+    /// JSON Web Token signing.
+    #[serde(rename = "signing")]
+    #[serde(default = "load_jwt_signing_config_from_env")]
+    #[derivative(Debug = "ignore")]
+    pub signing_config: JWTSigningConfig,
+}
+
+/// JSON Web Token signing configuration.
+#[derive(Clone, Deserialize)]
+pub enum JWTSigningConfig {
+    /// JSON Web Token RSA pubkey.
+    ///
+    /// Set this to the base64-encoded RSA PEM PKCS1 public key to use for verifying JWTs only.
+    #[serde(rename = "token-rs256-pubkey-base64")]
+    #[serde(deserialize_with = "deserialize_token_rs256_pubkey_base64")]
+    RS256VerifyOnly(RS256PublicKey),
+
+    /// JSON Web Token RSA secret.
+    ///
+    /// Set this to the base64-encoded RSA PEM PKCS1 private key to use for signing and verifying
+    /// JWTs.
+    #[serde(rename = "token-rs256-secret-base64")]
+    #[serde(deserialize_with = "deserialize_token_rs256_secret_base64")]
+    RS256SignAndVerify(RS256KeyPair),
+
     /// JSON Web Token HMAC secret.
     ///
-    /// Set this to the base64 encoding of a randomly generated secret.
+    /// Set this to the base64-encoded HMAC secret to use for signing and verifying JWTs.
     #[serde(rename = "token-hs256-secret-base64")]
     #[serde(deserialize_with = "deserialize_token_hs256_secret_base64")]
-    #[serde(default = "load_token_hs256_secret_from_env")]
-    #[derivative(Debug = "ignore")]
-    pub token_hs256_secret: HS256Key,
+    HS256SignAndVerify(HS256Key),
+}
+
+impl From<JWTSigningConfig> for SignatureType {
+    fn from(value: JWTSigningConfig) -> Self {
+        match value {
+            JWTSigningConfig::RS256VerifyOnly(key) => Self::RS256PubkeyOnly(key),
+            JWTSigningConfig::RS256SignAndVerify(key) => Self::RS256(key),
+            JWTSigningConfig::HS256SignAndVerify(key) => Self::HS256(key),
+        }
+    }
 }
 
 /// Database connection configuration.
@@ -240,16 +321,82 @@ pub struct GarbageCollectionConfig {
     pub default_retention_period: Duration,
 }
 
-fn load_token_hs256_secret_from_env() -> HS256Key {
-    let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64)
-        .expect("The HS256 secret must be specified in either token_hs256_secret or the ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 environment.");
+fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
+    let config = if let Some(config) = load_token_rs256_pubkey_from_env() {
+        config
+    } else if let Some(config) = load_token_rs256_secret_from_env() {
+        config
+    } else if let Some(config) = load_token_hs256_secret_from_env() {
+        config
+    } else {
+        panic!(
+            "\n\
+            You must configure JWT signing and verification inside your TOML \
+            configuration by setting one of the following options in the \
+            [jwt.signing] block:\n\
+            \n\
+            * token-rs256-pubkey-base64\n\
+            * token-rs256-secret-base64\n\
+            * token-hs256-secret-base64\n\
+            \n\
+            or by setting one of the following environment variables:\n\
+            \n\
+            * {ENV_TOKEN_RS256_PUBKEY_BASE64}\n\
+            * {ENV_TOKEN_RS256_SECRET_BASE64}\n\
+            * {ENV_TOKEN_HS256_SECRET_BASE64}\n\
+            \n\
+            Options will be tried in that same order (configuration options \
+            first, then environment options if none of the configuration options \
+            were set, starting with the respective RSA pubkey option, the RSA \
+            secret option, and finally the HMAC secret option). \
+            The first option that is found will be used.\n\
+            \n\
+            If an RS256 pubkey (asymmetric RSA PEM PKCS1 public key) is \
+            provided, it will only be possible to verify received JWTs, and not \
+            sign new JWTs.\n\
+            \n\
+            If an RS256 secret (asymmetric RSA PEM PKCS1 private key) is \
+            provided, it will be used for both signing new JWTs and verifying \
+            received JWTs.\n\
+            \n\
+            If an HS256 secret (symmetric HMAC secret) is provided, it will be \
+            used for both signing new JWTs and verifying received JWTs.\n\
+            "
+        )
+    };
 
-    decode_token_hs256_secret_base64(&s).expect("Failed to load as decoding key")
+    config
+}
+
+fn load_token_hs256_secret_from_env() -> Option<JWTSigningConfig> {
+    let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64).ok()?;
+
+    decode_token_hs256_secret_base64(&s)
+        .ok()
+        .map(JWTSigningConfig::HS256SignAndVerify)
+}
+
+fn load_token_rs256_secret_from_env() -> Option<JWTSigningConfig> {
+    let s = env::var(ENV_TOKEN_RS256_SECRET_BASE64).ok()?;
+
+    decode_token_rs256_secret_base64(&s)
+        .ok()
+        .map(JWTSigningConfig::RS256SignAndVerify)
+}
+
+fn load_token_rs256_pubkey_from_env() -> Option<JWTSigningConfig> {
+    let s = env::var(ENV_TOKEN_RS256_PUBKEY_BASE64).ok()?;
+
+    decode_token_rs256_pubkey_base64(&s)
+        .ok()
+        .map(JWTSigningConfig::RS256VerifyOnly)
 }
 
 fn load_database_url_from_env() -> String {
-    env::var(ENV_DATABASE_URL)
-        .expect("Database URL must be specified in either database.url or the ATTIC_SERVER_DATABASE_URL environment.")
+    env::var(ENV_DATABASE_URL).expect(&format!(
+        "Database URL must be specified in either database.url \
+        or the {ENV_DATABASE_URL} environment."
+    ))
 }
 
 impl CompressionConfig {
@@ -296,6 +443,30 @@ impl Default for GarbageCollectionConfig {
     }
 }
 
+fn deserialize_deprecated_token_hs256_secret<'de, D>(
+    _deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error;
+
+    Err(Error::custom(
+        "\n\
+            The token-hs256-secret-base64 field has been moved to [jwt.signing].\n\
+            \n\
+            To continue using HS256 signing, move your current config:\n\
+            \n\
+            token-hs256-secret-base64 = \"your token\"\n\
+            \n\
+            To the bottom of the file like so:\n\
+            \n\
+            [jwt.signing]\n\
+            token-hs256-secret-base64 = \"your token\"\n\
+            ",
+    ))
+}
+
 fn deserialize_token_hs256_secret_base64<'de, D>(deserializer: D) -> Result<HS256Key, D::Error>
 where
     D: de::Deserializer<'de>,
@@ -304,6 +475,32 @@ where
 
     let s = String::deserialize(deserializer)?;
     let key = decode_token_hs256_secret_base64(&s).map_err(Error::custom)?;
+
+    Ok(key)
+}
+
+fn deserialize_token_rs256_secret_base64<'de, D>(deserializer: D) -> Result<RS256KeyPair, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error;
+
+    let s = String::deserialize(deserializer)?;
+    let key = decode_token_rs256_secret_base64(&s).map_err(Error::custom)?;
+
+    Ok(key)
+}
+
+fn deserialize_token_rs256_pubkey_base64<'de, D>(
+    deserializer: D,
+) -> Result<RS256PublicKey, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error;
+
+    let s = String::deserialize(deserializer)?;
+    let key = decode_token_rs256_pubkey_base64(&s).map_err(Error::custom)?;
 
     Ok(key)
 }

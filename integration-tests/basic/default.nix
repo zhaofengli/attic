@@ -5,8 +5,8 @@ let
   serverConfigFile = config.nodes.server.services.atticd.configFile;
 
   cmd = {
-    atticadm = "atticd-atticadm";
-    atticd = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64 && atticd -f ${serverConfigFile}";
+    atticadm = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64 && atticd-atticadm";
+    atticd = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64 && atticd -f ${serverConfigFile}";
   };
 
   makeTestDerivation = pkgs.writeShellScript "make-drv" ''
@@ -147,7 +147,7 @@ in {
 
         # For testing only - Don't actually do this
         environment.etc."atticd.env".text = ''
-          ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
+          ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64='LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBekhqUzFGKzlRaFFUdlJZYjZ0UGhxS09FME5VYkIraTJMOTByWVBNQVVoYVBUMmlKCmVUNk9vWFlmZWszZlZ1dXIrYks1VWFVRjhUbEx2Y1FHa1Arckd0WDRiQUpGTWJBcTF3Y25FQ3R6ZGVERHJnSlIKMGUvNWJhdXQwSS9YS0ticG9oYjNvWVhtUmR5eG9WVGE3akY1bk11ajBsd25kUTcwYTF1ZGkzMGNpYkdTWHZMagpVeGltL3ByYjUrV3ZPdjN4UnhlbDZHYmptUW1RMVBHeHVLcmx3b1ZKRnlWTjl3QmExajBDelJDcURnTFRwQWw0CjhLVWlDY2V1VUZQcmdZaW9vSVhyVExlWmxVbFVVV3FHSDBJbGFKeVUyQ05iNWJtZWM1TnZ4RDlaakFoYytucmgKRS80VzkxajdQMFVyQnp4am9NUTRlKzBPZDhmQnBvSDAwbm4xUXdJREFRQUJBb0lCQUE2RmxEK21Ed3gyM1pJRAoxSGJBbHBuQ0IwaEhvbFJVK0Q5OC96d3k5ZlplaU00VWVCTUcyTjFweE1HTWIweStqeWU4UkVJaXJNSGRsbDRECllvNEF3bmUwODZCRUp3TG81cG4vOVl2RjhqelFla1ZNLzkrZm9nRGlmUVUvZWdIMm5NZzR4bHlQNUhOWXdicmEKQ25SNVNoQlRQQzdRQWJOa0hRTFU3bUwrUHowZUlXaG9KWVRoUUpkU0g3RDB0K1QwZzVVNDdPam5qbXJaTWwxaApHOE1IUHhKMk5WU1l2N0dobnpjblZvcVVxYzlxeldXRDZXZERtV1BPNGJ1K2p0b2E2U2o4cjJtb0RRZ1A5YXNhCm93RUFJbHBmbVkxYUx2dENwWG4rejRTTWJKcHRXMlVvaktGa2dkYm9jZmtXYWdtSGZRa2xmS0dBQ0hibU9ZV24KeDRCbTU3a0NnWUVBN1dXaXJDZnBRR01hR3A2WWxMQlVUc1VJSXJOclF4UmtuRlc3dFVYd0NqWFZ5SDlTR3FqNgphTkNhYzZpaks3QVNBYXlxY1JQRjFPY2gyNmxpVmRKUHNuRGxwUjhEVXB2TzRVOVRzSTJyZ1lZYzNrSWkzVGFKClgzV0Vic1Z6Nk45WXFPSXlnVnZiTEhLS0F4Uyt4b1Z2SjkzQmdWRHN5SkxRdmhrM3VubXk3M2tDZ1lFQTNINnYKeUhOKzllOVAyOS9zMVY1eWZxSjdvdVdKV0lBTHFDYm9zOTRRSVdPSG5HRUtSSGkydWIzR0d6U2tRSzN1eTUrdQo4M0txaFJOejRVMkdOK1pLaFE0NHhNVmV4TUVvZzJVU3lTaVZ0cFdqWXBwT2Q1NnVaMzRWaFU2TWRNZS9zT0JnCnNoei84MUxUSis2cHdFZE9wV2tPVlRaMXJISlZXQmdtVk5qWjc1c0NnWUVBNVd5YjBaU2dyMEVYTVRLa2NzNFcKTENudXV0cDZodEZtaWsrd29IZCtpOStMUThFSU1BdXVOUzJrbHJJYlAxVmhrWXkxQzZMNFJkRTV2M2ZyT05XUApmL3ZyYzdDTkhZREdacWlyVUswWldvdXB5b0pQLzBsOWFXdkJHT3hxSUZ2NDZ2M3ZvV1NNWkdBdFVOenpvaGZDClhOeks3WmF2dndka0JOT0tNQVQ5RU1FQ2dZRUF3NEhaWDRWNUo1d2dWVGVDQ2RjSzhsb2tBbFpBcUNZeEw5SUEKTjZ4STVUSVpSb0dNMXhXcC81dlRrci9rZkMwOU5YUExiclZYbVZPY1JrTzFKTStmZDhjYWN1OEdqck11dHdMaAoyMWVQR0N3cWlQMkZZZTlqZVFTRkZJU0hhZXpMZll3V2NSZmhvdURudGRxYXpaRHNuU0kvd1RMZXVCOVFxU0lRCnF0NzByczBDZ1lCQ2lzV0VKdXpQUUlJNzVTVkU4UnJFZGtUeUdhOEVBOHltcStMdDVLRDhPYk80Q2JHYVFlWXkKWFpjSHVyOFg2cW1lWHZVU3MwMHBMMUdnTlJ3WCtSUjNMVDhXTm9vc0NqVDlEUW9GOFZveEtseDROVTRoUGlrTQpBc0w1RS9wYnVLeXkvSU5LTnQyT3ZPZmJYVitlTXZQdGs5c1dORjNyRTBYcU15TW9maG9NaVE9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo='
         '';
 
         services.atticd = {
@@ -155,6 +155,8 @@ in {
           credentialsFile = "/etc/atticd.env";
           settings = {
             listen = "[::]:8080";
+
+            jwt = { };
 
             chunking = {
               nar-size-threshold = 1;
@@ -165,7 +167,7 @@ in {
           };
         };
 
-        environment.systemPackages = [ pkgs.attic-server ];
+        environment.systemPackages = [ pkgs.openssl pkgs.attic-server ];
 
         networking.firewall.allowedTCPPorts = [ 8080 ];
       };

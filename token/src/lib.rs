@@ -1,7 +1,7 @@
 //! Access control.
 //!
 //! Access control in Attic is simple and stateless [0] - The server validates
-//! the JWT against a HS256 key and allows access based on the `https://jwt.attic.rs/v1`
+//! the JWT against the configured key and allows access based on the `https://jwt.attic.rs/v1`
 //! claim.
 //!
 //! One primary goal of the Attic Server is easy scalability. It's designed
@@ -83,14 +83,16 @@ pub mod util;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashSet;
 use std::error::Error as StdError;
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
 use indexmap::IndexMap;
+use jwt_simple::prelude::{Duration, RSAKeyPairLike, RSAPublicKeyLike, VerificationOptions};
 pub use jwt_simple::{
-    algorithms::{HS256Key, MACLike},
+    algorithms::{HS256Key, MACLike, RS256KeyPair, RS256PublicKey},
     claims::{Claims, JWTClaims},
     prelude::UnixTimeStamp,
 };
@@ -155,49 +157,49 @@ pub struct AtticAccess {
 pub struct CachePermission {
     /// Can pull objects from the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "r")]
     #[serde_as(as = "BoolFromInt")]
     pub pull: bool,
 
     /// Can push objects to the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "w")]
     #[serde_as(as = "BoolFromInt")]
     pub push: bool,
 
     /// Can delete objects from the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "d")]
     #[serde_as(as = "BoolFromInt")]
     pub delete: bool,
 
     /// Can create the cache itself.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cc")]
     #[serde_as(as = "BoolFromInt")]
     pub create_cache: bool,
 
     /// Can reconfigure the cache.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cr")]
     #[serde_as(as = "BoolFromInt")]
     pub configure_cache: bool,
 
     /// Can configure retention/quota settings.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cq")]
     #[serde_as(as = "BoolFromInt")]
     pub configure_cache_retention: bool,
 
     /// Can destroy the cache itself.
     #[serde(default = "CachePermission::permission_default")]
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "cd")]
     #[serde_as(as = "BoolFromInt")]
     pub destroy_cache: bool,
@@ -223,14 +225,68 @@ pub enum Error {
 
     /// Base64 decode error: {0}
     Base64Error(base64::DecodeError),
+
+    /// RSA Key error: {0}
+    RsaKeyError(rsa::pkcs1::Error),
+
+    /// Failure decoding the base64 layer of the base64 encoded PEM
+    Utf8Error(std::str::Utf8Error),
+
+    /// Pubkey-only JWT authentication cannot create signed JWTs
+    PubkeyOnlyCannotCreateToken,
+}
+
+/// The supported JWT signature types.
+pub enum SignatureType {
+    HS256(HS256Key),
+    RS256(RS256KeyPair),
+    RS256PubkeyOnly(RS256PublicKey),
 }
 
 impl Token {
     /// Verifies and decodes a token.
-    pub fn from_jwt(token: &str, key: &HS256Key) -> Result<Self> {
-        key.verify_token(token, None)
-            .map_err(Error::TokenError)
-            .map(Token)
+    pub fn from_jwt(
+        token: &str,
+        signature_type: &SignatureType,
+        maybe_bound_issuer: &Option<String>,
+        maybe_bound_audiences: &Option<HashSet<String>>,
+    ) -> Result<Self> {
+        let opts = VerificationOptions {
+            reject_before: None,
+            accept_future: false,
+            required_subject: None,
+            required_key_id: None,
+            required_public_key: None,
+            required_nonce: None,
+            allowed_issuers: maybe_bound_issuer
+                .as_ref()
+                .map(|s| [s.to_owned()].into())
+                .to_owned(),
+            allowed_audiences: maybe_bound_audiences.to_owned(),
+            time_tolerance: None,
+            max_validity: None,
+            max_token_length: None,
+            max_header_length: None,
+            artificial_time: None,
+        };
+
+        match signature_type {
+            SignatureType::HS256(key) => key
+                .verify_token(token, Some(opts))
+                .map_err(Error::TokenError)
+                .map(Token),
+            SignatureType::RS256(key) => {
+                let public_key = key.public_key();
+                public_key
+                    .verify_token(token, Some(opts))
+                    .map_err(Error::TokenError)
+                    .map(Token)
+            }
+            SignatureType::RS256PubkeyOnly(key) => key
+                .verify_token(token, Some(opts))
+                .map_err(Error::TokenError)
+                .map(Token),
+        }
     }
 
     /// Creates a new token with an expiration timestamp.
@@ -239,12 +295,17 @@ impl Token {
             attic_ns: Default::default(),
         };
 
+        let now_epoch = Utc::now().signed_duration_since(DateTime::UNIX_EPOCH);
+
         Self(JWTClaims {
             issued_at: None,
             expires_at: Some(UnixTimeStamp::from_secs(
                 exp.timestamp().try_into().unwrap(),
             )),
-            invalid_before: None,
+            invalid_before: Some(Duration::new(
+                now_epoch.num_seconds().try_into().unwrap(),
+                0,
+            )),
             issuer: None,
             subject: Some(sub),
             audiences: None,
@@ -255,8 +316,28 @@ impl Token {
     }
 
     /// Encodes the token.
-    pub fn encode(&self, key: &HS256Key) -> Result<String> {
-        key.authenticate(self.0.clone()).map_err(Error::TokenError)
+    pub fn encode(
+        &self,
+        signature_type: &SignatureType,
+        maybe_bound_issuer: &Option<String>,
+        maybe_bound_audiences: &Option<HashSet<String>>,
+    ) -> Result<String> {
+        let mut token = self.0.clone();
+
+        if let Some(issuer) = maybe_bound_issuer {
+            token = token.with_issuer(issuer);
+        }
+        if let Some(audiences) = maybe_bound_audiences {
+            token = token.with_audiences(audiences.to_owned());
+        }
+
+        match signature_type {
+            SignatureType::HS256(key) => key.authenticate(token).map_err(Error::TokenError),
+            SignatureType::RS256(key) => key.sign(token).map_err(Error::TokenError),
+            SignatureType::RS256PubkeyOnly(_) => {
+                return Err(Error::PubkeyOnlyCannotCreateToken);
+            }
+        }
     }
 
     /// Returns the subject of the token.
@@ -362,11 +443,23 @@ impl CachePermission {
 impl StdError for Error {}
 
 pub fn decode_token_hs256_secret_base64(s: &str) -> Result<HS256Key> {
-    let secret = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
-    Ok(HS256Key::from_bytes(&secret))
+    let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
+    let secret = std::str::from_utf8(&decoded).map_err(Error::Utf8Error)?;
+    Ok(HS256Key::from_bytes(&secret.as_bytes()))
 }
 
-// bruh
-fn is_false(b: &bool) -> bool {
-    !b
+pub fn decode_token_rs256_secret_base64(s: &str) -> Result<RS256KeyPair> {
+    let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
+    let secret = std::str::from_utf8(&decoded).map_err(Error::Utf8Error)?;
+    let keypair = RS256KeyPair::from_pem(secret).map_err(Error::TokenError)?;
+
+    Ok(keypair)
+}
+
+pub fn decode_token_rs256_pubkey_base64(s: &str) -> Result<RS256PublicKey> {
+    let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
+    let pubkey = std::str::from_utf8(&decoded).map_err(Error::Utf8Error)?;
+    let pubkey = RS256PublicKey::from_pem(pubkey).map_err(Error::TokenError)?;
+
+    Ok(pubkey)
 }

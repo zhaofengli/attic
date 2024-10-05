@@ -1,5 +1,7 @@
 //! HTTP middlewares for access control.
 
+use attic::cache::CacheName;
+use attic_token::util::parse_authorization_header;
 use axum::{extract::Request, middleware::Next, response::Response};
 use sea_orm::DatabaseConnection;
 use tokio::sync::OnceCell;
@@ -8,8 +10,6 @@ use crate::access::{CachePermission, Token};
 use crate::database::{entity::cache::CacheModel, AtticDatabase};
 use crate::error::ServerResult;
 use crate::{RequestState, State};
-use attic::cache::CacheName;
-use attic_token::util::parse_authorization_header;
 
 /// Auth state.
 #[derive(Debug)]
@@ -101,10 +101,19 @@ pub async fn apply_auth(req: Request, next: Next) -> Response {
         .and_then(parse_authorization_header)
         .and_then(|jwt| {
             let state = req.extensions().get::<State>().unwrap();
-            let res_token = Token::from_jwt(&jwt, &state.config.token_hs256_secret);
+            let signature_type = state.config.jwt.signing_config.clone().into();
+
+            let res_token = Token::from_jwt(
+                &jwt,
+                &signature_type,
+                &state.config.jwt.token_bound_issuer,
+                &state.config.jwt.token_bound_audiences,
+            );
+
             if let Err(e) = &res_token {
                 tracing::debug!("Ignoring bad JWT token: {}", e);
             }
+
             res_token.ok()
         });
 

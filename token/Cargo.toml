@@ -9,7 +9,7 @@ edition = "2021"
 attic = { path = "../attic", default-features = false }
 
 base64 = "0.22.1"
-chrono = "0.4.24"
+chrono = "0.4.31"
 displaydoc = "0.2.4"
 indexmap = { version = "2.2.6", features = ["serde"] }
 jwt-simple = "0.11.5"
@@ -18,3 +18,4 @@ regex = "1.8.3"
 serde = "1.0.163"
 serde_with = "3.0.0"
 tracing = "0.1.37"
+rsa = "0.9.3"

@@ -16,7 +16,7 @@ let
   } ''
     cat $configFile
 
-    export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
+    export ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64="$(${pkgs.openssl}/bin/openssl genrsa -traditional 4096 | ${pkgs.coreutils}/bin/base64 -w0)"
     export ATTIC_SERVER_DATABASE_URL="sqlite://:memory:"
     ${cfg.package}/bin/atticd --mode check-config -f $configFile
     cat <$configFile >$out
@@ -79,8 +79,8 @@ in
           Path to an EnvironmentFile containing required environment
           variables:
 
-          - ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64: The Base64-encoded version of the
-            HS256 JWT secret. Generate it with `openssl rand 64 | base64 -w0`.
+          - ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64: The base64-encoded RSA PEM PKCS1 of the
+            RS256 JWT secret. Generate it with `openssl genrsa -traditional 4096 | base64 -w0`.
         '';
         type = types.nullOr types.path;
         default = null;
@@ -154,9 +154,9 @@ in
           message = ''
             <option>services.atticd.credentialsFile</option> is not set.
 
-            Run `openssl rand 64 | base64 -w0` and create a file with the following contents:
+            Run `openssl genrsa -traditional -out private_key.pem 4096 | base64 -w0` and create a file with the following contents:
 
-            ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="output from command"
+            ATTIC_SERVER_TOKEN_RS256_SECRET="output from command"
 
             Then, set `services.atticd.credentialsFile` to the quoted absolute path of the file.
           '';
