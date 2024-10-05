@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+if [[ ! -f "${cached_shell}" ]]; then
+	>&2 echo "No cached shell in ${cached_shell}"
+	exit 1
+fi
+
+. "${cached_shell}"
+exec "$@"

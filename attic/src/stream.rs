@@ -176,10 +176,9 @@ mod tests {
     use bytes::{BufMut, BytesMut};
     use futures::future;
     use tokio::io::AsyncReadExt;
-    use tokio_test::block_on;
 
-    #[test]
-    fn test_stream_hasher() {
+    #[tokio::test]
+    async fn test_stream_hasher() {
         let expected = b"hello world";
         let expected_sha256 =
             hex::decode("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
@@ -191,10 +190,22 @@ mod tests {
         // force multiple reads
         let mut buf = vec![0u8; 100];
         let mut bytes_read = 0;
-        bytes_read += block_on(read.read(&mut buf[bytes_read..bytes_read + 5])).unwrap();
-        bytes_read += block_on(read.read(&mut buf[bytes_read..bytes_read + 5])).unwrap();
-        bytes_read += block_on(read.read(&mut buf[bytes_read..bytes_read + 5])).unwrap();
-        bytes_read += block_on(read.read(&mut buf[bytes_read..bytes_read + 5])).unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
+        bytes_read += read
+            .read(&mut buf[bytes_read..bytes_read + 5])
+            .await
+            .unwrap();
 
         assert_eq!(expected.len(), bytes_read);
         assert_eq!(expected, &buf[..bytes_read]);
@@ -206,8 +217,8 @@ mod tests {
         eprintln!("finalized = {:x?}", finalized);
     }
 
-    #[test]
-    fn test_merge_chunks() {
+    #[tokio::test]
+    async fn test_merge_chunks() {
         let chunk_a: BoxStream<Result<Bytes, ()>> = {
             let s = stream! {
                 yield Ok(Bytes::from_static(b"Hello"));
@@ -236,13 +247,11 @@ mod tests {
         let streamer = |c, _| future::ok(c);
         let mut merged = merge_chunks(chunks, streamer, (), 2);
 
-        let bytes = block_on(async move {
-            let mut bytes = BytesMut::with_capacity(100);
-            while let Some(item) = merged.next().await {
-                bytes.put(item.unwrap());
-            }
-            bytes.freeze()
-        });
+        let mut bytes = BytesMut::with_capacity(100);
+        while let Some(item) = merged.next().await {
+            bytes.put(item.unwrap());
+        }
+        let bytes = bytes.freeze();
 
         assert_eq!(&*bytes, b"Hello, world!");
     }

@@ -14,7 +14,7 @@ use std::str::FromStr;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
-pub use attic::cache::{CacheName};
+pub use attic::cache::CacheName;
 
 /// A reference to a cache.
 #[derive(Debug, Clone)]

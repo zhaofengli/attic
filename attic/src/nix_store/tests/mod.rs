@@ -6,7 +6,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::process::Command;
 
 use serde::de::DeserializeOwned;
-use tokio_test::block_on;
 
 pub mod test_nar;
 
@@ -143,113 +142,105 @@ fn test_store_path_hash() {
     StorePathHash::new(h).unwrap_err();
 }
 
-#[test]
-fn test_nar_streaming() {
+#[tokio::test]
+async fn test_nar_streaming() {
     let store = NixStore::connect().expect("Failed to connect to the Nix store");
 
-    block_on(async move {
-        let test_nar = test_nar::NO_DEPS;
-        test_nar.import().await.expect("Could not import test NAR");
+    let test_nar = test_nar::NO_DEPS;
+    test_nar.import().await.expect("Could not import test NAR");
 
-        let target = test_nar.get_target().expect("Could not create dump target");
-        let writer = target.get_writer().await.expect("Could not get writer");
+    let target = test_nar.get_target().expect("Could not create dump target");
+    let writer = target.get_writer().await.expect("Could not get writer");
 
-        let store_path = store.parse_store_path(test_nar.path()).unwrap();
+    let store_path = store.parse_store_path(test_nar.path()).unwrap();
 
-        let stream = store.nar_from_path(store_path);
-        stream.write_all(writer).await.unwrap();
+    let stream = store.nar_from_path(store_path);
+    stream.write_all(writer).await.unwrap();
 
-        target
-            .validate()
-            .await
-            .expect("Could not validate resulting dump");
-    });
+    target
+        .validate()
+        .await
+        .expect("Could not validate resulting dump");
 }
 
-#[test]
-fn test_compute_fs_closure() {
+#[tokio::test]
+async fn test_compute_fs_closure() {
+    use test_nar::{WITH_DEPS_A, WITH_DEPS_B, WITH_DEPS_C};
+
     let store = NixStore::connect().expect("Failed to connect to the Nix store");
 
-    block_on(async move {
-        use test_nar::{WITH_DEPS_A, WITH_DEPS_B, WITH_DEPS_C};
+    for nar in [WITH_DEPS_C, WITH_DEPS_B, WITH_DEPS_A] {
+        nar.import().await.expect("Could not import test NAR");
 
-        for nar in [WITH_DEPS_C, WITH_DEPS_B, WITH_DEPS_A] {
-            nar.import().await.expect("Could not import test NAR");
-
-            let path = store
-                .parse_store_path(nar.path())
-                .expect("Could not parse store path");
-
-            let actual: HashSet<StorePath> = store
-                .compute_fs_closure(path, false, false, false)
-                .await
-                .expect("Could not compute closure")
-                .into_iter()
-                .collect();
-
-            assert_eq!(nar.closure(), actual);
-        }
-    });
-}
-
-#[test]
-fn test_compute_fs_closure_multi() {
-    let store = NixStore::connect().expect("Failed to connect to the Nix store");
-
-    block_on(async move {
-        use test_nar::{NO_DEPS, WITH_DEPS_A, WITH_DEPS_B, WITH_DEPS_C};
-
-        for nar in [NO_DEPS, WITH_DEPS_C, WITH_DEPS_B, WITH_DEPS_A] {
-            nar.import().await.expect("Could not import test NAR");
-        }
-
-        let mut expected = NO_DEPS.closure();
-        expected.extend(WITH_DEPS_A.closure());
-
-        let paths = vec![
-            store.parse_store_path(WITH_DEPS_A.path()).unwrap(),
-            store.parse_store_path(NO_DEPS.path()).unwrap(),
-        ];
+        let path = store
+            .parse_store_path(nar.path())
+            .expect("Could not parse store path");
 
         let actual: HashSet<StorePath> = store
-            .compute_fs_closure_multi(paths, false, false, false)
+            .compute_fs_closure(path, false, false, false)
             .await
             .expect("Could not compute closure")
             .into_iter()
             .collect();
 
-        eprintln!("Closure: {:#?}", actual);
-
-        assert_eq!(expected, actual);
-    });
+        assert_eq!(nar.closure(), actual);
+    }
 }
 
-#[test]
-fn test_query_path_info() {
+#[tokio::test]
+async fn test_compute_fs_closure_multi() {
+    use test_nar::{NO_DEPS, WITH_DEPS_A, WITH_DEPS_B, WITH_DEPS_C};
+
     let store = NixStore::connect().expect("Failed to connect to the Nix store");
 
-    block_on(async move {
-        use test_nar::{WITH_DEPS_B, WITH_DEPS_C};
+    for nar in [NO_DEPS, WITH_DEPS_C, WITH_DEPS_B, WITH_DEPS_A] {
+        nar.import().await.expect("Could not import test NAR");
+    }
 
-        for nar in [WITH_DEPS_C, WITH_DEPS_B] {
-            nar.import().await.expect("Could not import test NAR");
-        }
+    let mut expected = NO_DEPS.closure();
+    expected.extend(WITH_DEPS_A.closure());
 
-        let nar = WITH_DEPS_B;
-        let path = store.parse_store_path(nar.path()).unwrap();
-        let path_info = store
-            .query_path_info(path)
-            .await
-            .expect("Could not query path info");
+    let paths = vec![
+        store.parse_store_path(WITH_DEPS_A.path()).unwrap(),
+        store.parse_store_path(NO_DEPS.path()).unwrap(),
+    ];
 
-        eprintln!("Path info: {:?}", path_info);
+    let actual: HashSet<StorePath> = store
+        .compute_fs_closure_multi(paths, false, false, false)
+        .await
+        .expect("Could not compute closure")
+        .into_iter()
+        .collect();
 
-        assert_eq!(nar.nar().len() as u64, path_info.nar_size);
-        assert_eq!(
-            vec![PathBuf::from(
-                "3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final"
-            ),],
-            path_info.references
-        );
-    });
+    eprintln!("Closure: {:#?}", actual);
+
+    assert_eq!(expected, actual);
+}
+
+#[tokio::test]
+async fn test_query_path_info() {
+    use test_nar::{WITH_DEPS_B, WITH_DEPS_C};
+
+    let store = NixStore::connect().expect("Failed to connect to the Nix store");
+
+    for nar in [WITH_DEPS_C, WITH_DEPS_B] {
+        nar.import().await.expect("Could not import test NAR");
+    }
+
+    let nar = WITH_DEPS_B;
+    let path = store.parse_store_path(nar.path()).unwrap();
+    let path_info = store
+        .query_path_info(path)
+        .await
+        .expect("Could not query path info");
+
+    eprintln!("Path info: {:?}", path_info);
+
+    assert_eq!(nar.nar().len() as u64, path_info.nar_size);
+    assert_eq!(
+        vec![PathBuf::from(
+            "3k1wymic8p7h5pfcqfhh0jan8ny2a712-attic-test-with-deps-c-final"
+        ),],
+        path_info.references
+    );
 }

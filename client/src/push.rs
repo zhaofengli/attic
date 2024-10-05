@@ -28,7 +28,7 @@ use bytes::Bytes;
 use futures::future::join_all;
 use futures::stream::{Stream, TryStreamExt};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::{spawn, JoinHandle};
 use tokio::time;
 
@@ -100,11 +100,22 @@ pub struct Pusher {
 /// seconds since the last path is queued or it's been 10 seconds in total.
 pub struct PushSession {
     /// Sender to the batching future.
-    sender: channel::Sender<Vec<StorePath>>,
+    sender: channel::Sender<SessionQueueCommand>,
+
+    /// Receiver of results.
+    result_receiver: mpsc::Receiver<Result<HashMap<StorePath, Result<()>>>>,
+}
+
+enum SessionQueueCommand {
+    Paths(Vec<StorePath>),
+    Flush,
+    Terminate,
 }
 
 enum SessionQueuePoll {
     Paths(Vec<StorePath>),
+    Flush,
+    Terminate,
     Closed,
     TimedOut,
 }
@@ -255,36 +266,36 @@ impl Pusher {
 impl PushSession {
     pub fn with_pusher(pusher: Pusher, config: PushSessionConfig) -> Self {
         let (sender, receiver) = channel::unbounded();
+        let (result_sender, result_receiver) = mpsc::channel(1);
 
         let known_paths_mutex = Arc::new(Mutex::new(HashSet::new()));
 
-        // FIXME
         spawn(async move {
-            let pusher = Arc::new(pusher);
-            loop {
-                if let Err(e) = Self::worker(
-                    pusher.clone(),
-                    config,
-                    known_paths_mutex.clone(),
-                    receiver.clone(),
-                )
-                .await
-                {
-                    eprintln!("Worker exited: {:?}", e);
-                } else {
-                    break;
-                }
+            if let Err(e) = Self::worker(
+                pusher,
+                config,
+                known_paths_mutex.clone(),
+                receiver.clone(),
+                result_sender.clone(),
+            )
+            .await
+            {
+                let _ = result_sender.send(Err(e)).await;
             }
         });
 
-        Self { sender }
+        Self {
+            sender,
+            result_receiver,
+        }
     }
 
     async fn worker(
-        pusher: Arc<Pusher>,
+        pusher: Pusher,
         config: PushSessionConfig,
         known_paths_mutex: Arc<Mutex<HashSet<StorePathHash>>>,
-        receiver: channel::Receiver<Vec<StorePath>>,
+        receiver: channel::Receiver<SessionQueueCommand>,
+        result_sender: mpsc::Sender<Result<HashMap<StorePath, Result<()>>>>,
     ) -> Result<()> {
         let mut roots = HashSet::new();
 
@@ -296,7 +307,9 @@ impl PushSession {
                     loop {
                         let poll = tokio::select! {
                             r = receiver.recv() => match r {
-                                Ok(paths) => SessionQueuePoll::Paths(paths),
+                                Ok(SessionQueueCommand::Paths(paths)) => SessionQueuePoll::Paths(paths),
+                                Ok(SessionQueueCommand::Flush) => SessionQueuePoll::Flush,
+                                Ok(SessionQueueCommand::Terminate) => SessionQueuePoll::Terminate,
                                 _ => SessionQueuePoll::Closed,
                             },
                             _ = time::sleep(Duration::from_secs(2)) => SessionQueuePoll::TimedOut,
@@ -306,10 +319,10 @@ impl PushSession {
                             SessionQueuePoll::Paths(store_paths) => {
                                 roots.extend(store_paths.into_iter());
                             }
-                            SessionQueuePoll::Closed => {
+                            SessionQueuePoll::Closed | SessionQueuePoll::Terminate => {
                                 break true;
                             }
-                            SessionQueuePoll::TimedOut => {
+                            SessionQueuePoll::Flush | SessionQueuePoll::TimedOut => {
                                 break false;
                             }
                         }
@@ -352,15 +365,37 @@ impl PushSession {
             drop(known_paths);
 
             if done {
+                let result = pusher.wait().await;
+                result_sender.send(Ok(result)).await?;
                 return Ok(());
             }
         }
     }
 
+    /// Waits for all workers to terminate, returning all results.
+    pub async fn wait(mut self) -> Result<HashMap<StorePath, Result<()>>> {
+        self.flush()?;
+
+        // The worker might have died
+        let _ = self.sender.send(SessionQueueCommand::Terminate).await;
+
+        self.result_receiver
+            .recv()
+            .await
+            .expect("Nothing in result channel")
+    }
+
     /// Queues multiple store paths to be pushed.
     pub fn queue_many(&self, store_paths: Vec<StorePath>) -> Result<()> {
         self.sender
-            .send_blocking(store_paths)
+            .send_blocking(SessionQueueCommand::Paths(store_paths))
+            .map_err(|e| anyhow!(e))
+    }
+
+    /// Flushes the worker queue.
+    pub fn flush(&self) -> Result<()> {
+        self.sender
+            .send_blocking(SessionQueueCommand::Flush)
             .map_err(|e| anyhow!(e))
     }
 }

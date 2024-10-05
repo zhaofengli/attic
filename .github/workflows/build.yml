@@ -4,7 +4,7 @@ on:
   push:
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 jobs:
   tests:
     strategy:
@@ -12,14 +12,20 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+        nix:
+          - "2.20"
+          - "2.24"
+          - "default"
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-      packages: write
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v4.1.7
 
-      - uses: DeterminateSystems/nix-installer-action@v9
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          command -v brew && brew install bash || true
+
+      - uses: DeterminateSystems/nix-installer-action@v14
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -29,6 +35,7 @@ jobs:
           fi
 
       - name: Configure Attic
+        continue-on-error: true
         run: |
           : "${ATTIC_SERVER:=https://staging.attic.rs/}"
           : "${ATTIC_CACHE:=attic-ci}"
@@ -41,45 +48,113 @@ jobs:
           ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
           ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
 
-      - name: Build and run tests
+      - name: Cache dev shell
         run: |
+          .ci/cache-shell.sh
           system=$(nix-instantiate --eval -E 'builtins.currentSystem')
           echo system=$system >>$GITHUB_ENV
-          tests=$(nix build .#internal."$system".attic-tests --no-link --print-out-paths -L)
-          find "$tests/bin" -exec {} \;
+
+      - name: Run unit tests
+        run: |
+          .ci/run just ci-unit-tests ${{ matrix.nix }}
+
+      - name: Build WebAssembly crates
+        if: runner.os == 'Linux'
+        run: |
+          .ci/run just ci-build-wasm
 
       # TODO: Just take a diff of the list of store paths, also abstract all of this out
       - name: Push build artifacts
         run: |
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           if [ -n "$ATTIC_TOKEN" ]; then
-            nix build .#internal."$system".attic-tests .#internal."$system".cargoArtifacts --no-link --print-out-paths -L | \
-              xargs attic push "ci:$ATTIC_CACHE"
+            nix build --no-link --print-out-paths -L \
+              .#internalMatrix."$system".\"${{ matrix.nix }}\".attic-tests \
+              .#internalMatrix."$system".\"${{ matrix.nix }}\".cargoArtifacts \
+            | xargs attic push "ci:$ATTIC_CACHE"
           fi
+
+  image:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs:
+      - tests
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          command -v brew && brew install bash || true
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+        continue-on-error: true # Self-hosted runners already have Nix installed
+
+      - name: Install Attic
+        run: |
+          if ! command -v attic &> /dev/null; then
+            ./.github/install-attic-ci.sh
+          fi
+
+      - name: Configure Attic
+        continue-on-error: true
+        run: |
+          : "${ATTIC_SERVER:=https://staging.attic.rs/}"
+          : "${ATTIC_CACHE:=attic-ci}"
+          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
+          attic use "$ATTIC_CACHE"
+        env:
+          ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
+          ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+
+      - name: Cache dev shell
+        run: |
+          .ci/cache-shell.sh
+          system=$(nix-instantiate --eval -E 'builtins.currentSystem')
+          echo system=$system >>$GITHUB_ENV
+
       - name: Log in to the Container registry
-        uses: docker/login-action@v3.0.0
-        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: docker/login-action@v3.3.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push build container image
-        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      - name: Build and push container images
         continue-on-error: true
         run: |
-          IMAGE_ID=ghcr.io/${IMAGE_NAME}
-          TARBALL=$(nix build --json .#attic-server-image | jq -r '.[].outputs.out')
-          BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-          TAG="${{ github.sha }}"
-          [[ "${{ github.ref }}" == "refs/tags/"* ]] && TAG=$(echo $BRANCH | sed -e 's/^v//')
-          docker load < ${TARBALL}
-          echo IMAGE_ID=$IMAGE_ID
-          echo TAG=$TAG
-          docker tag attic-server:main "${IMAGE_ID}:${TAG}"
-          docker push ${IMAGE_ID}:${TAG}
-          if [ "$BRANCH" == "main" ]; then
-            TAG="latest"
-            docker tag attic-server:main "${IMAGE_ID}:${TAG}"
-            docker push ${IMAGE_ID}:${TAG}
+          declare -a tags
+          tags+=("${{ github.sha }}")
+
+          branch=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
+            tags+=("$(echo $branch | sed -e 's/^v//')")
+          else
+            tags+=("${branch}")
+          fi
+
+          if [ "$branch" == "${{ github.event.repository.default_branch }}" ]; then
+            tags+=("latest")
+          fi
+
+          >&2 echo "Image: ${IMAGE_NAME}"
+          >&2 echo "Tags: ${tags[@]}"
+
+          .ci/run just ci-build-and-push-images "${IMAGE_NAME}" "${tags[@]}"
+
+      # TODO: Just take a diff of the list of store paths, also abstract all of this out
+      - name: Push build artifacts
+        run: |
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          if [ -n "$ATTIC_TOKEN" ]; then
+            nix build --no-link --print-out-paths -L \
+              .#attic-server-image \
+              .#attic-server-image-aarch64 \
+            | xargs attic push "ci:$ATTIC_CACHE"
           fi

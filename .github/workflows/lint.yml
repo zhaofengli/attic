@@ -1,0 +1,49 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+jobs:
+  lint:
+    name: Lint
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          command -v brew && brew install bash || true
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+        continue-on-error: true # Self-hosted runners already have Nix installed
+
+      - name: Install Attic
+        run: |
+          if ! command -v attic &> /dev/null; then
+            ./.github/install-attic-ci.sh
+          fi
+
+      - name: Configure Attic
+        run: |
+          : "${ATTIC_SERVER:=https://staging.attic.rs/}"
+          : "${ATTIC_CACHE:=attic-ci}"
+          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
+          attic use "$ATTIC_CACHE"
+        env:
+          ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
+          ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+
+      - name: Cache dev shell
+        run: |
+          .ci/cache-shell.sh
+          system=$(nix-instantiate --eval -E 'builtins.currentSystem')
+          echo system=$system >>$GITHUB_ENV
+
+      - name: Check rustfmt
+        run: .ci/run just ci-rustfmt
