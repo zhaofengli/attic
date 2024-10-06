@@ -182,6 +182,12 @@ pub async fn run(opts: Opts) -> Result<()> {
     };
 
     if sub.stdin {
+        if !sub.paths.is_empty() {
+            return Err(anyhow!(
+                "No paths can be specified on the command line with --stdin"
+            ));
+        }
+
         push_ctx.push_stdin().await?;
     } else {
         push_ctx.push_static(sub.paths.clone()).await?;
