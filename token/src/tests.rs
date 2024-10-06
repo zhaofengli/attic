@@ -32,11 +32,11 @@ fn test_basic() {
         (
             "hs256",
             Box::new(|| {
-                // "very secure secret"
-                let base64_secret = "dmVyeSBzZWN1cmUgc2VjcmV0";
+                // printf '\xc3\x28 <- invalid utf8' | base64
+                let base64_secret = "wyggPC0gaW52YWxpZCB1dGY4";
                 let dec_key = decode_token_hs256_secret_base64(base64_secret).unwrap();
 
-                let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJhbGwtKiI6eyJyIjoxfSwiYWxsLWNpLSoiOnsidyI6MX0sImNhY2hlLXJvIjp7InIiOjF9LCJjYWNoZS1ydyI6eyJyIjoxLCJ3IjoxfSwidGVhbS0qIjp7ImNjIjoxLCJyIjoxLCJ3IjoxfX19LCJpYXQiOjE3MTY2NjA1ODksInN1YiI6Im1lb3cifQ.8vtxp_1OEYdcnkGPM4c9ORXooJZV7DOTS4NRkMKN8mw";
+                let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDIzMjQ5ODYsImh0dHBzOi8vand0LmF0dGljLnJzL3YxIjp7ImNhY2hlcyI6eyJhbGwtKiI6eyJyIjoxfSwiYWxsLWNpLSoiOnsidyI6MX0sImNhY2hlLXJvIjp7InIiOjF9LCJjYWNoZS1ydyI6eyJyIjoxLCJ3IjoxfSwidGVhbS0qIjp7ImNjIjoxLCJyIjoxLCJ3IjoxfX19LCJpYXQiOjE3MjgyMzI5OTYsIm5iZiI6MCwic3ViIjoibWVvdyJ9.wESluTI5K5v2W1WISGwAjazKMMUZBD-zSUYN-_XFN9I";
 
                 Token::from_jwt(token, &SignatureType::HS256(dec_key), &None, &None).unwrap()
             }),
