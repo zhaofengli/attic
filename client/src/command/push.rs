@@ -108,6 +108,10 @@ impl PushContext {
         let stdin = BufReader::new(io::stdin());
         let mut lines = stdin.lines();
         while let Some(line) = lines.next_line().await? {
+            if line.is_empty() {
+                continue;
+            }
+
             let path = self.store.follow_store_path(line)?;
             session.queue_many(vec![path])?;
         }
