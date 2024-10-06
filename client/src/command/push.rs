@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -57,6 +58,16 @@ struct PushContext {
 
 impl PushContext {
     async fn push_static(self, paths: Vec<PathBuf>) -> Result<()> {
+        if paths.is_empty() {
+            eprintln!("🤷 Nothing specified.");
+            if !std::io::stdin().is_terminal() {
+                eprintln!(
+                    "Hint: Pass --stdin to read the list of store paths from standard input."
+                );
+            }
+            return Ok(());
+        }
+
         let roots = paths
             .into_iter()
             .map(|p| self.store.follow_store_path(p))
@@ -108,6 +119,10 @@ impl PushContext {
         let stdin = BufReader::new(io::stdin());
         let mut lines = stdin.lines();
         while let Some(line) = lines.next_line().await? {
+            if line.is_empty() {
+                continue;
+            }
+
             let path = self.store.follow_store_path(line)?;
             session.queue_many(vec![path])?;
         }
@@ -167,6 +182,12 @@ pub async fn run(opts: Opts) -> Result<()> {
     };
 
     if sub.stdin {
+        if !sub.paths.is_empty() {
+            return Err(anyhow!(
+                "No paths can be specified on the command line with --stdin"
+            ));
+        }
+
         push_ctx.push_stdin().await?;
     } else {
         push_ctx.push_static(sub.paths.clone()).await?;

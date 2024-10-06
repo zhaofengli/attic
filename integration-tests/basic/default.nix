@@ -203,12 +203,12 @@ in {
 
       with subtest("Check that we can push a path"):
           client.succeed("${makeTestDerivation} test.nix")
-          test_file = client.succeed("nix-build --no-out-link test.nix")
+          test_file = client.succeed("nix-build --no-out-link test.nix").strip()
           test_file_hash = test_file.removeprefix("/nix/store/")[:32]
 
           client.succeed(f"attic push test {test_file}")
           client.succeed(f"nix-store --delete {test_file}")
-          client.fail(f"grep hello {test_file}")
+          client.fail(f"ls {test_file}")
 
       with subtest("Check that we can pull a path"):
           client.succeed("attic use readonly:test")
@@ -218,6 +218,25 @@ in {
       with subtest("Check that we cannot push without required permissions"):
           client.fail(f"attic push readonly:test {test_file}")
           client.fail(f"attic push anon:test {test_file} 2>&1")
+
+      with subtest("Check that we can push a list of paths from stdin"):
+          paths = []
+          for i in range(10):
+              client.succeed(f"${makeTestDerivation} seq{i}.nix")
+              path = client.succeed(f"nix-build --no-out-link seq{i}.nix").strip()
+              client.succeed(f"echo {path} >>paths.txt")
+              paths.append(path)
+
+          client.succeed("attic push test --stdin <paths.txt 2>&1")
+
+          for path in paths:
+              client.succeed(f"nix-store --delete {path}")
+
+      with subtest("Check that we can pull the paths back"):
+          for path in paths:
+              client.fail(f"ls {path}")
+              client.succeed(f"nix-store -r {path}")
+              client.succeed(f"grep hello {path}")
 
       with subtest("Check that we can make the cache public"):
           client.fail("curl -sL --fail-with-body http://server:8080/test/nix-cache-info")
