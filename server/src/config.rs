@@ -123,6 +123,7 @@ pub struct Config {
     pub garbage_collection: GarbageCollectionConfig,
 
     /// JSON Web Token.
+    #[serde(default = "Default::default")]
     pub jwt: JWTConfig,
 
     /// (Deprecated Stub)
@@ -397,6 +398,16 @@ fn load_database_url_from_env() -> String {
         "Database URL must be specified in either database.url \
         or the {ENV_DATABASE_URL} environment."
     ))
+}
+
+impl Default for JWTConfig {
+    fn default() -> Self {
+        Self {
+            token_bound_issuer: None,
+            token_bound_audiences: None,
+            signing_config: load_jwt_signing_config_from_env(),
+        }
+    }
 }
 
 impl CompressionConfig {
