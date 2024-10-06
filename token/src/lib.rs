@@ -444,8 +444,7 @@ impl StdError for Error {}
 
 pub fn decode_token_hs256_secret_base64(s: &str) -> Result<HS256Key> {
     let decoded = BASE64_STANDARD.decode(s).map_err(Error::Base64Error)?;
-    let secret = std::str::from_utf8(&decoded).map_err(Error::Utf8Error)?;
-    Ok(HS256Key::from_bytes(&secret.as_bytes()))
+    Ok(HS256Key::from_bytes(&decoded))
 }
 
 pub fn decode_token_rs256_secret_base64(s: &str) -> Result<RS256KeyPair> {

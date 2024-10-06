@@ -369,28 +369,46 @@ fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
     config
 }
 
-fn load_token_hs256_secret_from_env() -> Option<JWTSigningConfig> {
-    let s = env::var(ENV_TOKEN_HS256_SECRET_BASE64).ok()?;
+fn read_non_empty_var(key: &str) -> Result<Option<String>> {
+    let value = match env::var(key) {
+        Err(env::VarError::NotPresent) => {
+            return Ok(None);
+        }
+        r => r?,
+    };
 
-    decode_token_hs256_secret_base64(&s)
-        .ok()
-        .map(JWTSigningConfig::HS256SignAndVerify)
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
+fn load_token_hs256_secret_from_env() -> Option<JWTSigningConfig> {
+    let s = read_non_empty_var(ENV_TOKEN_HS256_SECRET_BASE64)
+        .expect("HS256 environment cannot be read")?;
+
+    let secret = decode_token_hs256_secret_base64(&s).expect("HS256 secret cannot be decoded");
+
+    Some(JWTSigningConfig::HS256SignAndVerify(secret))
 }
 
 fn load_token_rs256_secret_from_env() -> Option<JWTSigningConfig> {
-    let s = env::var(ENV_TOKEN_RS256_SECRET_BASE64).ok()?;
+    let s = read_non_empty_var(ENV_TOKEN_RS256_SECRET_BASE64)
+        .expect("RS256 environment cannot be read")?;
 
-    decode_token_rs256_secret_base64(&s)
-        .ok()
-        .map(JWTSigningConfig::RS256SignAndVerify)
+    let secret = decode_token_rs256_secret_base64(&s).expect("RS256 cannot be decoded");
+
+    Some(JWTSigningConfig::RS256SignAndVerify(secret))
 }
 
 fn load_token_rs256_pubkey_from_env() -> Option<JWTSigningConfig> {
-    let s = env::var(ENV_TOKEN_RS256_PUBKEY_BASE64).ok()?;
+    let s = read_non_empty_var(ENV_TOKEN_RS256_PUBKEY_BASE64)
+        .expect("RS256 pubkey environment cannot be read")?;
 
-    decode_token_rs256_pubkey_base64(&s)
-        .ok()
-        .map(JWTSigningConfig::RS256VerifyOnly)
+    let pubkey = decode_token_rs256_pubkey_base64(&s).expect("RS256 pubkey cannot be decoded");
+
+    Some(JWTSigningConfig::RS256VerifyOnly(pubkey))
 }
 
 fn load_database_url_from_env() -> String {
