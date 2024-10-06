@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -57,6 +58,16 @@ struct PushContext {
 
 impl PushContext {
     async fn push_static(self, paths: Vec<PathBuf>) -> Result<()> {
+        if paths.is_empty() {
+            eprintln!("🤷 Nothing specified.");
+            if !std::io::stdin().is_terminal() {
+                eprintln!(
+                    "Hint: Pass --stdin to read the list of store paths from standard input."
+                );
+            }
+            return Ok(());
+        }
+
         let roots = paths
             .into_iter()
             .map(|p| self.store.follow_store_path(p))
