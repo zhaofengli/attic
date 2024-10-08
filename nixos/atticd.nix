@@ -16,7 +16,7 @@ let
   } ''
     cat $configFile
 
-    export ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64="$(${pkgs.openssl}/bin/openssl genrsa -traditional 4096 | ${pkgs.coreutils}/bin/base64 -w0)"
+    export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
     export ATTIC_SERVER_DATABASE_URL="sqlite://:memory:"
     ${cfg.package}/bin/atticd --mode check-config -f $configFile
     cat <$configFile >$out
