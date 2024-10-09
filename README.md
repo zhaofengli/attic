@@ -27,6 +27,28 @@ And yes, it works on macOS too!
 - **Scalabilty**: Attic can be easily replicated. It's designed to be deployed to serverless platforms like fly.io but also works nicely in a single-machine setup.
 - **Garbage Collection**: Unused store paths can be garbage-collected in an LRU manner.
 
+## Docker compose example
+
+To use this you need to create a `./attic/server.toml` with your config pointing to the other directories.
+You also need to create an empty `./attic/server.db` that atticd can take over.
+
+```yaml
+version: '3.7'
+services:
+  attic:
+    image: ghcr.io/zhaofengli/attic:latest
+    volumes:
+      - ./attic/server.toml:/attic/server.toml
+      - ./attic/server.db:/attic/server.db
+      - attic-storage:/attic/storage
+    command: [ "-f", "/attic/server.toml" ]
+    ports:
+      - 8080:8080
+
+volumes:
+  attic-storage:
+```
+
 ## Licensing
 
 Attic is available under the **Apache License, Version 2.0**.
