@@ -108,6 +108,7 @@ let
       license = licenses.asl20;
       maintainers = with maintainers; [ zhaofengli ];
       platforms = platforms.linux ++ platforms.darwin;
+      mainProgram = "attic";
     };
 
     passthru = {
@@ -147,6 +148,10 @@ let
 
     CARGO_PROFILE_RELEASE_LTO = "fat";
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "1";
+
+    meta = {
+      mainProgram = "atticd";
+    };
   } // extraArgs);
 
   # Attic interacts with Nix directly and its tests require trusted-user access
