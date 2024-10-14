@@ -182,7 +182,7 @@ in
         message = ''
           <option>services.atticd.environmentFile</option> points to a path in the Nix store. The Nix store is globally readable.
 
-          You should use a quoted absolute path to prevent this.
+          You should use a quoted absolute path to prevent leaking secrets in the Nix store.
         '';
       }
     ];
