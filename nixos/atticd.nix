@@ -50,7 +50,7 @@ let
       --wait \
       --collect \
       --service-type=exec \
-      --property=EnvironmentFile=${cfg.credentialsFile} \
+      --property=EnvironmentFile=${cfg.environmentFile} \
       --property=DynamicUser=yes \
       --property=User=${cfg.user} \
       --property=Environment=ATTICADM_PWD=$(pwd) \
@@ -72,13 +72,17 @@ let
     config.services.postgresql.enable && lib.hasPrefix "postgresql://" url && hasLocalStrings;
 in
 {
+  imports = [
+    (lib.mkRenamedOptionModule [ "services" "atticd" "credentialsFile" ] [ "services" "atticd" "environmentFile" ])
+  ];
+
   options = {
     services.atticd = {
       enable = lib.mkEnableOption "the atticd, the Nix Binary Cache server";
 
       package = lib.mkPackageOption pkgs "attic-server" { };
 
-      credentialsFile = lib.mkOption {
+      environmentFile = lib.mkOption {
         description = ''
           Path to an EnvironmentFile containing required environment
           variables:
@@ -162,21 +166,21 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = cfg.credentialsFile != null;
+        assertion = cfg.environmentFile != null;
         message = ''
-          <option>services.atticd.credentialsFile</option> is not set.
+          <option>services.atticd.environmentFile</option> is not set.
 
           Run `openssl genrsa -traditional -out private_key.pem 4096 | base64 -w0` and create a file with the following contents:
 
           ATTIC_SERVER_TOKEN_RS256_SECRET="output from command"
 
-          Then, set `services.atticd.credentialsFile` to the quoted absolute path of the file.
+          Then, set `services.atticd.environmentFile` to the quoted absolute path of the file.
         '';
       }
       {
-        assertion = !lib.isStorePath cfg.credentialsFile;
+        assertion = !lib.isStorePath cfg.environmentFile;
         message = ''
-          <option>services.atticd.credentialsFile</option> points to a path in the Nix store. The Nix store is globally readable.
+          <option>services.atticd.environmentFile</option> points to a path in the Nix store. The Nix store is globally readable.
 
           You should use a quoted absolute path to prevent this.
         '';
@@ -203,7 +207,7 @@ in
 
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/atticd -f ${checkedConfigFile} --mode ${cfg.mode}";
-        EnvironmentFile = cfg.credentialsFile;
+        EnvironmentFile = cfg.environmentFile;
         StateDirectory = "atticd"; # for usage with local storage and sqlite
         DynamicUser = true;
         User = cfg.user;

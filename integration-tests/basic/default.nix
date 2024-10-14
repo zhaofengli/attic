@@ -152,7 +152,7 @@ in {
 
         services.atticd = {
           enable = true;
-          credentialsFile = "/etc/atticd.env";
+          environmentFile = "/etc/atticd.env";
           settings = {
             listen = "[::]:8080";
 
