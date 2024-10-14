@@ -215,6 +215,18 @@ in
         Restart = "on-failure";
         RestartSec = 10;
 
+        CapabilityBoundingSet = [ "" ];
+        DeviceAllow = "";
+        DevicePolicy = "closed";
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        NoNewPrivileges = true;
+        PrivateDevices = true;
+        PrivateTmp = true;
+        PrivateUsers = true;
+        ProcSubset = "pid";
+        ProtectClock = true;
+        ProtectControlGroups = true;
         ProtectHome = true;
         ProtectHostname = true;
         ProtectKernelLogs = true;
@@ -228,6 +240,7 @@ in
             isDefaultStateDirectory = path == "/var/lib/atticd" || lib.hasPrefix "/var/lib/atticd/" path;
           in
           lib.optionals (cfg.settings.storage.type or "" == "local" && !isDefaultStateDirectory) [ path ];
+        RemoveIPC = true;
         RestrictAddressFamilies = [
           "AF_INET"
           "AF_INET6"
@@ -236,6 +249,13 @@ in
         RestrictNamespaces = true;
         RestrictRealtime = true;
         RestrictSUIDSGID = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter = [
+          "@system-service"
+          "~@resources"
+          "~@privileged"
+        ];
+        UMask = "0077";
       };
     };
 
