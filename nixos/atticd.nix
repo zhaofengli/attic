@@ -1,4 +1,9 @@
-{ lib, pkgs, config, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 
 let
   inherit (lib) types;
@@ -11,16 +16,19 @@ let
 
   format = pkgs.formats.toml { };
 
-  checkedConfigFile = pkgs.runCommand "checked-attic-server.toml" {
-    configFile = cfg.configFile;
-  } ''
-    cat $configFile
+  checkedConfigFile =
+    pkgs.runCommand "checked-attic-server.toml"
+      {
+        configFile = cfg.configFile;
+      }
+      ''
+        cat $configFile
 
-    export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
-    export ATTIC_SERVER_DATABASE_URL="sqlite://:memory:"
-    ${cfg.package}/bin/atticd --mode check-config -f $configFile
-    cat <$configFile >$out
-  '';
+        export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
+        export ATTIC_SERVER_DATABASE_URL="sqlite://:memory:"
+        ${cfg.package}/bin/atticd --mode check-config -f $configFile
+        cat <$configFile >$out
+      '';
 
   atticadmShim = pkgs.writeShellScript "atticadm" ''
     if [ -n "$ATTICADM_PWD" ]; then
@@ -51,29 +59,25 @@ let
       ${atticadmShim} "$@"
   '';
 
-  hasLocalPostgresDB = let
-    url = cfg.settings.database.url or "";
-    localStrings = [ "localhost" "127.0.0.1" "/run/postgresql" ];
-    hasLocalStrings = lib.any (lib.flip lib.hasInfix url) localStrings;
-  in config.services.postgresql.enable && lib.hasPrefix "postgresql://" url && hasLocalStrings;
+  hasLocalPostgresDB =
+    let
+      url = cfg.settings.database.url or "";
+      localStrings = [
+        "localhost"
+        "127.0.0.1"
+        "/run/postgresql"
+      ];
+      hasLocalStrings = lib.any (lib.flip lib.hasInfix url) localStrings;
+    in
+    config.services.postgresql.enable && lib.hasPrefix "postgresql://" url && hasLocalStrings;
 in
 {
   options = {
     services.atticd = {
-      enable = lib.mkOption {
-        description = ''
-          Whether to enable the atticd, the Nix Binary Cache server.
-        '';
-        type = types.bool;
-        default = false;
-      };
-      package = lib.mkOption {
-        description = ''
-          The package to use.
-        '';
-        type = types.package;
-        default = pkgs.attic-server;
-      };
+      enable = lib.mkEnableOption "the atticd, the Nix Binary Cache server";
+
+      package = lib.mkPackageOption pkgs "attic-server" { };
+
       credentialsFile = lib.mkOption {
         description = ''
           Path to an EnvironmentFile containing required environment
@@ -85,6 +89,7 @@ in
         type = types.nullOr types.path;
         default = null;
       };
+
       user = lib.mkOption {
         description = ''
           The group under which attic runs.
@@ -92,6 +97,7 @@ in
         type = types.str;
         default = "atticd";
       };
+
       group = lib.mkOption {
         description = ''
           The user under which attic runs.
@@ -99,13 +105,15 @@ in
         type = types.str;
         default = "atticd";
       };
+
       settings = lib.mkOption {
         description = ''
           Structured configurations of atticd.
         '';
         type = format.type;
-        default = {}; # setting defaults here does not compose well
+        default = { }; # setting defaults here does not compose well
       };
+
       configFile = lib.mkOption {
         description = ''
           Path to an existing atticd configuration file.
@@ -131,7 +139,11 @@ in
 
           There are several other supported modes that perform one-off operations, but these are the only ones that make sense to run via the NixOS module.
         '';
-        type = lib.types.enum ["monolithic" "api-server" "garbage-collector"];
+        type = lib.types.enum [
+          "monolithic"
+          "api-server"
+          "garbage-collector"
+        ];
         default = "monolithic";
       };
 
@@ -146,77 +158,89 @@ in
       };
     };
   };
-  config = lib.mkIf (cfg.enable) (lib.mkMerge [
-    {
-      assertions = [
-        {
-          assertion = cfg.credentialsFile != null;
-          message = ''
-            <option>services.atticd.credentialsFile</option> is not set.
 
-            Run `openssl genrsa -traditional -out private_key.pem 4096 | base64 -w0` and create a file with the following contents:
+  config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.credentialsFile != null;
+        message = ''
+          <option>services.atticd.credentialsFile</option> is not set.
 
-            ATTIC_SERVER_TOKEN_RS256_SECRET="output from command"
+          Run `openssl genrsa -traditional -out private_key.pem 4096 | base64 -w0` and create a file with the following contents:
 
-            Then, set `services.atticd.credentialsFile` to the quoted absolute path of the file.
-          '';
-        }
-        {
-          assertion = !lib.isStorePath cfg.credentialsFile;
-          message = ''
-            <option>services.atticd.credentialsFile</option> points to a path in the Nix store. The Nix store is globally readable.
+          ATTIC_SERVER_TOKEN_RS256_SECRET="output from command"
 
-            You should use a quoted absolute path to prevent this.
-          '';
-        }
+          Then, set `services.atticd.credentialsFile` to the quoted absolute path of the file.
+        '';
+      }
+      {
+        assertion = !lib.isStorePath cfg.credentialsFile;
+        message = ''
+          <option>services.atticd.credentialsFile</option> points to a path in the Nix store. The Nix store is globally readable.
+
+          You should use a quoted absolute path to prevent this.
+        '';
+      }
+    ];
+
+    services.atticd.settings = {
+      database.url = lib.mkDefault "sqlite:///var/lib/atticd/server.db?mode=rwc";
+
+      # "storage" is internally tagged
+      # if the user sets something the whole thing must be replaced
+      storage = lib.mkDefault {
+        type = "local";
+        path = "/var/lib/atticd/storage";
+      };
+    };
+
+    systemd.services.atticd = {
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ] ++ lib.optionals hasLocalPostgresDB [
+        "postgresql.service"
+        "nss-lookup.target"
       ];
 
-      services.atticd.settings = {
-        database.url = lib.mkDefault "sqlite:///var/lib/atticd/server.db?mode=rwc";
+      serviceConfig = {
+        ExecStart = "${cfg.package}/bin/atticd -f ${checkedConfigFile} --mode ${cfg.mode}";
+        EnvironmentFile = cfg.credentialsFile;
+        StateDirectory = "atticd"; # for usage with local storage and sqlite
+        DynamicUser = true;
+        User = cfg.user;
+        Group = cfg.group;
+        Restart = "on-failure";
+        RestartSec = 10;
 
-        # "storage" is internally tagged
-        # if the user sets something the whole thing must be replaced
-        storage = lib.mkDefault {
-          type = "local";
-          path = "/var/lib/atticd/storage";
-        };
-      };
-
-      systemd.services.atticd = {
-        wantedBy = [ "multi-user.target" ];
-        after = [ "network.target" ]
-          ++ lib.optionals hasLocalPostgresDB [ "postgresql.service" "nss-lookup.target" ];
-        serviceConfig = {
-          ExecStart = "${cfg.package}/bin/atticd -f ${checkedConfigFile} --mode ${cfg.mode}";
-          EnvironmentFile = cfg.credentialsFile;
-          StateDirectory = "atticd"; # for usage with local storage and sqlite
-          DynamicUser = true;
-          User = cfg.user;
-          Group = cfg.group;
-          ProtectHome = true;
-          ProtectHostname = true;
-          ProtectKernelLogs = true;
-          ProtectKernelModules = true;
-          ProtectKernelTunables = true;
-          ProtectProc = "invisible";
-          ProtectSystem = "strict";
-          Restart = "on-failure";
-          RestartSec = 10;
-          RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-          RestrictNamespaces = true;
-          RestrictRealtime = true;
-          RestrictSUIDSGID = true;
-          ReadWritePaths = let
+        ProtectHome = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectProc = "invisible";
+        ProtectSystem = "strict";
+        ReadWritePaths =
+          let
             path = cfg.settings.storage.path;
             isDefaultStateDirectory = path == "/var/lib/atticd" || lib.hasPrefix "/var/lib/atticd/" path;
-          in lib.optionals (cfg.settings.storage.type or "" == "local" && !isDefaultStateDirectory) [ path ];
-        };
+          in
+          lib.optionals (cfg.settings.storage.type or "" == "local" && !isDefaultStateDirectory) [ path ];
+        RestrictAddressFamilies = [
+          "AF_INET"
+          "AF_INET6"
+          "AF_UNIX"
+        ];
+        RestrictNamespaces = true;
+        RestrictRealtime = true;
+        RestrictSUIDSGID = true;
       };
+    };
 
-      environment.systemPackages = [ atticadmWrapper ];
-    }
-    (lib.mkIf cfg.useFlakeCompatOverlay {
-      nixpkgs.overlays = [ overlay ];
-    })
-  ]);
+    environment.systemPackages = [
+      atticadmWrapper
+    ];
+
+    nixpkgs.overlays = lib.mkIf cfg.useFlakeCompatOverlay [
+      overlay
+    ];
+  };
 }
