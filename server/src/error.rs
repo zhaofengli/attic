@@ -57,10 +57,10 @@ pub enum ErrorKind {
     /// The requested NAR has missing chunks and needs to be repaired.
     IncompleteNar,
 
-    /// Database error: {0}
+    /// Database error: {0:#}
     DatabaseError(AnyError),
 
-    /// Storage error: {0}
+    /// Storage error: {0:#}
     StorageError(AnyError),
 
     /// Manifest serialization error: {0}
@@ -69,7 +69,7 @@ pub enum ErrorKind {
     /// Access error: {0}
     AccessError(super::access::Error),
 
-    /// General request error: {0}
+    /// General request error: {0:#}
     RequestError(AnyError),
 
     /// Error from the common components.
