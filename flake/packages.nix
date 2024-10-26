@@ -125,12 +125,12 @@ in
         packages = {
           # TODO: Make this work with Crane
           attic-static = (pkgs.pkgsStatic.callPackage ../package.nix {
-            nix = pkgs.pkgsStatic.nix.overrideAttrs (old: {
+            nix = pkgs.pkgsStatic.nixVersions.nix_2_18.overrideAttrs (old: {
               patches = (old.patches or []) ++ [
-                # To be submitted
+                # Diff: https://github.com/zhaofengli/nix/compare/501a805fcd4a90e2bc112e9547417cfc4e04ca66...1dbe9899a8acb695f5f08197f1ff51c14bcc7f42
                 (pkgs.fetchpatch {
-                  url = "https://github.com/NixOS/nix/compare/3172c51baff5c81362fcdafa2e28773c2949c660...6b09a02536d5946458b537dfc36b7d268c9ce823.diff";
-                  hash = "sha256-LFLq++J2XitEWQ0o57ihuuUlYk2PgUr11h7mMMAEe3c=";
+                  url = "https://github.com/zhaofengli/nix/compare/501a805fcd4a90e2bc112e9547417cfc4e04ca66...1dbe9899a8acb695f5f08197f1ff51c14bcc7f42.diff";
+                  hash = "sha256-bxBZDUUNTBUz6F4pwxx1ZnPcOKG3EhV+kDBt8BrFh6k=";
                 })
               ];
             });
