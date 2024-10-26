@@ -6,6 +6,64 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 jobs:
+  build:
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          command -v brew && brew install bash || true
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+        continue-on-error: true # Self-hosted runners already have Nix installed
+
+      - name: Install Attic
+        run: |
+          if ! command -v attic &> /dev/null; then
+            ./.github/install-attic-ci.sh
+          fi
+
+      - name: Configure Attic
+        continue-on-error: true
+        run: |
+          : "${ATTIC_SERVER:=https://staging.attic.rs/}"
+          : "${ATTIC_CACHE:=attic-ci}"
+          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
+          attic use "$ATTIC_CACHE"
+        env:
+          ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
+          ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+
+      - name: Cache dev shell
+        run: |
+          .ci/cache-shell.sh
+          system=$(nix-instantiate --eval -E 'builtins.currentSystem')
+          echo system=$system >>$GITHUB_ENV
+
+      # TODO: Abstract all of this out, and use `attic push --stdin` (requires #232)
+      - name: Build packages
+        run: |
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          nix build --no-link --print-out-paths -L \
+            .#attic \
+            .#attic-client \
+            .#attic-server \
+          | if [ -n "$ATTIC_CACHE" ]; then
+            xargs attic push "ci:$ATTIC_CACHE"
+          else
+            cat
+          fi
+
   tests:
     strategy:
       matrix:
@@ -78,6 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     needs:
+      - build
       - tests
     permissions:
       contents: read
