@@ -67,7 +67,7 @@ jobs:
       - name: Push build artifacts
         run: |
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
-          if [ -n "$ATTIC_TOKEN" ]; then
+          if [ -n "$ATTIC_CACHE" ]; then
             nix build --no-link --print-out-paths -L \
               .#internalMatrix."$system".\"${{ matrix.nix }}\".attic-tests \
               .#internalMatrix."$system".\"${{ matrix.nix }}\".cargoArtifacts \
@@ -152,7 +152,7 @@ jobs:
       - name: Push build artifacts
         run: |
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
-          if [ -n "$ATTIC_TOKEN" ]; then
+          if [ -n "$ATTIC_CACHE" ]; then
             nix build --no-link --print-out-paths -L \
               .#attic-server-image \
               .#attic-server-image-aarch64 \
