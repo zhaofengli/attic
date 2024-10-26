@@ -132,6 +132,89 @@ jobs:
             | xargs attic push "ci:$ATTIC_CACHE"
           fi
 
+  nix-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4.1.7
+      - uses: DeterminateSystems/nix-installer-action@v14
+        continue-on-error: true # Self-hosted runners already have Nix installed
+
+      - name: Install Attic
+        run: |
+          if ! command -v attic &> /dev/null; then
+            ./.github/install-attic-ci.sh
+          fi
+
+      - name: Configure Attic
+        continue-on-error: true
+        run: |
+          : "${ATTIC_SERVER:=https://staging.attic.rs/}"
+          : "${ATTIC_CACHE:=attic-ci}"
+          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
+          attic use "$ATTIC_CACHE"
+        env:
+          ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
+          ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+      - id: set-matrix
+        name: Generate Nix Matrix
+        run: |
+          set -Eeu
+          matrix="$(nix eval --json '.#githubActions.matrix')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  nix-matrix-job:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    needs:
+      - build
+      - nix-matrix
+    strategy:
+      matrix: ${{fromJSON(needs.nix-matrix.outputs.matrix)}}
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          command -v brew && brew install bash || true
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+        continue-on-error: true # Self-hosted runners already have Nix installed
+
+      - name: Install Attic
+        run: |
+          if ! command -v attic &> /dev/null; then
+            ./.github/install-attic-ci.sh
+          fi
+
+      - name: Configure Attic
+        continue-on-error: true
+        run: |
+          : "${ATTIC_SERVER:=https://staging.attic.rs/}"
+          : "${ATTIC_CACHE:=attic-ci}"
+          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
+          attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
+          attic use "$ATTIC_CACHE"
+        env:
+          ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
+          ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+
+      - name: Build ${{ matrix.attr }}
+        run: |
+          nix build --no-link --print-out-paths -L '.#${{ matrix.attr }}' \
+          | if [ -n "$ATTIC_CACHE" ]; then
+            xargs attic push "ci:$ATTIC_CACHE"
+          else
+            cat
+          fi
+
   image:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
