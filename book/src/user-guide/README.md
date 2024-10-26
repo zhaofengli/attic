@@ -24,6 +24,10 @@ To configure Nix to automatically use cache `foo`:
 attic use foo
 ```
 
+## Disabling a cache
+
+To configure Nix to no longer use a cache, remove the corresponding entries from the list of `substituters` and `trusted-public-keys` in `~/.config/nix/nix.conf`
+
 ## Pushing to the cache
 
 To push a store path to cache `foo`:
