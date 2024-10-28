@@ -29,6 +29,12 @@ in
   };
 
   config = {
+    flake.githubActions = inputs.nix-github-actions.lib.mkGithubMatrix {
+      checks = {
+        inherit (self.checks) x86_64-linux;
+      };
+    };
+
     perSystem = { self', pkgs, config, system, ... }: let
       cfg = config.attic.integration-tests;
 
