@@ -33,6 +33,10 @@ let
     exec ${cfg.package}/bin/atticadm -f ${checkedConfigFile} "$@"
   '';
 
+  atticdShim = pkgs.writeShellScript "atticd" ''
+    exec ${cfg.package}/bin/atticd -f ${checkedConfigFile} "$@"
+  '';
+
   atticadmWrapper = pkgs.writeShellScriptBin "atticd-atticadm" ''
     exec systemd-run \
       --quiet \
@@ -46,11 +50,28 @@ let
       --property=DynamicUser=yes \
       --property=User=${cfg.user} \
       --property=Environment=ATTICADM_PWD=$(pwd) \
+      --property=ReadWritePaths=${cfg.settings.storage.path} \
       --working-directory / \
       -- \
       ${atticadmShim} "$@"
   '';
 
+  atticdWrapper = pkgs.writeShellScriptBin "atticd-atticd" ''
+    exec systemd-run \
+      --quiet \
+      --pty \
+      --same-dir \
+      --wait \
+      --collect \
+      --service-type=exec \
+      --property=EnvironmentFile=${cfg.credentialsFile} \
+      --property=DynamicUser=yes \
+      --property=User=${cfg.user} \
+      --property=Environment=ATTICADM_PWD=$(pwd) \
+      --working-directory / \
+      -- \
+      ${atticdShim} "$@"
+  '';
   hasLocalPostgresDB = let
     url = cfg.settings.database.url or "";
     localStrings = [ "localhost" "127.0.0.1" "/run/postgresql" ];
@@ -213,7 +234,7 @@ in
         };
       };
 
-      environment.systemPackages = [ atticadmWrapper ];
+      environment.systemPackages = [ atticadmWrapper atticdWrapper ];
     }
     (lib.mkIf cfg.useFlakeCompatOverlay {
       nixpkgs.overlays = [ overlay ];
