@@ -41,8 +41,8 @@ You can import the module in one of two ways:
   services.atticd = {
     enable = true;
 
-    # Replace with absolute path to your credentials file
-    credentialsFile = "/etc/atticd.env";
+    # Replace with absolute path to your environment file
+    environmentFile = "/etc/atticd.env";
 
     settings = {
       listen = "[::]:8080";

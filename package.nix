@@ -70,5 +70,6 @@ in rustPlatform.buildRustPackage rec {
     license = licenses.asl20;
     maintainers = with maintainers; [ zhaofengli ];
     platforms = platforms.linux ++ platforms.darwin;
+    mainProgram = "attic";
   };
 }
