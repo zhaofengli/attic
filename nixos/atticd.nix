@@ -26,7 +26,7 @@ let
 
         export ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64="dGVzdCBzZWNyZXQ="
         export ATTIC_SERVER_DATABASE_URL="sqlite://:memory:"
-        ${lib.getExe cfg.package} --mode check-config -f $configFile
+        ${cfg.package}/bin/atticd --mode check-config -f $configFile
         cat <$configFile >$out
       '';
 
@@ -204,7 +204,7 @@ in
       wants = [ "network-online.target" ];
 
       serviceConfig = {
-        ExecStart = "${lib.getExe cfg.package} -f ${checkedConfigFile} --mode ${cfg.mode}";
+        ExecStart = "${cfg.package}/bin/atticd -f ${checkedConfigFile} --mode ${cfg.mode}";
         EnvironmentFile = cfg.environmentFile;
         StateDirectory = "atticd"; # for usage with local storage and sqlite
         DynamicUser = true;
