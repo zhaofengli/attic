@@ -83,6 +83,7 @@ jobs:
             .#attic \
             .#attic-client \
             .#attic-server \
+            .#attic-static \
           | if [ -n "$ATTIC_CACHE" ]; then
             xargs attic push "ci:$ATTIC_CACHE"
           else
