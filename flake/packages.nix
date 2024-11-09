@@ -153,8 +153,8 @@ in
         };
       })
 
-      # Unfortunately, x86_64-darwin fails to evaluate static builds
-      (lib.mkIf (pkgs.system != "x86_64-darwin") {
+      # Static builds
+      {
         packages = {
           # TODO: Make this work with Crane
           attic-static = (pkgsStatic.callPackage ../package.nix {
@@ -180,7 +180,7 @@ in
             clientOnly = true;
           };
         };
-      })
+      }
     ]);
   };
 }
