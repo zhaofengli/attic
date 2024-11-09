@@ -59,7 +59,19 @@ in
       inherit (perSystemConfig.attic) extraPackageArgs;
     });
 
-    perSystem = { self', pkgs, config, cranePkgs, ... }: (lib.mkMerge [
+    perSystem = { self', pkgs, config, cranePkgs, ... }: let
+      inherit (pkgs) pkgsStatic;
+
+      nix-static = pkgsStatic.nixVersions.nix_2_18.overrideAttrs (old: {
+        patches = (old.patches or []) ++ [
+          # Diff: https://github.com/zhaofengli/nix/compare/501a805fcd4a90e2bc112e9547417cfc4e04ca66...1dbe9899a8acb695f5f08197f1ff51c14bcc7f42
+          (pkgs.fetchpatch {
+            url = "https://github.com/zhaofengli/nix/compare/501a805fcd4a90e2bc112e9547417cfc4e04ca66...1dbe9899a8acb695f5f08197f1ff51c14bcc7f42.diff";
+            hash = "sha256-bxBZDUUNTBUz6F4pwxx1ZnPcOKG3EhV+kDBt8BrFh6k=";
+          })
+        ];
+      });
+    in (lib.mkMerge [
       {
         _module.args.cranePkgs = makeCranePkgs pkgs;
 
@@ -71,6 +83,8 @@ in
             attic-client
             attic-server
           ;
+
+          inherit nix-static;
 
           attic-nixpkgs = pkgs.callPackage ../package.nix { };
 
@@ -124,16 +138,8 @@ in
       (lib.mkIf (pkgs.system != "x86_64-darwin") {
         packages = {
           # TODO: Make this work with Crane
-          attic-static = (pkgs.pkgsStatic.callPackage ../package.nix {
-            nix = pkgs.pkgsStatic.nixVersions.nix_2_18.overrideAttrs (old: {
-              patches = (old.patches or []) ++ [
-                # Diff: https://github.com/zhaofengli/nix/compare/501a805fcd4a90e2bc112e9547417cfc4e04ca66...1dbe9899a8acb695f5f08197f1ff51c14bcc7f42
-                (pkgs.fetchpatch {
-                  url = "https://github.com/zhaofengli/nix/compare/501a805fcd4a90e2bc112e9547417cfc4e04ca66...1dbe9899a8acb695f5f08197f1ff51c14bcc7f42.diff";
-                  hash = "sha256-bxBZDUUNTBUz6F4pwxx1ZnPcOKG3EhV+kDBt8BrFh6k=";
-                })
-              ];
-            });
+          attic-static = (pkgsStatic.callPackage ../package.nix {
+            nix = nix-static;
           }).overrideAttrs (old: {
             nativeBuildInputs = (old.nativeBuildInputs or []) ++ [
               pkgs.nukeReferences
@@ -142,7 +148,7 @@ in
             # Read by pkg_config crate (do some autodetection in build.rs?)
             PKG_CONFIG_ALL_STATIC = "1";
 
-            "NIX_CFLAGS_LINK_${pkgs.pkgsStatic.stdenv.cc.suffixSalt}" = "-lc";
+            "NIX_CFLAGS_LINK_${pkgsStatic.stdenv.cc.suffixSalt}" = "-lc";
             RUSTFLAGS = "-C relocation-model=static";
 
             postFixup = (old.postFixup or "") + ''
