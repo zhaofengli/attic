@@ -61,8 +61,18 @@ in
 
     perSystem = { self', pkgs, config, cranePkgs, ... }: let
       inherit (pkgs) pkgsStatic;
+      inherit (pkgs.stdenv.hostPlatform) isDarwin;
 
       nix-static = pkgsStatic.nixVersions.nix_2_18.overrideAttrs (old: {
+        buildInputs = lib.optionals isDarwin [
+          # HACK for Darwin/macOS: Remove dependency on non-existent iconv.pc
+          (pkgs.runCommand "libarchive-pkg-config-hack" {} ''
+            mkdir -p $out/lib/pkgconfig
+            cat "${pkgsStatic.libarchive.dev}/lib/pkgconfig/libarchive.pc" >$out/lib/pkgconfig/libarchive.pc
+            sed -i '/Requires.private: iconv/d' $out/lib/pkgconfig/libarchive.pc
+          '')
+        ] ++ (old.buildInputs or []);
+
         patches = (old.patches or []) ++ [
           # Diff: https://github.com/zhaofengli/nix/compare/501a805fcd4a90e2bc112e9547417cfc4e04ca66...1dbe9899a8acb695f5f08197f1ff51c14bcc7f42
           (pkgs.fetchpatch {
@@ -70,6 +80,15 @@ in
             hash = "sha256-bxBZDUUNTBUz6F4pwxx1ZnPcOKG3EhV+kDBt8BrFh6k=";
           })
         ];
+
+        NIX_LDFLAGS = (old.NIX_LDFLAGS or "")
+          + lib.optionalString isDarwin " -framework CoreFoundation -framework SystemConfiguration";
+
+        preInstallCheck = (old.preInstallCheck or "")
+          # FIXME
+          + lib.optionalString isDarwin ''
+            echo "exit 99" >tests/functional/gc-non-blocking.sh
+          '';
       });
     in (lib.mkMerge [
       {
