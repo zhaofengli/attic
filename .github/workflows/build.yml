@@ -9,10 +9,20 @@ jobs:
   build:
     strategy:
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-    runs-on: ${{ matrix.os }}
+        include:
+          - label: x86_64-linux
+            image: ubuntu-latest
+          - label: aarch64-linux
+            image: ubuntu-latest
+            system: aarch64-linux
+          - label: x86_64-darwin
+            image: macos-latest
+            system: x86_64-darwin
+          - label: aarch64-darwin
+            image: macos-latest
+            system: aarch64-darwin
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4.1.7
 
@@ -23,6 +33,21 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@v14
         continue-on-error: true # Self-hosted runners already have Nix installed
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.2.0
+        if: matrix.system == 'aarch64-linux'
+
+      - name: Generate System Flags
+        run: |
+          LOCAL_SYSTEM=$(nix-instantiate --eval --json -E 'builtins.currentSystem' | jq -r)
+          HOST_SYSTEM=${HOST_SYSTEM:-$LOCAL_SYSTEM}
+          if [[ "$LOCAL_SYSTEM" != "$HOST_SYSTEM" ]]; then
+            echo "system_flags=--system $HOST_SYSTEM" >>"$GITHUB_ENV"
+            echo "extra-platforms = $HOST_SYSTEM" | sudo tee -a /etc/nix/nix.conf
+          fi
+        env:
+          HOST_SYSTEM: '${{ matrix.system }}'
 
       - name: Install Attic
         run: |
