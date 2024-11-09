@@ -90,6 +90,54 @@ in
             echo "exit 99" >tests/functional/gc-non-blocking.sh
           '';
       });
+
+      # HACK to enable almost-static builds on macOS/Darwin
+      #
+      # Currently on macOS, pkgsStatic uses the same Rust target
+      # as the regular platform (e.g., aarch64-apple-darwin).
+      #
+      # In `pkgs/build-support/rust/lib/default.nix`, the following
+      # environment variables are forced:
+      #
+      # - CC_AARCH64_APPLE_DARWIN=${ccForHost} (static cc)
+      # - CXX_AARCH64_APPLE_DARWIN=${cxxForHost} (static cxx)
+      # - CC_AARCH64_APPLE_DARWIN=${ccForBuild} (regular cc - incorrect)
+      # - CXX_AARCH64_APPLE_DARWIN=${cxxForBuild} (regular cxx - incorrect)
+      #
+      # As a result, the correct static CC/CXX variables are clobbered.
+      darwinStaticRustPlatform = let
+        inherit (pkgsStatic) stdenv rustPlatform;
+
+        stdenv' = stdenv.override {
+          buildPlatform = stdenv.buildPlatform // {
+            rust = stdenv.buildPlatform.rust // {
+              cargoEnvVarTarget = stdenv.hostPlatform.rust.cargoEnvVarTarget + "_BUILD";
+            };
+          };
+        };
+
+        rustLib' = import (pkgs.path + "/pkgs/build-support/rust/lib") {
+          stdenv = stdenv';
+
+          inherit (pkgsStatic)
+            lib pkgsBuildHost pkgsBuildTarget pkgsTargetTarget;
+        };
+
+        rust' = pkgsStatic.rust // {
+          inherit (rustLib') envVars;
+        };
+
+        hooks' = pkgsStatic.buildPackages.callPackages (pkgs.path + "/pkgs/build-support/rust/hooks") {
+          rust = rust';
+        };
+
+        rustPlatform' = rustPlatform // hooks' // {
+          buildRustPackage = rustPlatform.buildRustPackage.override {
+            inherit (hooks')
+              cargoBuildHook cargoCheckHook cargoInstallHook cargoNextestHook cargoSetupHook;
+          };
+        };
+      in rustPlatform';
     in (lib.mkMerge [
       {
         _module.args.cranePkgs = makeCranePkgs pkgs;
@@ -157,18 +205,39 @@ in
       {
         packages = {
           # TODO: Make this work with Crane
-          attic-static = (pkgsStatic.callPackage ../package.nix {
-            nix = nix-static;
-          }).overrideAttrs (old: {
+          attic-static = let
+            inputOverrides = {
+              nix = nix-static;
+            } // lib.optionalAttrs isDarwin {
+              rustPlatform = darwinStaticRustPlatform;
+            };
+          in (pkgsStatic.callPackage ../package.nix inputOverrides).overrideAttrs (old: {
             nativeBuildInputs = (old.nativeBuildInputs or []) ++ [
               pkgs.nukeReferences
             ];
+
+            preBuild = (old.preBuild or "")
+              # HACK for Darwin/macOS:
+              #
+              # The other half of the mess (see darwinStaticRustPlatform above).
+              # Logic of cc-rs:
+              # - getenv_with_target_prefixes()
+              #   - get_is_cross_compile() -> false
+              #   - therefore, kind = "HOST"
+              #   - tries "$CXX_aarch64_apple_darwin" (lowercase) -> not set
+              #   - tries "$HOST_CXX" -> set to the incorrect CXX
+              + lib.optionalString isDarwin ''
+                export CXX_${lib.toLower pkgsStatic.stdenv.hostPlatform.rust.cargoEnvVarTarget}="$CXX"
+              '';
 
             # Read by pkg_config crate (do some autodetection in build.rs?)
             PKG_CONFIG_ALL_STATIC = "1";
 
             "NIX_CFLAGS_LINK_${pkgsStatic.stdenv.cc.suffixSalt}" = "-lc";
             RUSTFLAGS = "-C relocation-model=static";
+
+            NIX_LDFLAGS = (old.NIX_LDFLAGS or "")
+              + lib.optionalString isDarwin " -framework CoreFoundation -framework SystemConfiguration";
 
             postFixup = (old.postFixup or "") + ''
               rm -f $out/nix-support/propagated-build-inputs
