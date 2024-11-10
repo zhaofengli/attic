@@ -17,7 +17,7 @@ jobs:
         run: |
           command -v brew && brew install bash || true
 
-      - uses: DeterminateSystems/nix-installer-action@v14
+      - uses: DeterminateSystems/nix-installer-action@v15
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
