@@ -82,7 +82,7 @@ features = [
 ]
 
 [dependencies.sea-orm-migration]
-version = "0.12.10"
+version = "1.0.0"
 
 [dependencies.tokio]
 version = "1.28.2"
