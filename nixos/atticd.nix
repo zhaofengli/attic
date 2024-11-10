@@ -46,7 +46,6 @@ let
       --quiet \
       --pipe \
       --pty \
-      --same-dir \
       --wait \
       --collect \
       --service-type=exec \
