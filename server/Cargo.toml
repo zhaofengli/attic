@@ -72,7 +72,7 @@ features = [
 ]
 
 [dependencies.sea-orm]
-version = "0.12.10"
+version = "1.0.0"
 features = [
 	"runtime-tokio-rustls",
 	"macros",
