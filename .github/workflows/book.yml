@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4.1.7
 
-      - uses: DeterminateSystems/nix-installer-action@v15
+      - uses: DeterminateSystems/nix-installer-action@v16
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
