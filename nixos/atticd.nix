@@ -15,6 +15,9 @@ let
   overlay = flake.defaultNix.overlays.default;
 
   format = pkgs.formats.toml { };
+  filteredSettings = lib.converge
+    (lib.filterAttrsRecursive (_: v: ! lib.elem v [{ } null]))
+    cfg.settings;
 
   checkedConfigFile =
     pkgs.runCommand "checked-attic-server.toml"
@@ -113,7 +116,17 @@ in
         description = ''
           Structured configurations of atticd.
         '';
-        type = format.type;
+        type = let
+          valueType = with types; nullOr (oneOf [
+            bool
+            int
+            float
+            str
+            path
+            (attrsOf valueType)
+            (listOf valueType)
+          ]);
+        in types.attrsOf valueType;
         default = { }; # setting defaults here does not compose well
       };
 
@@ -124,7 +137,7 @@ in
           By default, it's generated from `services.atticd.settings`.
         '';
         type = types.path;
-        default = format.generate "server.toml" cfg.settings;
+        default = format.generate "server.toml" filteredSettings;
         defaultText = "generated from `services.atticd.settings`";
       };
 
