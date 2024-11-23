@@ -3,6 +3,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use attic_server::config::generate_monolithic_config;
+use attic_server::config::load_config;
 use clap::{Parser, ValueEnum};
 use tokio::join;
 use tokio::task::spawn;
@@ -11,6 +13,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 use attic_server::config;
+use attic_server::config::Config;
 
 /// Nix binary cache server.
 #[derive(Debug, Parser)]
@@ -36,6 +39,10 @@ struct Opts {
     /// The console server will listen on its default port.
     #[clap(long)]
     tokio_console: bool,
+
+    /// A flag that prompts the server to generate a root token with a provided configuration
+    #[clap(long)]
+    init: bool
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -66,38 +73,121 @@ async fn main() -> Result<()> {
     init_logging(opts.tokio_console);
     dump_version();
 
-    let config =
-        config::load_config(opts.config.as_deref(), opts.mode == ServerMode::Monolithic).await?;
-
     match opts.mode {
         ServerMode::Monolithic => {
-            attic_server::run_migrations(config.clone()).await?;
+            //seek configuration, start monolithic run
+            if let Some(config) = config::load_config(opts.config.as_deref()).await {
+                //if we're told to reinit, reinit using provided config, or just pass it back
+                if opts.init == true {
+                    config::reinit_from_config(config.clone()).await?;
+                    attic_server::run_migrations(config.clone()).await?;
+                }
+                //run server                
+                run_monolithic(opts, config).await?;
+            } else {
+                //no config present, generate monolithic config and run
+                generate_monolithic_config().await?;
+                let config_path = config::get_xdg_config_path()?;
 
-            let (api_server, _) = join!(
-                attic_server::run_api_server(opts.listen, config.clone()),
-                attic_server::gc::run_garbage_collection(config.clone()),
-            );
-
-            api_server?;
+                if let Some(config) = config::load_config(Some(&config_path)).await {
+                    run_monolithic(opts, config).await?;
+                } else {
+                    todo!("How could we get here?");
+                }
+            }
         }
         ServerMode::ApiServer => {
-            attic_server::run_api_server(opts.listen, config).await?;
+            if let Some(config) = config::load_config(opts.config.as_deref()).await {
+                //if we're told to reinit, reinit using provided config
+                if opts.init == true {
+                    config::reinit_from_config(config.clone()).await?;
+                    
+                    //assuming this is a fresh setup, run db migrations to ready db
+                    //TODO: What if it's *not* a fresh setup? Perhaps this can happen with another flag, rather than only happening during one mode
+                    attic_server::run_migrations(config.clone()).await?;
+                }
+                attic_server::run_api_server(opts.listen, config).await?;
+            } else {
+                //Exit gracefully, no config present
+                display_no_config_msg();
+            }
         }
         ServerMode::GarbageCollector => {
-            attic_server::gc::run_garbage_collection(config.clone()).await;
+            if let Some(config) = config::load_config(opts.config.as_deref()).await {
+                if opts.init == true {
+                    config::reinit_from_config(config.clone()).await?;
+                }
+                attic_server::gc::run_garbage_collection(config.clone()).await;
+            } else {
+                //Exit gracefully, no config present
+                display_no_config_msg();
+            }
+            
         }
         ServerMode::DbMigrations => {
-            attic_server::run_migrations(config).await?;
+            if let Some(config) = config::load_config(opts.config.as_deref()).await {
+                if opts.init == true {
+                    config::reinit_from_config(config.clone()).await?;
+                }
+                attic_server::run_migrations(config).await?;
+            } else {
+                //Exit gracefully, no config present
+                display_no_config_msg();
+            }
         }
         ServerMode::GarbageCollectorOnce => {
-            attic_server::gc::run_garbage_collection_once(config).await?;
+            if let Some(config) = config::load_config(opts.config.as_deref()).await {
+                if opts.init == true {
+                    config::reinit_from_config(config.clone()).await?;
+                }
+                attic_server::gc::run_garbage_collection_once(config).await?;
+            } else {
+                //Exit gracefully, no config present
+                display_no_config_msg();
+            }
         }
         ServerMode::CheckConfig => {
-            // config is valid, let's just exit :)
+            //validate config and exit
+            //TODO: What other things would be nice to check here? Do we want dry runs with tokens maybe?
+            if let Some(_) = config::load_config(opts.config.as_deref()).await {
+                eprintln!();
+                eprintln!("-----------------");
+                eprintln!();
+                eprintln!("Config looks good!");
+                eprintln!("Documentations and guides:");
+                eprintln!();
+                eprintln!("    https://docs.attic.rs");
+                eprintln!();
+                eprintln!("Enjoy!");
+                eprintln!("-----------------");
+                eprintln!(); 
+            } else {
+                //Exit gracefully, no config present
+                display_no_config_msg();
+            }
+            
         }
     }
 
     Ok(())
+}
+
+/// Runs the server in monolithic mode
+async fn run_monolithic(opts: Opts, config: Config) -> Result<()> {
+    let (api_server, _) = join!(
+        attic_server::run_api_server(opts.listen, config.clone()),
+        attic_server::gc::run_garbage_collection(config.clone()),
+    );
+
+    match api_server {
+        Ok(()) => Ok(()),
+        Err(e) => Err(e)
+    }
+}
+
+fn display_no_config_msg() {
+    eprintln!();
+    eprintln!("No config found, please provide a config.toml file");
 }
 
 fn init_logging(tokio_console: bool) {
