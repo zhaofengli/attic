@@ -4,7 +4,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use attic_server::config::generate_monolithic_config;
-use attic_server::config::load_config;
 use clap::{Parser, ValueEnum};
 use tokio::join;
 use tokio::task::spawn;
@@ -148,7 +147,6 @@ async fn main() -> Result<()> {
         }
         ServerMode::CheckConfig => {
             //validate config and exit
-            //TODO: What other things would be nice to check here? Do we want dry runs with tokens maybe?
             if let Some(_) = config::load_config(opts.config.as_deref()).await {
                 eprintln!();
                 eprintln!("-----------------");

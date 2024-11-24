@@ -1,16 +1,12 @@
 
 //! Server configuration.
 
-use std::alloc::System;
 use std::collections::HashSet;
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::exit;
 use std::time::Duration;
-
 use tokio::fs::{self, OpenOptions};
-
 use anyhow::{Error, Result};
 use async_compression::Level as CompressionLevel;
 use attic_token::SignatureType;
@@ -27,6 +23,7 @@ use crate::access::{
     decode_token_hs256_secret_base64, decode_token_rs256_pubkey_base64,
     decode_token_rs256_secret_base64, HS256Key, RS256KeyPair, RS256PublicKey,
 };
+
 use crate::narinfo::Compression as NixCompression;
 
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
@@ -599,25 +596,25 @@ pub async fn load_config(config_path: Option<&Path>) -> Option<Config> {
             }
         };
         return Some(config);
-    } else if let core::result::Result::Ok(config_env) = env::var(ENV_CONFIG_BASE64) {
+    } else if let Ok(config_env) = env::var(ENV_CONFIG_BASE64) {
         match BASE64_STANDARD.decode(config_env.as_bytes()) {
             Ok(byte_vec) => {
                 let decoded = String::from_utf8(byte_vec).unwrap();
                 return Some(load_config_from_str(&decoded).unwrap());
             }
             Err(e) => {
-                //TODO: Handle more gracefully
-                panic!("failed to decode base64 string");
+                eprintln!("Unable to read configuration from base64 string: {e}");
+                None
             }
         }
     } 
     // Config from XDG
-    else if let core::result::Result::Ok(config_path) = get_xdg_config_path(){
+    else if let Ok(config_path) = get_xdg_config_path(){
          match load_config_from_path(&config_path) {
             Ok(config) => Some(config),
             Err(e) => {
-                //TODO: had an issue loading config
-                todo!();
+                eprintln!("Unable to read configuration from XDG path: {e}");
+                None
             }
          }
     } else {
@@ -667,36 +664,45 @@ fn generate_root_token(rs256_secret_base64: String) -> String {
 pub async fn reinit_from_config(config: Config) -> Result<(), Error> {
 
     //get token from the config
-    //TODO: What to do for hs256 and public key?
+    //TODO: support other branhces here
     let rs256_secret_base64 = match config.jwt.signing_config {
-        JWTSigningConfig::RS256VerifyOnly(rs256_public_key) => todo!(),
+        JWTSigningConfig::RS256VerifyOnly(_) => todo!(),
         JWTSigningConfig::RS256SignAndVerify(rs256_key_pair) => {
-            //TODO: Thiis api doesn't expose the raw private key, but the key pair itself, how do we get the private key?
             match rs256_key_pair.to_pem() {
                 Ok(token) => {
-                    BASE64_STANDARD.encode(token)
+                    Some(BASE64_STANDARD.encode(token))
                 },
-                Err(e) => todo!("Probably got a bad token here")
+                Err(e) => {
+                    eprintln!("Error converting the rs256 key to PEM format: {e}");
+                    None
+                }
             }
         },
-        JWTSigningConfig::HS256SignAndVerify(hs256_key) => todo!(),
+        JWTSigningConfig::HS256SignAndVerify(_) => todo!(),
     };
     
-    let root_token = generate_root_token(rs256_secret_base64);                  
-    eprintln!();
-    eprintln!("-----------------");
-    eprintln!("Init complete, new new root token generated");
-    eprintln!();
-    eprintln!("Run the following command to log into this server:");
-    eprintln!();
-    eprintln!("    attic login local http://localhost:8080 {root_token}");
-    eprintln!();
-    eprintln!("It is highly reccomended not to use this token for regular administration!");
-    eprintln!("Save it somewhere safe and use atticadm to create less powerful tokens");
-    eprintln!("-----------------");
-    eprintln!();
-
-    Ok(())
+    //generate root token, and display to user
+    if let Some(rs256_secret_base64) = rs256_secret_base64 {
+        let root_token = generate_root_token(rs256_secret_base64);                  
+        eprintln!();
+        eprintln!("-----------------");
+        eprintln!("Init complete, new new root token generated");
+        eprintln!();
+        eprintln!("Run the following command to log into this server:");
+        eprintln!();
+        eprintln!("    attic login local http://localhost:8080 {root_token}");
+        eprintln!();
+        eprintln!("It is highly reccomended not to use this token for regular administration!");
+        eprintln!("Save it somewhere safe and use atticadm to create less powerful tokens");
+        eprintln!("-----------------");
+        eprintln!();
+    
+        Ok(())
+    } else {
+        //If we failed to generate a token here, propogate an error and exit gracefully
+        Err(Error::msg("Error converting rs256Key to PEM format"))
+    }
+    
 }
 
 
