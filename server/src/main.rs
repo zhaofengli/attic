@@ -106,9 +106,6 @@ async fn main() -> Result<()> {
                     attic_server::run_migrations(config.clone()).await?;
                 }
                 attic_server::run_api_server(opts.listen, config).await?;
-            } else {
-                //Exit gracefully, no config present
-                display_no_config_msg();
             }
         }
         ServerMode::GarbageCollector => {
@@ -117,9 +114,6 @@ async fn main() -> Result<()> {
                     config::reinit_from_config(config.clone()).await?;
                 }
                 attic_server::gc::run_garbage_collection(config.clone()).await;
-            } else {
-                //Exit gracefully, no config present
-                display_no_config_msg();
             }
             
         }
@@ -129,9 +123,6 @@ async fn main() -> Result<()> {
                     config::reinit_from_config(config.clone()).await?;
                 }
                 attic_server::run_migrations(config).await?;
-            } else {
-                //Exit gracefully, no config present
-                display_no_config_msg();
             }
         }
         ServerMode::GarbageCollectorOnce => {
@@ -140,9 +131,6 @@ async fn main() -> Result<()> {
                     config::reinit_from_config(config.clone()).await?;
                 }
                 attic_server::gc::run_garbage_collection_once(config).await?;
-            } else {
-                //Exit gracefully, no config present
-                display_no_config_msg();
             }
         }
         ServerMode::CheckConfig => {
@@ -159,9 +147,6 @@ async fn main() -> Result<()> {
                 eprintln!("Enjoy!");
                 eprintln!("-----------------");
                 eprintln!(); 
-            } else {
-                //Exit gracefully, no config present
-                display_no_config_msg();
             }
             
         }
@@ -181,11 +166,6 @@ async fn run_monolithic(opts: Opts, config: Config) -> Result<()> {
         Ok(()) => Ok(()),
         Err(e) => Err(e)
     }
-}
-
-fn display_no_config_msg() {
-    eprintln!();
-    eprintln!("No config found, please provide a config.toml file");
 }
 
 fn init_logging(tokio_console: bool) {

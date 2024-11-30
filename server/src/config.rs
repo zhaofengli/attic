@@ -612,13 +612,12 @@ pub async fn load_config(config_path: Option<&Path>) -> Option<Config> {
     else if let Ok(config_path) = get_xdg_config_path(){
          match load_config_from_path(&config_path) {
             Ok(config) => Some(config),
-            Err(e) => {
-                eprintln!("Unable to read configuration from XDG path: {e}");
+            Err(_) => {
                 None
             }
          }
     } else {
-        //couldn't find anything
+        eprintln!("No configuration found!");
         Option::None
     }
     
@@ -653,7 +652,7 @@ fn generate_root_token(rs256_secret_base64: String) -> String {
     perm.configure_cache = true;
     perm.configure_cache_retention = true;
     perm.destroy_cache = true;
-
+    
     let key = decode_token_rs256_secret_base64(&rs256_secret_base64).unwrap();
     
     return token.encode(&SignatureType::RS256(key), &None, &None).unwrap();
@@ -721,23 +720,6 @@ pub async fn generate_monolithic_config() -> Result<()> {
     let storage_path = data_path.join("storage");
     fs::create_dir_all(&storage_path).await?;
 
-    let rs256_secret_base64 = {
-        let mut rng = rand::thread_rng();
-        let private_key = rsa::RsaPrivateKey::new(&mut rng, 4096)?;
-        let pkcs1_pem = private_key.to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)?;
-
-        BASE64_STANDARD.encode(pkcs1_pem.as_bytes())
-    };
-
-    let config_content = CONFIG_TEMPLATE
-        .replace("%database_url%", &database_url)
-        .replace("%storage_path%", storage_path.to_str().unwrap())
-        .replace("%token_rs256_secret_base64%", &rs256_secret_base64);
-
-    let config_path = get_xdg_config_path()?;
-
-    fs::write(&config_path, config_content.as_bytes()).await?;
-
     //no config provided, start fresh and create a config, a token, and a sqllite db
     //generate rsa256 key 
     let rs256_secret_base64 = {
@@ -747,6 +729,16 @@ pub async fn generate_monolithic_config() -> Result<()> {
 
         BASE64_STANDARD.encode(pkcs1_pem.as_bytes())
     };
+    
+    let config_content = CONFIG_TEMPLATE
+        .replace("%database_url%", &database_url)
+        .replace("%storage_path%", storage_path.to_str().unwrap())
+        .replace("%token_rs256_secret_base64%", &rs256_secret_base64);
+
+    let config_path = get_xdg_config_path()?;
+    
+    eprintln!("writing server.toml to {}",config_path.display());
+    fs::write(&config_path, config_content.as_bytes()).await?;
     
     // Generate a JWT token
     let root_token = generate_root_token(rs256_secret_base64);

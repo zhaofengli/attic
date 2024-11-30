@@ -194,7 +194,7 @@ pub(crate) async fn create_cache(
 ) -> ServerResult<()> {
     let permission = req_state.auth.get_permission_for_cache(&cache_name, false);
     permission.require_create_cache()?;
-
+    
     let database = state.database().await?;
 
     let keypair = match payload.keypair {
