@@ -22,17 +22,20 @@ let
     matrix = {
       database = [ "sqlite" "postgres" ];
       storage = [ "local" "minio" ];
+      token = [ "environmentFile" "loadCredentialEncrypted" "setCredential" ];
     };
-  in builtins.listToAttrs (map (e: {
-    name = "basic-${e.database}-${e.storage}";
-    value = runTest {
+  in builtins.listToAttrs (map (e: let
+    test = runTest {
       imports = [
         ./basic
         {
-          inherit (e) database storage;
+          inherit (e) database storage token;
         }
       ];
     };
+  in {
+    inherit (test) name;
+    value = test;
   }) (lib.cartesianProduct matrix));
 in {
 } // basicTests
