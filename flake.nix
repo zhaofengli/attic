@@ -47,10 +47,40 @@
       ))
     ];
 
-  in flake-parts.lib.mkFlake { inherit inputs; } {
+  in flake-parts.lib.mkFlake { inherit inputs; } ({ inputs, self, ... }: {
     imports = modules;
     systems = supportedSystems;
 
     debug = true;
-  };
+
+    flake.nixosConfigurations.example = inputs.nixpkgs.lib.nixosSystem {
+      modules = [
+        self.nixosModules.atticd
+
+        ({ pkgs, ... }: {
+          nixpkgs.hostPlatform = "x86_64-linux";
+          services.atticd = {
+            enable = true;
+            credentials.server-token-rs256-secret-base64-file = pkgs.runCommand "rs256.pkcs11.b64" {} ''
+              ${lib.getExe pkgs.openssl} genrsa -traditional 4096 | base64 -w0 > "$out"
+            '';
+            credentials."foo*".import = true;
+            credentials."foo*".encrypted = true;
+            credentials.this.value = "that";
+            credentials.this.encrypted = true;
+            credentials.this.set = true;
+            settings = {
+              jwt = { };
+              chunking = {
+                nar-size-threshold = 1;
+                min-size = 64 * 1024;
+                avg-size = 128 * 1024;
+                max-size = 256 * 1024;
+              };
+            };
+          };
+        })
+      ];
+    };
+  });
 }
