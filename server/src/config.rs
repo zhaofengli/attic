@@ -43,6 +43,18 @@ const ENV_TOKEN_RS256_SECRET_BASE64: &str = "ATTIC_SERVER_TOKEN_RS256_SECRET_BAS
 /// received JWTs only).
 const ENV_TOKEN_RS256_PUBKEY_BASE64: &str = "ATTIC_SERVER_TOKEN_RS256_PUBKEY_BASE64";
 
+/// Environment variable storing the path to a file containing the base64-encoded HMAC secret (used
+/// for signing and verifying received JWTs).
+const ENV_TOKEN_HS256_SECRET_BASE64_FILE: &str = "ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64_FILE";
+
+/// Environment variable storing the path to a file containing base64-encoded RSA PEM PKCS1 private
+/// key (used for signing and verifying received JWTs).
+const ENV_TOKEN_RS256_SECRET_BASE64_FILE: &str = "ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64_FILE";
+
+/// Environment variable storing the path to a file containing base64-encoded RSA PEM PKCS1 public
+/// key (used for verifying received JWTs only).
+const ENV_TOKEN_RS256_PUBKEY_BASE64_FILE: &str = "ATTIC_SERVER_TOKEN_RS256_PUBKEY_BASE64_FILE";
+
 /// Environment variable storing the database connection string.
 const ENV_DATABASE_URL: &str = "ATTIC_SERVER_DATABASE_URL";
 
@@ -188,6 +200,30 @@ pub enum JWTSigningConfig {
     #[serde(rename = "token-hs256-secret-base64")]
     #[serde(deserialize_with = "deserialize_token_hs256_secret_base64")]
     HS256SignAndVerify(HS256Key),
+
+    /// JSON Web Token RSA pubkey file.
+    ///
+    /// Set this to the path of a file containing the base64-encoded RSA PEM PKCS1 public key to
+    /// use for verifying JWTs only.
+    #[serde(rename = "token-rs256-pubkey-base64-file")]
+    #[serde(deserialize_with = "deserialize_token_rs256_pubkey_base64_file")]
+    RS256VerifyOnlyFile(RS256PublicKey),
+
+    /// JSON Web Token RSA secret file.
+    ///
+    /// Set this to the path of a file containing the base64-encoded RSA PEM PKCS1 private key to
+    /// use for signing and verifying JWTs.
+    #[serde(rename = "token-rs256-secret-base64-file")]
+    #[serde(deserialize_with = "deserialize_token_rs256_secret_base64_file")]
+    RS256SignAndVerifyFile(RS256KeyPair),
+
+    /// JSON Web Token HMAC secret file.
+    ///
+    /// Set this to the path of a file containing the base64-encoded HMAC secret to use for signing
+    /// and verifying JWTs.
+    #[serde(rename = "token-hs256-secret-base64-file")]
+    #[serde(deserialize_with = "deserialize_token_hs256_secret_base64_file")]
+    HS256SignAndVerifyFile(HS256Key),
 }
 
 impl From<JWTSigningConfig> for SignatureType {
@@ -196,6 +232,9 @@ impl From<JWTSigningConfig> for SignatureType {
             JWTSigningConfig::RS256VerifyOnly(key) => Self::RS256PubkeyOnly(key),
             JWTSigningConfig::RS256SignAndVerify(key) => Self::RS256(key),
             JWTSigningConfig::HS256SignAndVerify(key) => Self::HS256(key),
+            JWTSigningConfig::RS256VerifyOnlyFile(key) => Self::RS256PubkeyOnly(key),
+            JWTSigningConfig::RS256SignAndVerifyFile(key) => Self::RS256(key),
+            JWTSigningConfig::HS256SignAndVerifyFile(key) => Self::HS256(key),
         }
     }
 }
@@ -329,6 +368,12 @@ fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
         config
     } else if let Some(config) = load_token_hs256_secret_from_env() {
         config
+    } else if let Some(config) = load_token_rs256_pubkey_file_from_env() {
+        config
+    } else if let Some(config) = load_token_rs256_secret_file_from_env() {
+        config
+    } else if let Some(config) = load_token_hs256_secret_file_from_env() {
+        config
     } else {
         panic!(
             "\n\
@@ -339,12 +384,18 @@ fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
             * token-rs256-pubkey-base64\n\
             * token-rs256-secret-base64\n\
             * token-hs256-secret-base64\n\
+            * token-rs256-pubkey-base64-file\n\
+            * token-rs256-secret-base64-file\n\
+            * token-hs256-secret-base64-file\n\
             \n\
             or by setting one of the following environment variables:\n\
             \n\
             * {ENV_TOKEN_RS256_PUBKEY_BASE64}\n\
             * {ENV_TOKEN_RS256_SECRET_BASE64}\n\
             * {ENV_TOKEN_HS256_SECRET_BASE64}\n\
+            * {ENV_TOKEN_RS256_PUBKEY_BASE64_FILE}\n\
+            * {ENV_TOKEN_RS256_SECRET_BASE64_FILE}\n\
+            * {ENV_TOKEN_HS256_SECRET_BASE64_FILE}\n\
             \n\
             Options will be tried in that same order (configuration options \
             first, then environment options if none of the configuration options \
@@ -407,6 +458,45 @@ fn load_token_rs256_pubkey_from_env() -> Option<JWTSigningConfig> {
         .expect("RS256 pubkey environment cannot be read")?;
 
     let pubkey = decode_token_rs256_pubkey_base64(&s).expect("RS256 pubkey cannot be decoded");
+
+    Some(JWTSigningConfig::RS256VerifyOnly(pubkey))
+}
+
+fn load_token_hs256_secret_file_from_env() -> Option<JWTSigningConfig> {
+    let loc = read_non_empty_var(ENV_TOKEN_HS256_SECRET_BASE64_FILE)
+        .expect("HS256 file path environment cannot be read")?;
+
+    let path = PathBuf::from(&loc);
+
+    let s = std::fs::read_to_string(&path).expect(&format!("encoded HS256 secret cannot be read from {loc}"));
+
+    let secret = decode_token_hs256_secret_base64(&s).expect(&format!("HS256 secret cannot be decoded from value read from {loc}"));
+
+    Some(JWTSigningConfig::HS256SignAndVerify(secret))
+}
+
+fn load_token_rs256_secret_file_from_env() -> Option<JWTSigningConfig> {
+    let loc = read_non_empty_var(ENV_TOKEN_RS256_SECRET_BASE64_FILE)
+        .expect("RS256 file path environment cannot be read")?;
+
+    let path = PathBuf::from(&loc);
+
+    let s = std::fs::read_to_string(&path).expect(&format!("encoded RS256 secret cannot be read from {loc}"));
+
+    let secret = decode_token_rs256_secret_base64(&s).expect(&format!("RS256 secret cannot be decoded from value read from {loc}"));
+
+    Some(JWTSigningConfig::RS256SignAndVerify(secret))
+}
+
+fn load_token_rs256_pubkey_file_from_env() -> Option<JWTSigningConfig> {
+    let loc = read_non_empty_var(ENV_TOKEN_RS256_PUBKEY_BASE64_FILE)
+        .expect("RS256 pubkey file path environment cannot be read")?;
+
+    let path = PathBuf::from(&loc);
+
+    let s = std::fs::read_to_string(&path).expect(&format!("encoded RS256 pubkey cannot be read from {loc}"));
+
+    let pubkey = decode_token_rs256_pubkey_base64(&s).expect(&format!("RS256 pubkey cannot be decoded from value read from {loc}"));
 
     Some(JWTSigningConfig::RS256VerifyOnly(pubkey))
 }
@@ -529,6 +619,47 @@ where
     use de::Error;
 
     let s = String::deserialize(deserializer)?;
+    let key = decode_token_rs256_pubkey_base64(&s).map_err(Error::custom)?;
+
+    Ok(key)
+}
+
+fn deserialize_token_hs256_secret_base64_file<'de, D>(deserializer: D) -> Result<HS256Key, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error;
+
+    let path = PathBuf::deserialize(deserializer)?;
+    let s = std::fs::read_to_string(&path).map_err(Error::custom)?;
+    let key = decode_token_hs256_secret_base64(&s).map_err(Error::custom)?;
+
+    Ok(key)
+}
+
+fn deserialize_token_rs256_secret_base64_file<'de, D>(deserializer: D) -> Result<RS256KeyPair, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error;
+
+    let path = PathBuf::deserialize(deserializer)?;
+    let s = std::fs::read_to_string(&path).map_err(Error::custom)?;
+    let key = decode_token_rs256_secret_base64(&s).map_err(Error::custom)?;
+
+    Ok(key)
+}
+
+fn deserialize_token_rs256_pubkey_base64_file<'de, D>(
+    deserializer: D,
+) -> Result<RS256PublicKey, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error;
+
+    let path = PathBuf::deserialize(deserializer)?;
+    let s = std::fs::read_to_string(&path).map_err(Error::custom)?;
     let key = decode_token_rs256_pubkey_base64(&s).map_err(Error::custom)?;
 
     Ok(key)

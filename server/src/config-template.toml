@@ -155,9 +155,19 @@ interval = "12 hours"
 # environment variable.
 token-rs256-secret-base64 = "%token_rs256_secret_base64%"
 
+# Or load the JWT RS256 secret key from a file.
+# You can also set this via the `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64_FILE`
+# environment variable.
+#token-rs256-secret-base64-file = "/path/to/rs256.b64"
+
 # JWT HS256 secret key
 #
 # Set this to the base64-encoded HMAC secret key.
 # You can also set it via the `ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64`
 # environment variable.
 #token-hs256-secret-base64 = ""
+
+# Or load the JWT HS256 secret key from a file:
+# You can also set this via the `ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64_FILE`
+# environment variable.
+#token-hs256-secret-base64-file = "/path/to/hs256.b64"
