@@ -50,11 +50,6 @@ use crate::database::entity::object::{self, Entity as Object, InsertExt};
 use crate::database::entity::Json as DbJson;
 use crate::database::{AtticDatabase, ChunkGuard, NarGuard};
 
-/// Number of chunks to upload to the storage backend at once.
-///
-/// TODO: Make this configurable
-const CONCURRENT_CHUNK_UPLOADS: usize = 10;
-
 /// The maximum size of the upload info JSON.
 ///
 /// TODO: Make this configurable
@@ -384,7 +379,7 @@ async fn upload_path_new_chunked(
         chunking_config.max_size,
     );
 
-    let upload_chunk_limit = Arc::new(Semaphore::new(CONCURRENT_CHUNK_UPLOADS));
+    let upload_chunk_limit = Arc::new(Semaphore::new(chunking_config.concurrent_chunk_uploads));
     let mut futures = Vec::new();
 
     let mut chunk_idx = 0;

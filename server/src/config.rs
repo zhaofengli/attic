@@ -265,6 +265,12 @@ pub struct ChunkingConfig {
     /// The preferred maximum size of a chunk, in bytes.
     #[serde(rename = "max-size")]
     pub max_size: usize,
+
+    /// Number of chunks to upload to the storage backend
+    /// at once. By default, this is 10.
+    #[serde(rename = "concurrent-chunk-uploads")]
+    #[serde(default = "default_concurrent_chunk_uploads")]
+    pub concurrent_chunk_uploads: usize,
 }
 
 /// Compression configuration.
@@ -556,6 +562,10 @@ fn default_gc_interval() -> Duration {
 
 fn default_default_retention_period() -> Duration {
     Duration::ZERO
+}
+
+fn default_concurrent_chunk_uploads() -> usize {
+    10
 }
 
 fn load_config_from_path(path: &Path) -> Result<Config> {
