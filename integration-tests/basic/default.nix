@@ -270,11 +270,12 @@ in {
 
       with subtest("Check that we can set the keypair using an already exisiting one"):
           client.succeed("nix-store --generate-binary-cache-key cache.example.com-1 ./cache-key.secret ./cache-key.pub")
+          pubkey = client.succeed("cat ./cache-key.pub").strip()
           client.succeed("attic cache configure test --keypair-path ./cache-key.secret")
           client.succeed("attic use readonly:test")
           client.succeed(f"nix-store -r {test_file}")
-          cache_info = client.succeed("attic cache info test")
-          assert (client.succeed("cat ./cache-key.pub")).strip() in cache_info
+          cache_info = client.succeed("attic cache info test 2>&1")
+          assert pubkey in cache_info, f"LHS: {pubkey}, RHS: {cache_info}"
 
       with subtest("Check that we can create a new store using an already exisiting keypair"):
           client.succeed("attic cache create test3 --keypair-path ./cache-key.secret")
@@ -283,8 +284,8 @@ in {
           client.succeed(f"attic push test3 {test3_file}")
           client.succeed(f"nix-store --delete {test3_file}")
           client.succeed(f"nix-store -r {test3_file}")
-          cache_info = client.succeed("attic cache info test3")
-          assert (client.succeed("cat ./cache-key.pub")).strip() in cache_info
+          cache_info = client.succeed("attic cache info test3 2>&1")
+          assert pubkey in cache_info, f"LHS: {pubkey}, RHS: {cache_info}"
 
       with subtest("Check that we can destroy the cache"):
           client.succeed("attic cache info test")
