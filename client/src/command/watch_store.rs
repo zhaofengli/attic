@@ -91,6 +91,14 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     watcher.watch(&store_dir, RecursiveMode::NonRecursive)?;
 
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to listen for Ctrl-C");
+        eprintln!("📶 Ctrl-C received. Exiting...");
+        drop(watcher);
+    });
+
     eprintln!(
         "👀 Pushing new store paths to \"{cache}\" on \"{server}\"",
         cache = cache.as_str(),
