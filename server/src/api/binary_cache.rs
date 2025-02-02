@@ -9,6 +9,7 @@ use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::http;
 use axum::{
     body::Body,
     extract::{Extension, Path},
@@ -223,7 +224,14 @@ async fn get_nar(
                 });
                 let body = Body::from_stream(stream);
 
-                Ok(body.into_response())
+                Ok((
+                    [(
+                        http::header::CONTENT_TYPE,
+                        http::HeaderValue::from_static(mime::NAR),
+                    )],
+                    body,
+                )
+                    .into_response())
             }
         }
     } else {
@@ -260,7 +268,14 @@ async fn get_nar(
         });
         let body = Body::from_stream(merged);
 
-        Ok(body.into_response())
+        Ok((
+            [(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static(mime::NAR),
+            )],
+            body,
+        )
+            .into_response())
     }
 }
 

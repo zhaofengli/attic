@@ -35,10 +35,12 @@ jobs:
         run: |
           : "${ATTIC_SERVER:=https://staging.attic.rs/}"
           : "${ATTIC_CACHE:=attic-ci}"
-          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
           attic use "$ATTIC_CACHE"
+          if [ -n "$ATTIC_TOKEN" ]; then
+            echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          fi
         env:
           ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
           ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
@@ -97,10 +99,12 @@ jobs:
         run: |
           : "${ATTIC_SERVER:=https://staging.attic.rs/}"
           : "${ATTIC_CACHE:=attic-ci}"
-          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
           attic use "$ATTIC_CACHE"
+          if [ -n "$ATTIC_TOKEN" ]; then
+            echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          fi
         env:
           ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
           ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
@@ -152,10 +156,12 @@ jobs:
         run: |
           : "${ATTIC_SERVER:=https://staging.attic.rs/}"
           : "${ATTIC_CACHE:=attic-ci}"
-          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
           attic use "$ATTIC_CACHE"
+          if [ -n "$ATTIC_TOKEN" ]; then
+            echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          fi
         env:
           ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
           ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
@@ -197,10 +203,12 @@ jobs:
         run: |
           : "${ATTIC_SERVER:=https://staging.attic.rs/}"
           : "${ATTIC_CACHE:=attic-ci}"
-          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
           attic use "$ATTIC_CACHE"
+          if [ -n "$ATTIC_TOKEN" ]; then
+            echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          fi
         env:
           ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
           ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
@@ -246,10 +254,12 @@ jobs:
         run: |
           : "${ATTIC_SERVER:=https://staging.attic.rs/}"
           : "${ATTIC_CACHE:=attic-ci}"
-          echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
           export PATH=$HOME/.nix-profile/bin:$PATH # FIXME
           attic login --set-default ci "$ATTIC_SERVER" "$ATTIC_TOKEN"
           attic use "$ATTIC_CACHE"
+          if [ -n "$ATTIC_TOKEN" ]; then
+            echo ATTIC_CACHE=$ATTIC_CACHE >>$GITHUB_ENV
+          fi
         env:
           ATTIC_SERVER: ${{ secrets.ATTIC_SERVER }}
           ATTIC_CACHE: ${{ secrets.ATTIC_CACHE }}
