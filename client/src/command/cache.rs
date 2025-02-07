@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use attic::nix_store::{NixStore, StorePath};
 use clap::{Parser, Subcommand};
 use dialoguer::Input;
 use humantime::Duration;
@@ -23,6 +24,7 @@ pub struct Cache {
 enum Command {
     Create(Create),
     Configure(Configure),
+    DeletePath(DeletePath),
     Destroy(Destroy),
     Info(Info),
 }
@@ -152,6 +154,23 @@ struct Configure {
     reset_retention_period: bool,
 }
 
+/// Delete a path from a cache.
+///
+/// This command is used to delete a path from a cache.
+///
+/// You need the `delete` permission on the cache that
+/// you are deleting from.
+///
+/// The path is specified as a store path.
+#[derive(Debug, Clone, Parser)]
+struct DeletePath {
+    /// Name of the cache to delete from.
+    cache: CacheRef,
+
+    /// The store path to delete.
+    store_path: PathBuf,
+}
+
 /// Destroy a cache.
 ///
 /// Destroying a cache causes it to become unavailable but the
@@ -183,6 +202,7 @@ pub async fn run(opts: Opts) -> Result<()> {
     match &sub.command {
         Command::Create(sub) => create_cache(sub.to_owned()).await,
         Command::Configure(sub) => configure_cache(sub.to_owned()).await,
+        Command::DeletePath(sub) => delete_path(sub.to_owned()).await,
         Command::Destroy(sub) => destroy_cache(sub.to_owned()).await,
         Command::Info(sub) => show_cache_config(sub.to_owned()).await,
     }
@@ -265,6 +285,27 @@ async fn configure_cache(sub: Configure) -> Result<()> {
 
     eprintln!(
         "✅ Configured \"{}\" on \"{}\"",
+        cache.as_str(),
+        server_name.as_str()
+    );
+
+    Ok(())
+}
+
+async fn delete_path(sub: DeletePath) -> Result<()> {
+    let config = Config::load()?;
+
+    let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
+    let api = ApiClient::from_server_config(server.clone())?;
+
+    let store = NixStore::connect()?;
+
+    api.delete_path(cache, &store.parse_store_path(&sub.store_path)?.to_hash())
+        .await?;
+
+    eprintln!(
+        "🗑️ Deleted path \"{}\" from cache \"{}\" on \"{}\"",
+        sub.store_path,
         cache.as_str(),
         server_name.as_str()
     );
