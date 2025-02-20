@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
 
@@ -24,6 +25,7 @@ use attic::api::v1::upload_path::{
 };
 use attic::cache::CacheName;
 use attic::nix_store::StorePathHash;
+use attic::pin::PinName;
 
 /// The User-Agent string of Attic.
 const ATTIC_USER_AGENT: &str =
@@ -209,6 +211,79 @@ impl ApiClient {
                 Ok(r) => Ok(Some(r)),
                 Err(_) => Ok(None),
             }
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
+    /// List pins.
+    pub async fn list_pins(&self, cache: &CacheName) -> Result<HashMap<PinName, String>> {
+        let endpoint = self.endpoint.join("_api/v1/pins")?.join(cache.as_str())?;
+
+        let res = self.client.get(endpoint).send().await?;
+
+        if res.status().is_success() {
+            Ok(res.json().await?)
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
+    /// Get a pin.
+    pub async fn get_pin(&self, cache: &CacheName, pin: &PinName) -> Result<String> {
+        let endpoint = self
+            .endpoint
+            .join("_api/v1/pins")?
+            .join(cache.as_str())?
+            .join(pin.as_str())?;
+
+        let res = self.client.get(endpoint).send().await?;
+
+        if res.status().is_success() {
+            Ok(res.json().await?)
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
+    /// Creates a pin.
+    pub async fn create_pin(
+        &self,
+        cache: &CacheName,
+        pin: &PinName,
+        store_path: &str,
+    ) -> Result<()> {
+        let endpoint = self
+            .endpoint
+            .join("_api/v1/pins")?
+            .join(cache.as_str())?
+            .join(pin.as_str())?;
+
+        let res = self.client.put(endpoint).json(store_path).send().await?;
+
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
+    /// Removes a pin.
+    pub async fn destroy_pin(&self, cache: &CacheName, pin: &PinName) -> Result<()> {
+        let endpoint = self
+            .endpoint
+            .join("_api/v1/pins")?
+            .join(cache.as_str())?
+            .join(pin.as_str())?;
+
+        let res = self.client.delete(endpoint).send().await?;
+
+        if res.status().is_success() {
+            Ok(())
         } else {
             let api_error = ApiError::try_from_response(res).await?;
             Err(api_error.into())

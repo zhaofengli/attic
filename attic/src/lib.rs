@@ -23,6 +23,7 @@ pub mod error;
 pub mod hash;
 pub mod mime;
 pub mod nix_store;
+pub mod pin;
 pub mod signing;
 #[cfg(feature = "stream")]
 pub mod stream;
