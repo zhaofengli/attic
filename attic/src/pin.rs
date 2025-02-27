@@ -90,14 +90,6 @@ fn validate_pin_name(name: &str) -> AtticResult<()> {
 pub mod tests {
     use super::*;
 
-    macro_rules! pin {
-        ($n:expr) => {
-            PinName::new($n.to_string()).unwrap()
-        };
-    }
-
-    pub(crate) use pin;
-
     #[test]
     fn test_pin_name() {
         let names = vec!["valid-name", "Another_Valid_Name", "plan9"];

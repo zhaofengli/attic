@@ -219,7 +219,9 @@ impl ApiClient {
 
     /// List pins.
     pub async fn list_pins(&self, cache: &CacheName) -> Result<HashMap<PinName, String>> {
-        let endpoint = self.endpoint.join("_api/v1/pins")?.join(cache.as_str())?;
+        let endpoint = self
+            .endpoint
+            .join(&format!("_api/v1/pins/{}", cache.as_str()))?;
 
         let res = self.client.get(endpoint).send().await?;
 
@@ -233,11 +235,9 @@ impl ApiClient {
 
     /// Get a pin.
     pub async fn get_pin(&self, cache: &CacheName, pin: &PinName) -> Result<String> {
-        let endpoint = self
-            .endpoint
-            .join("_api/v1/pins")?
-            .join(cache.as_str())?
-            .join(pin.as_str())?;
+        let endpoint =
+            self.endpoint
+                .join(&format!("_api/v1/pins/{}/{}", cache.as_str(), pin.as_str()))?;
 
         let res = self.client.get(endpoint).send().await?;
 
@@ -256,11 +256,9 @@ impl ApiClient {
         pin: &PinName,
         store_path: &str,
     ) -> Result<()> {
-        let endpoint = self
-            .endpoint
-            .join("_api/v1/pins")?
-            .join(cache.as_str())?
-            .join(pin.as_str())?;
+        let endpoint =
+            self.endpoint
+                .join(&format!("_api/v1/pins/{}/{}", cache.as_str(), pin.as_str()))?;
 
         let res = self.client.put(endpoint).json(store_path).send().await?;
 
@@ -274,11 +272,9 @@ impl ApiClient {
 
     /// Removes a pin.
     pub async fn destroy_pin(&self, cache: &CacheName, pin: &PinName) -> Result<()> {
-        let endpoint = self
-            .endpoint
-            .join("_api/v1/pins")?
-            .join(cache.as_str())?
-            .join(pin.as_str())?;
+        let endpoint =
+            self.endpoint
+                .join(&format!("_api/v1/pins/{}/{}", cache.as_str(), pin.as_str()))?;
 
         let res = self.client.delete(endpoint).send().await?;
 

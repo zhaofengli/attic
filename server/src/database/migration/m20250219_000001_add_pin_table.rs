@@ -26,7 +26,14 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
+                    .col(ColumnDef::new(Column::Name).string_len(50).not_null())
                     .col(ColumnDef::new(Column::CacheId).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(Column::StorePathHash)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Column::StorePath).string().not_null())
                     .foreign_key(
                         ForeignKeyCreateStatement::new()
                             .name("fk_pin_cache")

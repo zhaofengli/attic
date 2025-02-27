@@ -28,7 +28,7 @@ enum Command {
 
 /// List all pins in a cache.
 ///
-/// You need the `pull` permission on the cache that you are listing on.
+/// You need the `push` permission on the cache that you are listing on.
 #[derive(Debug, Clone, Parser)]
 struct List {
     /// Name of the cache to unpin from.
@@ -40,7 +40,7 @@ struct List {
 
 /// Get an existing pin.
 ///
-/// You need the `pull` permission on the cache that you are getting from.
+/// You need the `push` permission on the cache that you are getting from.
 #[derive(Debug, Clone, Parser)]
 struct Get {
     /// Name of the cache to get from.
@@ -127,9 +127,18 @@ async fn create_pin(sub: Create) -> Result<()> {
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
     let api = ApiClient::from_server_config(server.clone())?;
 
+    let old_pin = api.get_pin(cache, &sub.name).await.map_or(None, Some);
+
     let real_store_path = store.get_full_path(&store.follow_store_path(sub.path)?);
     let store_path = real_store_path.to_str().unwrap();
     api.create_pin(cache, &sub.name, store_path).await?;
+    if let Some(old_store_path) = old_pin {
+        eprintln!(
+            "⚠️ Removed pin \"{}\" to \"{}\"",
+            sub.name.as_str(),
+            old_store_path,
+        );
+    }
     eprintln!(
         "✨ Created pin \"{}\" to \"{}\" on \"{}:{}\"",
         sub.name.as_str(),
