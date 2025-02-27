@@ -31,7 +31,7 @@ enum Command {
 /// You need the `push` permission on the cache that you are listing on.
 #[derive(Debug, Clone, Parser)]
 struct List {
-    /// Name of the cache to unpin from.
+    /// Name of the cache to list from.
     ///
     /// This can be either `servername:cachename` or `cachename`
     /// when using the default server.
