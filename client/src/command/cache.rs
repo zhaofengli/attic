@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Result};
-use attic::nix_store::{NixStore, StorePath};
+use attic::nix_store::NixStore;
 use clap::{Parser, Subcommand};
 use dialoguer::Input;
 use humantime::Duration;
+use std::path::PathBuf;
 
 use crate::api::ApiClient;
 use crate::cache::CacheRef;
@@ -292,7 +293,7 @@ async fn configure_cache(sub: Configure) -> Result<()> {
     Ok(())
 }
 
-async fn delete_path(sub: &DeletePath) -> Result<()> {
+async fn delete_path(sub: DeletePath) -> Result<()> {
     let config = Config::load()?;
 
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
