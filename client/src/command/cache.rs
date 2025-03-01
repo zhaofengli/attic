@@ -292,7 +292,7 @@ async fn configure_cache(sub: Configure) -> Result<()> {
     Ok(())
 }
 
-async fn delete_path(sub: DeletePath) -> Result<()> {
+async fn delete_path(sub: &DeletePath) -> Result<()> {
     let config = Config::load()?;
 
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
@@ -305,7 +305,7 @@ async fn delete_path(sub: DeletePath) -> Result<()> {
 
     eprintln!(
         "🗑️ Deleted path \"{}\" from cache \"{}\" on \"{}\"",
-        sub.store_path,
+        &sub.store_path,
         cache.as_str(),
         server_name.as_str()
     );
