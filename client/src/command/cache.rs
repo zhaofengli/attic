@@ -305,7 +305,7 @@ async fn delete_path(sub: DeletePath) -> Result<()> {
         .await?;
 
     eprintln!(
-        "🗑️ Deleted path \"{}\" from cache \"{}\" on \"{}\"",
+        "🗑️ Deleted path \"{:?}\" from cache \"{}\" on \"{}\"",
         sub.store_path.to_str(),
         cache.as_str(),
         server_name.as_str()
