@@ -13,7 +13,7 @@ mod nix_store {
     use system_deps::Dependencies;
     use version_compare::Version;
 
-    fn apply_variant_flags(build: &mut Build, deps: &Dependencies) {
+    fn apply_nix_variant_flags(build: &mut Build, deps: &Dependencies) {
         let nix_main = deps
             .get_by_name("nix-main")
             .expect("Failed to get version of nix-main");
@@ -29,6 +29,10 @@ mod nix_store {
         build.define("NIX_VERSION", &*format!("{version}"));
     }
 
+    fn apply_lix_variant_flags(build: &mut Build) {
+        build.define("ATTIC_VARIANT_LIX", None);
+    }
+
     pub fn build_bridge() {
         let deps = system_deps::Config::new().probe().unwrap();
 
@@ -39,7 +43,18 @@ mod nix_store {
             .flag("-O2")
             .includes(deps.all_include_paths());
 
-        apply_variant_flags(&mut build, &deps);
+        // TODO: Add a Cargo feature to explicitly select an implementation
+        //
+        // Requiring --no-default-features is bad UX for distributors, but
+        // at the same time, we should support the scenario where both are
+        // available via pkg-config but we select one.
+        if deps.get_by_name("nix-main").is_some() {
+            apply_nix_variant_flags(&mut build, &deps);
+        } else if deps.get_by_name("lix-main").is_some() {
+            apply_lix_variant_flags(&mut build);
+        } else {
+            panic!("Either Nix or Lix must be installed");
+        }
 
         build.compile("nixbinding");
 

@@ -50,8 +50,11 @@ system-deps = { version = "7.0", optional = true }
 version-compare = "0.2.0"
 
 [package.metadata.system-deps]
-nix-store = { version = "2.24", feature = "nix_store" }
-nix-main = { version = "2.24", feature = "nix_store" }
+nix-store = { version = "2.24", optional = true }
+nix-main = { version = "2.24", optional = true }
+
+lix-store = { version = "2.91", optional = true }
+lix-main = { version = "2.91", optional = true }
 
 [features]
 default = [

@@ -25,7 +25,11 @@ using RBasePathSlice = RSlice<const unsigned char>;
 using RHashSlice = RSlice<const unsigned char>;
 
 static bool hash_is_sha256(const nix::Hash &hash) {
+#ifdef ATTIC_VARIANT_LIX
+	return hash.type == nix::HashType::SHA256;
+#else
 	return hash.algo == nix::HashAlgorithm::SHA256;
+#endif
 }
 
 struct AsyncWriteSender;
