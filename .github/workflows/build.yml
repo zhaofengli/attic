@@ -73,8 +73,8 @@ jobs:
           - ubuntu-latest
           - macos-latest
         nix:
-          - "2.20"
           - "2.24"
+          - "2.25"
           - "default"
     runs-on: ${{ matrix.os }}
     steps:
