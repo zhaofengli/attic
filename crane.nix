@@ -1,9 +1,5 @@
 # For distribution from this repository as well as CI, we use Crane to build
 # Attic.
-#
-# For a nixpkgs-acceptable form of the package expression, see `package.nixpkgs.nix`
-# which will be submitted when the Attic API is considered stable. However, that
-# expression is not tested by CI so to not slow down the hot path.
 
 { stdenv
 , lib
