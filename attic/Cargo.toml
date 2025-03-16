@@ -47,6 +47,7 @@ serde_json = "1.0.96"
 cc = "1.1.13"
 cxx-build = { version = "1.0", optional = true }
 pkg-config = "0.3.27"
+tempfile = "3"
 version-compare = "0.2.0"
 
 [features]

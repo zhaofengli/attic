@@ -19,11 +19,7 @@ static nix::StorePath store_path_from_rust(RBasePathSlice base_name) {
 }
 
 static bool hash_is_sha256(const nix::Hash &hash) {
-#ifdef ATTIC_NIX_2_20
 	return hash.algo == nix::HashAlgorithm::SHA256;
-#else
-	return hash.type == nix::htSHA256;
-#endif
 }
 
 // ========
