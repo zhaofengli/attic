@@ -89,9 +89,6 @@ let
 
     ATTIC_DISTRIBUTOR = "attic";
 
-    # See comment in `attic/build.rs`
-    NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
-
     # See comment in `attic-tests`
     doCheck = false;
 
@@ -174,9 +171,6 @@ let
     buildPhaseCargoCommand = "";
     checkPhaseCargoCommand = "cargoWithProfile test --no-run --message-format=json >cargo-test.json";
     doInstallCargoArtifacts = false;
-
-    # See comment in `attic/build.rs`
-    NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
 
     installPhase = ''
       runHook preInstall

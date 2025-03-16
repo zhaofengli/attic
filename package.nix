@@ -49,9 +49,6 @@ in rustPlatform.buildRustPackage rec {
 
   ATTIC_DISTRIBUTOR = "attic";
 
-  # See comment in `attic/build.rs`
-  NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
-
   # Recursive Nix is not stable yet
   doCheck = false;
 
