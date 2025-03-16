@@ -18,6 +18,7 @@
 
 , nix
 , boost
+, libarchive
 , darwin
 , libiconv
 
@@ -49,6 +50,7 @@ let
 
   buildInputs = [
     nix boost
+    libarchive
   ] ++ lib.optionals stdenv.isDarwin [
     darwin.apple_sdk.frameworks.SystemConfiguration
     libiconv
