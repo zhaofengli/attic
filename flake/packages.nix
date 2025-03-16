@@ -82,6 +82,10 @@ in
             attic-server
           ;
 
+          attic-lix = (cranePkgs.override {
+            nix = config.attic.nix-versions.versions."lix-2.91";
+          }).attic;
+
           attic-static = cranePkgsStatic.attic;
           attic-client-static = cranePkgsStatic.attic-client;
           attic-server-static = cranePkgsStatic.attic-server;
