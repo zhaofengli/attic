@@ -53,14 +53,6 @@ mod nix_store {
     pub fn build_bridge() {
         let nix_dep = NixDependency::detect();
 
-        // Temporary workaround for issue in <https://github.com/NixOS/nix/pull/8484>
-        let hacky_include = {
-            let dir =
-                tempfile::tempdir().expect("Failed to create temporary directory for workaround");
-            std::fs::write(dir.path().join("uds-remote-store.md"), "\"\"").unwrap();
-            dir
-        };
-
         let mut build = cxx_build::bridge("src/nix_store/bindings/mod.rs");
         build
             .file("src/nix_store/bindings/nix.cpp")
@@ -68,8 +60,6 @@ mod nix_store {
             .flag("-O2")
             .flag("-include")
             .flag("nix/config.h")
-            .flag("-idirafter")
-            .flag(hacky_include.path().to_str().unwrap())
             // In Nix 2.19+, nix/args/root.hh depends on being able to #include "args.hh" (which is in its parent directory), for some reason
             .flag("-I")
             .flag(concat!(env!("NIX_INCLUDE_PATH"), "/nix"));
