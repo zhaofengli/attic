@@ -21,7 +21,9 @@ mod nix_store {
 
         build.define("ATTIC_VARIANT_NIX", None);
 
-        let version = if version >= Version::from("2.26").unwrap() {
+        let version = if version >= Version::from("2.28").unwrap() {
+            228
+        } else if version >= Version::from("2.26").unwrap() {
             226
         } else {
             225
