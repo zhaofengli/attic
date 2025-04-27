@@ -25,7 +25,7 @@ pub const ATTIC_NAR_INFO_PREAMBLE_SIZE: &str = "X-Attic-Nar-Info-Preamble-Size";
 /// Regardless of client compression, the server will always decompress
 /// the NAR to validate the NAR hash before applying the server-configured
 /// compression again.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UploadPathNarInfo {
     /// The name of the binary cache to upload to.
     pub cache: CacheName,
