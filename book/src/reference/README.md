@@ -5,3 +5,4 @@ This section contains detailed listings of options and parameters accepted by At
 - [`attic` CLI](./attic-cli.md)
 - [`atticd` CLI](./atticd-cli.md)
 - [`atticadm` CLI](./atticadm-cli.md)
+- [NixOS module options](./reference/nixos-module-options.md)

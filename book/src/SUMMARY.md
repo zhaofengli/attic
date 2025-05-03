@@ -11,3 +11,4 @@
     - [attic](./reference/attic-cli.md)
     - [atticd](./reference/atticd-cli.md)
     - [atticadm](./reference/atticadm-cli.md)
+    - [NixOS module options](./reference/nixos-module-options.md)
