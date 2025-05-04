@@ -79,7 +79,8 @@ in
           };
 
           book = pkgs.callPackage ../book {
-            attic = self'.packages.attic;
+            inherit (self'.packages) attic;
+            eval = self.nixosConfigurations.example;
           };
         };
       }

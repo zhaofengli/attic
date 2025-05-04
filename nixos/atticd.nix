@@ -30,6 +30,14 @@ let
         cat <$configFile >$out
       '';
 
+  # See here for why we define credentials-related environment variables in
+  # this wrapper rather than in the command executed in `atticd-atticadm`:
+  # https://github.com/systemd/systemd/issues/5699
+  # https://github.com/systemd/systemd/issues/34931
+  #
+  # NOTE that, for credentials specified with `ImportCredential`, this wrapper
+  # (a) treats `cred.id` as a glob and (b) only recognizes the *first* file
+  # found under `$CREDENTIALS_DIRECTORY` that matches this glob.
   atticadmShim = pkgs.writeShellScript "atticadm" ''
     if [ -n "$ATTICADM_PWD" ]; then
       cd "$ATTICADM_PWD"
@@ -38,25 +46,51 @@ let
       fi
     fi
 
+    ${lib.concatMapStrings (cred:
+      if cred.import
+      then ''
+        for cred in "$CREDENTIALS_DIRECTORY"/${cred.id}; do
+          export ${cred.envVar}="$cred"
+          break
+        done
+      ''
+      else ''
+        export ${cred.envVar}="''${CREDENTIALS_DIRECTORY?}"/${lib.escapeShellArg cred.id}
+      '') credentialsList}
+
     exec ${cfg.package}/bin/atticadm -f ${checkedConfigFile} "$@"
   '';
 
-  atticadmWrapper = pkgs.writeShellScriptBin "atticd-atticadm" ''
-    exec systemd-run \
-      --quiet \
-      --pipe \
-      --pty \
-      --wait \
-      --collect \
-      --service-type=exec \
-      --property=EnvironmentFile=${cfg.environmentFile} \
-      --property=DynamicUser=yes \
-      --property=User=${cfg.user} \
-      --property=Environment=ATTICADM_PWD=$(pwd) \
-      --working-directory / \
-      -- \
-      ${atticadmShim} "$@"
-  '';
+  atticadmWrapper =
+    let
+      run = [
+        "exec"
+        "systemd-run"
+        "--quiet"
+        "--pipe"
+        "--pty"
+        "--wait"
+        "--collect"
+        "--service-type=exec"
+        "--property=DynamicUser=yes"
+        "--property=User=${cfg.user}"
+        "--working-directory=/"
+      ] ++ (lib.optional haveEnvironmentFile "--property=EnvironmentFile=${cfg.environmentFile}")
+      ++ (map (cred: "--property=${cred.setting}=${cred.spec}") credentialsList);
+    in
+    pkgs.writeShellScriptBin "atticd-atticadm" ''
+      ${lib.escapeShellArgs run} --property=Environment=ATTICADM_PWD=$(pwd) -- ${atticadmShim} "$@"
+    '';
+
+  credentialsList = builtins.attrValues cfg.credentials;
+  credentialsSettings = builtins.foldl'
+    (acc: cred: acc // {
+      ${cred.setting} = (acc.${cred.setting} or [ ]) ++ [ cred.spec ];
+    })
+    { }
+    credentialsList;
+
+  haveEnvironmentFile = cfg.environmentFile != null;
 
   hasLocalPostgresDB =
     let
@@ -69,6 +103,13 @@ let
       hasLocalStrings = lib.any (lib.flip lib.hasInfix url) localStrings;
     in
     config.services.postgresql.enable && lib.hasPrefix "postgresql://" url && hasLocalStrings;
+
+  toEnvVar = lib.flip lib.pipe [
+    (lib.replaceStrings [ "-" ] [ "_" ])
+    lib.toUpper
+  ];
+
+  toAtticEnvVar = name: "ATTIC_${toEnvVar name}";
 in
 {
   imports = [
@@ -91,6 +132,136 @@ in
         '';
         type = types.nullOr types.path;
         default = null;
+      };
+
+      credentials = lib.mkOption {
+        description = ''
+          Attribute set naming files to provide to the `atticd` service via
+          systemd's `LoadCredential` option.
+
+          See {manpage}`systemd.exec(5)`.
+        '';
+
+        default = { };
+
+        type =
+          let
+            credentialModule = types.submodule ({ name, config, ... }: {
+              options = {
+                name = lib.mkOption {
+                  description = ''
+                '';
+                  type = types.nonEmptyStr;
+                  default = name;
+                };
+
+                # Read-only to avoid collisions: this way, there is a one-to-one
+                # mapping between entries in the `credentials` attrset and their
+                # paths under `$CREDENTIALS_DIRECTORY`.
+                id = lib.mkOption {
+                  description = ''
+                    ID of the credential.  The credential will be located at
+                    `$CREDENTIALS_DIRECTORY/<id>`.
+
+                    Also used for constructing the default value of
+                    {option}`envVar`.
+                  '';
+                  type = types.nonEmptyStr;
+                  default = name;
+                  readOnly = true;
+                };
+
+                value = lib.mkOption {
+                  description = ''
+                    If {option}`set` is enabled, then this is the value of the
+                    credential; otherwise, it is the path to the file containing
+                    the credential.
+
+                    If set to `null` (the default), then it is assumed that this
+                    credential is a so-called "system credential" (a credential
+                    already loaded into the system manager, possibly with
+                    {command}`systemd-creds`), or a file to be loaded from the
+                    locations specified in {manpage}`systemd.exec(5)`'s
+                    documentation of `LoadCredential` and
+                    `LoadCredentialEncrypted`.
+                  '';
+                  default = null;
+                  type = types.nullOr (types.oneOf [ types.path types.str ]);
+                };
+
+                encrypted = lib.mkOption {
+                  description = ''
+                    Set this to `true` if the credential should be loaded with
+                    `SetCredentialEncrypted` rather than `SetCredential` (when
+                    {option}`set` is enabled), or with `LoadCredentialEncrypted`
+                    rather than `LoadCredential`.
+                  '';
+                  type = types.bool;
+                  default = false;
+                };
+
+                import = lib.mkOption {
+                  description = ''
+                    Set this to `true` if the credential should be imported with
+                    `ImportCredential` (see {manpage}`systemd.exec(5)`).
+                  '';
+                  type = types.bool;
+                  default = false;
+                };
+
+                set = lib.mkOption {
+                  description = ''
+                    Set this to `true` if the credential should be loaded with
+                    `SetCredential` or `SetCredentialEncrypted` (see
+                    {manpage}`systemd.exec(5)`).
+                  '';
+                  type = types.bool;
+                  default = false;
+                };
+
+                envVar = lib.mkOption {
+                  description = ''
+                    Set the value of this environment variable to the path of the
+                    credential file within the `atticd` systemd service unit.
+                  '';
+                  type = types.strMatching "(_[[:alnum:]]|[A-Za-z])[_[:alnum:]]*";
+                  default =
+                    let
+                      base = toAtticEnvVar config.id;
+                    in
+                    if config.import then lib.removeSuffix "*" base else base;
+                  defaultText = ''"ATTIC_''${lib.toUpper (lib.replaceStrings ["-"] ["_"] credential.id)}"'';
+                };
+
+                setting = lib.mkOption {
+                  description = ''
+                    systemd setting for use with this credential.
+                  '';
+                  type = types.nonEmptyStr;
+                  default =
+                    if config.import
+                    then "ImportCredential"
+                    else "${if config.set then "Set" else "Load"}Credential${lib.optionalString config.encrypted "Encrypted"}";
+                  readOnly = true;
+                  internal = true;
+                };
+
+                spec = lib.mkOption {
+                  description = ''
+                    Representation of this credential for use with
+                    `LoadCredential` or `LoadCredentialEncrypted`.
+                  '';
+                  type = types.str;
+                  default = "${config.id}${lib.optionalString (config.value != null) ":${config.value}"}";
+                  readOnly = true;
+                  internal = true;
+                };
+              };
+            });
+
+            credentialType = types.coercedTo types.path (value: { inherit value; }) credentialModule;
+          in
+          types.attrsOf credentialType;
       };
 
       user = lib.mkOption {
@@ -163,28 +334,37 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = cfg.environmentFile != null;
-        message = ''
-          <option>services.atticd.environmentFile</option> is not set.
+    assertions =
+      let
+        keyEnvVars = map (key: toAtticEnvVar "${key}-base64-file") [
+          "server-token-hs256-secret"
+          "server-token-rs256-secret"
+          "server-token-rs256-public"
+        ];
+        haveCredentials = lib.any (lib.flip lib.elem keyEnvVars) (lib.catAttrs "envVar" credentialsList);
+      in
+      [
+        {
+          assertion = haveEnvironmentFile || haveCredentials;
+          message = ''
+            `services.atticd.environmentFile` is not set, and no entry in `service.atticd.credentials` defines any of these environment variables: ${lib.concatMapStringsSep ", " (var: "`${var}`") keyEnvVars}.
 
-          Run `openssl genrsa -traditional -out private_key.pem 4096 | base64 -w0` and create a file with the following contents:
+            Run `openssl genrsa -traditional -out private_key.pem 4096 | base64 -w0` and create a file with the following contents:
 
-          ATTIC_SERVER_TOKEN_RS256_SECRET="output from command"
+            ATTIC_SERVER_TOKEN_RS256_SECRET="output from command"
 
-          Then, set `services.atticd.environmentFile` to the quoted absolute path of the file.
-        '';
-      }
-      {
-        assertion = !lib.isStorePath cfg.environmentFile;
-        message = ''
-          <option>services.atticd.environmentFile</option> points to a path in the Nix store. The Nix store is globally readable.
+            Then, set `services.atticd.environmentFile` to the quoted absolute path of the file.
+          '';
+        }
+        {
+          assertion = (cfg.environmentFile != null) -> (!lib.isStorePath cfg.environmentFile);
+          message = ''
+            <option>services.atticd.environmentFile</option> points to a path in the Nix store. The Nix store is globally readable.
 
-          You should use a quoted absolute path to prevent leaking secrets in the Nix store.
-        '';
-      }
-    ];
+            You should use a quoted absolute path to prevent leaking secrets in the Nix store.
+          '';
+        }
+      ];
 
     services.atticd.settings = {
       database.url = lib.mkDefault "sqlite:///var/lib/atticd/server.db?mode=rwc";
@@ -203,9 +383,10 @@ in
       requires = lib.optionals hasLocalPostgresDB [ "postgresql.service" ];
       wants = [ "network-online.target" ];
 
+      environment = lib.mapAttrs' (_: cred: { name = cred.envVar; value = "%d/${cred.id}"; }) cfg.credentials;
+
       serviceConfig = {
         ExecStart = "${lib.getExe cfg.package} -f ${checkedConfigFile} --mode ${cfg.mode}";
-        EnvironmentFile = cfg.environmentFile;
         StateDirectory = "atticd"; # for usage with local storage and sqlite
         DynamicUser = true;
         User = cfg.user;
@@ -254,6 +435,10 @@ in
           "~@privileged"
         ];
         UMask = "0077";
+      }
+      // credentialsSettings
+      // lib.optionalAttrs haveEnvironmentFile {
+        EnvironmentFile = cfg.environmentFile;
       };
     };
 
