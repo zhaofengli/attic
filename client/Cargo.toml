@@ -32,7 +32,7 @@ serde_json = "1.0.96"
 toml = "0.8.8"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
-xdg = "2.5.0"
+xdg = "3.0.0"
 
 [dependencies.tokio]
 version = "1.28.2"

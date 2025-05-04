@@ -59,7 +59,7 @@ tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = [ "json" ] }
 uuid = { version = "1.3.3", features = ["v4"] }
 console-subscriber = "0.2.0"
-xdg = "2.5.0"
+xdg = "3.0.0"
 rsa = "0.9.3"
 
 [dependencies.async-compression]
