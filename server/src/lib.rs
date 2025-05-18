@@ -22,7 +22,6 @@ pub mod gc;
 mod middleware;
 mod narinfo;
 pub mod nix_manifest;
-pub mod oobe;
 mod storage;
 
 use std::future::IntoFuture;
