@@ -1,5 +1,6 @@
 mod cache_config;
 mod get_missing_paths;
+mod pins;
 mod upload_path;
 
 use axum::{
@@ -34,4 +35,8 @@ pub(crate) fn get_router() -> Router {
             "/_api/v1/cache-config/:cache",
             delete(cache_config::destroy_cache),
         )
+        .route("/_api/v1/pins/:cache", get(pins::get_pins))
+        .route("/_api/v1/pins/:cache/:name", get(pins::get_pin))
+        .route("/_api/v1/pins/:cache/:name", put(pins::create_pin))
+        .route("/_api/v1/pins/:cache/:name", delete(pins::delete_pin))
 }
