@@ -7,6 +7,7 @@ pub mod chunk;
 pub mod chunkref;
 pub mod nar;
 pub mod object;
+pub mod pin;
 
 use sea_orm::entity::Value;
 use sea_orm::sea_query::{ArrayType, ColumnType, ValueType, ValueTypeErr};
