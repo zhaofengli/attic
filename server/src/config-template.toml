@@ -19,6 +19,9 @@ allowed-hosts = []
 # not `https://domain.tld/attic`).
 #api-endpoint = "https://your.domain.tld/"
 
+# The maximum size of the upload info JSON, in bytes.
+#max-nar-info-size = 1048576 # 1 MiB
+
 # Whether to soft-delete caches
 #
 # If this is enabled, caches are soft-deleted instead of actually
