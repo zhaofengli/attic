@@ -55,11 +55,6 @@ use crate::database::{AtticDatabase, ChunkGuard, NarGuard};
 /// TODO: Make this configurable
 const CONCURRENT_CHUNK_UPLOADS: usize = 10;
 
-/// The maximum size of the upload info JSON.
-///
-/// TODO: Make this configurable
-const MAX_NAR_INFO_SIZE: usize = 1 * 1024 * 1024; // 1 MiB
-
 type CompressorFn<C> = Box<dyn FnOnce(C) -> Box<dyn AsyncRead + Unpin + Send> + Send>;
 
 /// Data of a chunk.
@@ -147,7 +142,7 @@ pub(crate) async fn upload_path(
                     ))
                 })?;
 
-            if preamble_size > MAX_NAR_INFO_SIZE {
+            if preamble_size > state.config.max_nar_info_size {
                 return Err(ErrorKind::RequestError(anyhow!("Upload info is too large")).into());
             }
 

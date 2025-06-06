@@ -135,6 +135,11 @@ pub struct Config {
     #[serde(deserialize_with = "deserialize_deprecated_token_hs256_secret")]
     #[derivative(Debug = "ignore")]
     pub _depreated_token_hs256_secret: Option<String>,
+
+    /// The maximum size of the upload info JSON, in bytes.
+    #[serde(rename = "max-nar-info-size")]
+    #[serde(default = "default_max_nar_info_size")]
+    pub max_nar_info_size: usize,
 }
 
 /// JSON Web Token configuration.
@@ -556,6 +561,10 @@ fn default_gc_interval() -> Duration {
 
 fn default_default_retention_period() -> Duration {
     Duration::ZERO
+}
+
+fn default_max_nar_info_size() -> usize {
+    1 * 1024 * 1024 // 1 MiB
 }
 
 fn load_config_from_path(path: &Path) -> Result<Config> {
