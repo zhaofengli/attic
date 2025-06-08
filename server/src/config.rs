@@ -1,3 +1,4 @@
+
 //! Server configuration.
 
 use std::collections::HashSet;
@@ -5,20 +6,26 @@ use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-
-use anyhow::Result;
+use tokio::fs::{self, OpenOptions};
+use anyhow::{Error, Result};
 use async_compression::Level as CompressionLevel;
 use attic_token::SignatureType;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
+use rsa::pkcs1::EncodeRsaPrivateKey;
+use attic::cache::CacheNamePattern;
+use attic_token::Token;
+use chrono::{Months, Utc};
 
 use crate::access::{
     decode_token_hs256_secret_base64, decode_token_rs256_pubkey_base64,
     decode_token_rs256_secret_base64, HS256Key, RS256KeyPair, RS256PublicKey,
 };
+
 use crate::narinfo::Compression as NixCompression;
+
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
 
 /// Application prefix in XDG base directories.
@@ -46,6 +53,8 @@ const ENV_TOKEN_RS256_PUBKEY_BASE64: &str = "ATTIC_SERVER_TOKEN_RS256_PUBKEY_BAS
 /// Environment variable storing the database connection string.
 const ENV_DATABASE_URL: &str = "ATTIC_SERVER_DATABASE_URL";
 
+/// Default path to the config template
+const CONFIG_TEMPLATE: &str = include_str!("config-template.toml");
 /// Configuration for the Attic Server.
 #[derive(Clone, Derivative, Deserialize)]
 #[derivative(Debug)]
@@ -571,35 +580,188 @@ fn load_config_from_str(s: &str) -> Result<Config> {
 }
 
 /// Loads the configuration in the standard order.
-pub async fn load_config(config_path: Option<&Path>, allow_oobe: bool) -> Result<Config> {
+/// Precedence is as follows
+/// * Path given from the command line
+/// * Path read from ATTIC_SERVER_CONFIG_BASE64 environment variable
+/// * Path read from XDG confirg path
+/// * Path of generated config, provided the server is running in monolithic mode
+pub async fn load_config(config_path: Option<&Path>) -> Option<Config> {
+    // admin provided config
     if let Some(config_path) = config_path {
-        load_config_from_path(config_path)
+       let config = match load_config_from_path(config_path) {
+            Ok(config) => config,
+            Err(e) => {
+                eprintln!("Error reading configuration: {e}");
+                return None
+            }
+        };
+        return Some(config);
     } else if let Ok(config_env) = env::var(ENV_CONFIG_BASE64) {
-        let decoded = String::from_utf8(BASE64_STANDARD.decode(config_env.as_bytes())?)?;
-        load_config_from_str(&decoded)
-    } else {
-        // Config from XDG
-        let config_path = get_xdg_config_path()?;
-
-        if allow_oobe {
-            // Special OOBE sequence
-            crate::oobe::run_oobe().await?;
+        match BASE64_STANDARD.decode(config_env.as_bytes()) {
+            Ok(byte_vec) => {
+                let decoded = String::from_utf8(byte_vec).unwrap();
+                return Some(load_config_from_str(&decoded).unwrap());
+            }
+            Err(e) => {
+                eprintln!("Unable to read configuration from base64 string: {e}");
+                None
+            }
         }
-
-        load_config_from_path(&config_path)
+    } 
+    // Config from XDG
+    else if let Ok(config_path) = get_xdg_config_path(){
+         match load_config_from_path(&config_path) {
+            Ok(config) => Some(config),
+            Err(_) => {
+                None
+            }
+         }
+    } else {
+        eprintln!("No configuration found!");
+        Option::None
     }
+    
 }
 
-pub fn get_xdg_config_path() -> anyhow::Result<PathBuf> {
+pub fn get_xdg_config_path() -> Result<PathBuf> {
     let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX)?;
     let config_path = xdg_dirs.place_config_file("server.toml")?;
 
     Ok(config_path)
 }
 
-pub fn get_xdg_data_path() -> anyhow::Result<PathBuf> {
+pub fn get_xdg_data_path() -> Result<PathBuf> {
     let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX)?;
     let data_path = xdg_dirs.create_data_directory("")?;
 
     Ok(data_path)
+}
+
+///Generates a root authentication token based off of a given base64 encoded rs256 token
+fn generate_root_token(rs256_secret_base64: String) -> String {
+
+    // Create a JWT root token
+    let in_two_years = Utc::now().checked_add_months(Months::new(24)).unwrap();
+    let mut token = Token::new("root".to_string(), &in_two_years);
+    let any_cache = CacheNamePattern::new("*".to_string()).unwrap();
+    let perm = token.get_or_insert_permission_mut(any_cache);
+    perm.pull = true;
+    perm.push = true;
+    perm.delete = true;
+    perm.create_cache = true;
+    perm.configure_cache = true;
+    perm.configure_cache_retention = true;
+    perm.destroy_cache = true;
+    
+    let key = decode_token_rs256_secret_base64(&rs256_secret_base64).unwrap();
+    
+    return token.encode(&SignatureType::RS256(key), &None, &None).unwrap();
+    
+}
+///Generates a root token from an existing jwt signing configuration, and displays it to the user
+/// Other init tasks can be done here in the future
+pub async fn reinit_from_config(config: Config) -> Result<(), Error> {
+
+    //get token from the config
+    //TODO: support other branhces here
+    let rs256_secret_base64 = match config.jwt.signing_config {
+        JWTSigningConfig::RS256VerifyOnly(_) => todo!(),
+        JWTSigningConfig::RS256SignAndVerify(rs256_key_pair) => {
+            match rs256_key_pair.to_pem() {
+                Ok(token) => {
+                    Some(BASE64_STANDARD.encode(token))
+                },
+                Err(e) => {
+                    eprintln!("Error converting the rs256 key to PEM format: {e}");
+                    None
+                }
+            }
+        },
+        JWTSigningConfig::HS256SignAndVerify(_) => todo!(),
+    };
+    
+    //generate root token, and display to user
+    if let Some(rs256_secret_base64) = rs256_secret_base64 {
+        let root_token = generate_root_token(rs256_secret_base64);                  
+        eprintln!();
+        eprintln!("-----------------");
+        eprintln!("Init complete, new new root token generated");
+        eprintln!();
+        eprintln!("Run the following command to log into this server:");
+        eprintln!();
+        eprintln!("    attic login local http://localhost:8080 {root_token}");
+        eprintln!();
+        eprintln!("It is highly reccomended not to use this token for regular administration!");
+        eprintln!("Save it somewhere safe and use atticadm to create less powerful tokens");
+        eprintln!("-----------------");
+        eprintln!();
+    
+        Ok(())
+    } else {
+        //If we failed to generate a token here, propogate an error and exit gracefully
+        Err(Error::msg("Error converting rs256Key to PEM format"))
+    }
+    
+}
+
+
+pub async fn generate_monolithic_config() -> Result<()> {
+    let data_path = get_xdg_data_path()?;
+
+    // Generate a simple config
+    let database_path = data_path.join("server.db");
+    let database_url = format!("sqlite://{}", database_path.to_str().unwrap());
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&database_path)
+        .await?;
+
+    let storage_path = data_path.join("storage");
+    fs::create_dir_all(&storage_path).await?;
+
+    //no config provided, start fresh and create a config, a token, and a sqllite db
+    //generate rsa256 key 
+    let rs256_secret_base64 = {
+        let mut rng = rand::thread_rng();
+        let private_key = rsa::RsaPrivateKey::new(&mut rng, 4096)?;
+        let pkcs1_pem = private_key.to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)?;
+
+        BASE64_STANDARD.encode(pkcs1_pem.as_bytes())
+    };
+    
+    let config_content = CONFIG_TEMPLATE
+        .replace("%database_url%", &database_url)
+        .replace("%storage_path%", storage_path.to_str().unwrap())
+        .replace("%token_rs256_secret_base64%", &rs256_secret_base64);
+
+    let config_path = get_xdg_config_path()?;
+    
+    eprintln!("writing server.toml to {}",config_path.display());
+    fs::write(&config_path, config_content.as_bytes()).await?;
+    
+    // Generate a JWT token
+    let root_token = generate_root_token(rs256_secret_base64);
+    
+    eprintln!();
+    eprintln!("-----------------");
+    eprintln!("Welcome to Attic!");
+    eprintln!();
+    eprintln!("A simple setup using SQLite and local storage has been configured for you in:");
+    eprintln!();
+    eprintln!("    {}", config_path.to_str().unwrap());
+    eprintln!();
+    eprintln!("Run the following command to log into this server:");
+    eprintln!();
+    eprintln!("    attic login local http://localhost:8080 {root_token}");
+    eprintln!();
+    eprintln!("Documentations and guides:");
+    eprintln!();
+    eprintln!("    https://docs.attic.rs");
+    eprintln!();
+    eprintln!("Enjoy!");
+    eprintln!("-----------------");
+    eprintln!();
+    Ok(())
+
 }
