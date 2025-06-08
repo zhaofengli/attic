@@ -65,8 +65,6 @@ in
           flyctl
           skopeo
           manifest-tool
-        ] ++ lib.optionals pkgs.stdenv.isLinux [
-          wrangler
         ];
 
         bench = [
@@ -95,9 +93,6 @@ in
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
 
           NIX_PATH = "nixpkgs=${pkgs.path}";
-
-          # See comment in `attic/build.rs`
-          NIX_INCLUDE_PATH = "${lib.getDev self'.packages.attic.passthru.nix}/include";
 
           # Used by `just with-nix` to build/test with alternative Nix versions.
           NIX_VERSIONS = config.attic.nix-versions.manifestFile;

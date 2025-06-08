@@ -13,15 +13,8 @@
 #include <memory>
 #include <mutex>
 #include <set>
-#include <nix/store-api.hh>
-#include <nix/local-store.hh>
-#include <nix/remote-store.hh>
-#include <nix/uds-remote-store.hh>
-#include <nix/hash.hh>
-#include <nix/path.hh>
-#include <nix/serialise.hh>
-#include <nix/shared.hh>
 #include <rust/cxx.h>
+#include "nix-includes.hpp"
 
 template<class T> using RVec = rust::Vec<T>;
 template<class T> using RBox = rust::Box<T>;
@@ -30,6 +23,10 @@ using RString = rust::String;
 using RStr = rust::Str;
 using RBasePathSlice = RSlice<const unsigned char>;
 using RHashSlice = RSlice<const unsigned char>;
+
+static bool hash_is_sha256(const nix::Hash &hash) {
+	return hash.algo == nix::HashAlgorithm::SHA256;
+}
 
 struct AsyncWriteSender;
 

@@ -1,9 +1,5 @@
 # For distribution from this repository as well as CI, we use Crane to build
 # Attic.
-#
-# For a nixpkgs-acceptable form of the package expression, see `package.nixpkgs.nix`
-# which will be submitted when the Attic API is considered stable. However, that
-# expression is not tested by CI so to not slow down the hot path.
 
 { stdenv
 , lib
@@ -18,8 +14,7 @@
 
 , nix
 , boost
-, darwin
-, libiconv
+, libarchive
 
 , extraPackageArgs ? {}
 }:
@@ -49,9 +44,7 @@ let
 
   buildInputs = [
     nix boost
-  ] ++ lib.optionals stdenv.isDarwin [
-    darwin.apple_sdk.frameworks.SystemConfiguration
-    libiconv
+    libarchive
   ];
 
   crossArgs = let
@@ -79,19 +72,20 @@ let
     installCargoArtifactsMode = "use-zstd";
   } // extraArgs);
 
-  mkAttic = args: craneLib.buildPackage ({
+  mkAttic = {
+    packages,
+  }: let
+    cargoPackageArgs = map (p: "-p ${p}") packages;
+  in craneLib.buildPackage ({
     pname = "attic";
     inherit src version nativeBuildInputs buildInputs cargoArtifacts;
 
     ATTIC_DISTRIBUTOR = "attic";
 
-    # See comment in `attic/build.rs`
-    NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
-
     # See comment in `attic-tests`
     doCheck = false;
 
-    cargoExtraArgs = "-p attic-client -p attic-server";
+    cargoExtraArgs = lib.concatStringsSep " " cargoPackageArgs;
 
     postInstall = lib.optionalString (stdenv.hostPlatform == stdenv.buildPlatform) ''
       if [[ -f $out/bin/attic ]]; then
@@ -114,15 +108,15 @@ let
     passthru = {
       inherit nix;
     };
-  } // args // extraArgs);
+  } // extraArgs);
 
   attic = mkAttic {
-    cargoExtraArgs = "-p attic-client -p attic-server";
+    packages = ["attic-client" "attic-server"];
   };
 
   # Client-only package.
   attic-client = mkAttic {
-    cargoExtraArgs = " -p attic-client";
+    packages = ["attic-client"];
   };
 
   # Server-only package with fat LTO enabled.
@@ -170,9 +164,6 @@ let
     buildPhaseCargoCommand = "";
     checkPhaseCargoCommand = "cargoWithProfile test --no-run --message-format=json >cargo-test.json";
     doInstallCargoArtifacts = false;
-
-    # See comment in `attic/build.rs`
-    NIX_INCLUDE_PATH = "${lib.getDev nix}/include";
 
     installPhase = ''
       runHook preInstall

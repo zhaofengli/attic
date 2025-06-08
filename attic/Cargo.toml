@@ -46,9 +46,12 @@ serde_json = "1.0.96"
 [build-dependencies]
 cc = "1.1.13"
 cxx-build = { version = "1.0", optional = true }
-pkg-config = "0.3.27"
-tempfile = "3"
+system-deps = { version = "7.0", optional = true }
 version-compare = "0.2.0"
+
+[package.metadata.system-deps]
+nix-store = { version = "2.24", feature = "nix_store" }
+nix-main = { version = "2.24", feature = "nix_store" }
 
 [features]
 default = [
@@ -70,6 +73,7 @@ nix_store = [
 	"tokio/process",
 	"dep:cxx",
 	"dep:cxx-build",
+	"dep:system-deps",
 ]
 
 # Stream utilities.
