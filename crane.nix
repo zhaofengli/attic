@@ -11,7 +11,7 @@
 , craneLib
 , rust
 , runCommand
-, writeReferencesToFile
+, writeClosure
 , pkg-config
 , installShellFiles
 , jq
