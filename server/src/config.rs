@@ -1,13 +1,16 @@
 //! Server configuration.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::Result;
 use async_compression::Level as CompressionLevel;
+use attic::AtticResult;
+use attic::signing::NixKeypair;
 use attic_token::SignatureType;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, de};
@@ -128,6 +131,17 @@ pub struct Config {
     /// JSON Web Token.
     #[serde(default = "Default::default")]
     pub jwt: JWTConfig,
+
+    /// Caches that should be automatically set up as configured
+    ///
+    /// If one of these caches is updated manually, then on the next migration
+    /// it will be restored to what is configured here
+    #[serde(default = "Default::default")]
+    pub caches: HashMap<String, CacheConfig>,
+
+    /// Whether caches not declared in the config file should be deleted
+    #[serde(default = "Default::default")]
+    pub declarative: bool,
 
     /// (Deprecated Stub)
     ///
@@ -322,6 +336,76 @@ pub struct GarbageCollectionConfig {
     #[serde(rename = "default-retention-period")]
     #[serde(with = "humantime_serde", default = "default_default_retention_period")]
     pub default_retention_period: Duration,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct CacheConfig {
+    /// Whether the cache is public or not.
+    ///
+    /// Anonymous clients are implicitly granted the "pull"
+    /// permission to public caches.
+    #[serde(default = "default_cache_visibility")]
+    pub public: bool,
+
+    /// The retention period of the cache.
+    /// Unset will use the global default
+    #[serde(with = "humantime_serde", default = "default_cache_retention_period")]
+    pub retention_period: Option<Duration>,
+
+    /// The priority of the binary cache.
+    ///
+    /// A lower number denotes a higher priority.
+    /// <https://cache.nixos.org> has a priority of 40.
+    #[serde(default = "default_cache_priority")]
+    pub priority: i32,
+
+    /// A list of signing key names of upstream caches.
+    ///
+    /// The list serves as a hint to clients to avoid uploading
+    /// store paths signed with such keys.
+    #[serde(default = "default_cache_upstream_cache_key_names")]
+    pub upstream_cache_key_names: Vec<String>,
+
+    /// The signing keypair for the cache.
+    ///
+    /// If empty on initial creation, a new random keypair will be generated.
+    #[serde(flatten, default)]
+    pub keypair: CacheKeypairConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged, rename_all = "kebab-case")]
+pub enum CacheKeypairConfig {
+    /// Use the keypair verbatim from the config
+    Inline {
+        keypair: String,
+    },
+    /// Read the keypair from this path's file content
+    Path {
+        keypair_path: String,
+    },
+    None {},
+}
+
+impl Default for CacheKeypairConfig {
+    fn default() -> Self {
+        Self::None {}
+    }
+}
+
+impl CacheKeypairConfig {
+    pub fn get_keypair(&self) -> Option<AtticResult<NixKeypair>> {
+        match self {
+            Self::Inline { keypair } => Some(NixKeypair::from_str(keypair)),
+            Self::Path { keypair_path } => Some(
+                std::fs::read_to_string(keypair_path)
+                    .map_err(|err| err.into())
+                    .and_then(|contents| contents.parse()),
+            ),
+            Self::None {} => None,
+        }
+    }
 }
 
 fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
@@ -564,6 +648,22 @@ fn default_default_retention_period() -> Duration {
 
 fn default_max_nar_info_size() -> usize {
     1024 * 1024 // 1 MiB
+}
+
+fn default_cache_retention_period() -> Option<Duration> {
+    None
+}
+
+fn default_cache_visibility() -> bool {
+    false
+}
+
+fn default_cache_priority() -> i32 {
+    41
+}
+
+fn default_cache_upstream_cache_key_names() -> Vec<String> {
+    vec!["cache.nixos.org-1".to_string()]
 }
 
 fn load_config_from_path(path: &Path) -> Result<Config> {
