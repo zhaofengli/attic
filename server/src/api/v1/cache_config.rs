@@ -11,7 +11,7 @@ use tracing::instrument;
 use crate::database::entity::cache::{self, Entity as Cache};
 use crate::database::entity::Json as DbJson;
 use crate::error::{ErrorKind, ServerError, ServerResult};
-use crate::{RequestState, State};
+use crate::{RequestState, State, StateInner};
 use attic::api::v1::cache_config::{
     CacheConfig, CreateCacheRequest, KeypairConfig, RetentionPeriodConfig,
 };
@@ -61,6 +61,7 @@ pub(crate) async fn configure_cache(
     Path(cache_name): Path<CacheName>,
     Json(payload): Json<CacheConfig>,
 ) -> ServerResult<()> {
+    check_declarative(&state)?;
     let database = state.database().await?;
     let (cache, permission) = req_state
         .auth
@@ -142,6 +143,7 @@ pub(crate) async fn destroy_cache(
     Extension(req_state): Extension<RequestState>,
     Path(cache_name): Path<CacheName>,
 ) -> ServerResult<()> {
+    check_declarative(&state)?;
     let database = state.database().await?;
     let cache = req_state
         .auth
@@ -192,6 +194,7 @@ pub(crate) async fn create_cache(
     Path(cache_name): Path<CacheName>,
     Json(payload): Json<CreateCacheRequest>,
 ) -> ServerResult<()> {
+    check_declarative(&state)?;
     let permission = req_state.auth.get_permission_for_cache(&cache_name, false);
     permission.require_create_cache()?;
 
@@ -224,6 +227,14 @@ pub(crate) async fn create_cache(
     if num_inserted == 0 {
         // The cache already exists
         Err(ErrorKind::CacheAlreadyExists.into())
+    } else {
+        Ok(())
+    }
+}
+
+fn check_declarative(state: &StateInner) -> ServerResult<()> {
+    if state.config.declarative {
+        Err(ErrorKind::DeclarativeCaches.into())
     } else {
         Ok(())
     }
