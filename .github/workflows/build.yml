@@ -14,7 +14,7 @@ jobs:
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
@@ -78,7 +78,7 @@ jobs:
           - "default"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
@@ -141,7 +141,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
       - uses: DeterminateSystems/nix-installer-action@v15
         continue-on-error: true # Self-hosted runners already have Nix installed
 
@@ -182,7 +182,7 @@ jobs:
     strategy:
       matrix: ${{fromJSON(needs.nix-matrix.outputs.matrix)}}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
@@ -233,7 +233,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
@@ -272,7 +272,7 @@ jobs:
           echo system=$system >>$GITHUB_ENV
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3.3.0
+        uses: docker/login-action@v3.4.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
