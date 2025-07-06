@@ -9,7 +9,7 @@ pub mod nar;
 pub mod object;
 
 use sea_orm::entity::Value;
-use sea_orm::sea_query::{ArrayType, ColumnType, ValueType, ValueTypeErr};
+use sea_orm::sea_query::{table::StringLen, ArrayType, ColumnType, ValueType, ValueTypeErr};
 use sea_orm::{DbErr, QueryResult, TryGetError, TryGetable};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -49,7 +49,7 @@ impl<T: Serialize + DeserializeOwned> ValueType for Json<T> {
     }
 
     fn column_type() -> ColumnType {
-        ColumnType::String(None)
+        ColumnType::String(StringLen::None)
     }
 
     fn array_type() -> ArrayType {
