@@ -44,7 +44,7 @@ struct Machine {
 
 impl NixNetrc {
     pub async fn load() -> Result<Self> {
-        let nix_base = BaseDirectories::with_prefix("nix")?;
+        let nix_base = BaseDirectories::with_prefix("nix");
         let path = nix_base.place_config_file("netrc")?;
 
         let machines = if path.exists() {

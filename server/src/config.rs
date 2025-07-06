@@ -591,14 +591,14 @@ pub async fn load_config(config_path: Option<&Path>, allow_oobe: bool) -> Result
 }
 
 pub fn get_xdg_config_path() -> anyhow::Result<PathBuf> {
-    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX)?;
+    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX);
     let config_path = xdg_dirs.place_config_file("server.toml")?;
 
     Ok(config_path)
 }
 
 pub fn get_xdg_data_path() -> anyhow::Result<PathBuf> {
-    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX)?;
+    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX);
     let data_path = xdg_dirs.create_data_directory("")?;
 
     Ok(data_path)
