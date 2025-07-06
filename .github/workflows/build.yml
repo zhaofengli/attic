@@ -74,7 +74,6 @@ jobs:
           - macos-latest
         nix:
           - "2.24"
-          - "2.25"
           - "2.26"
           - "default"
     runs-on: ${{ matrix.os }}
