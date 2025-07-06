@@ -75,6 +75,7 @@ jobs:
         nix:
           - "2.24"
           - "2.26"
+          - "2.28"
           - "default"
     runs-on: ${{ matrix.os }}
     steps:
