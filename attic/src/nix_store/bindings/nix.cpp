@@ -18,14 +18,6 @@ static nix::StorePath store_path_from_rust(RBasePathSlice base_name) {
 	return nix::StorePath(sv);
 }
 
-static bool hash_is_sha256(const nix::Hash &hash) {
-#ifdef ATTIC_NIX_2_20
-	return hash.algo == nix::HashAlgorithm::SHA256;
-#else
-	return hash.type == nix::htSHA256;
-#endif
-}
-
 // ========
 // RustSink
 // ========
@@ -148,7 +140,12 @@ void CNixStore::nar_from_path(RVec<unsigned char> base_name, RBox<AsyncWriteSend
 	nix::StorePath store_path(sv);
 
 	// exceptions will be thrown into Rust
+#ifdef ATTIC_VARIANT_LIX
+	sink << this->store->narFromPath(store_path);
+#else
 	this->store->narFromPath(store_path, sink);
+#endif
+
 	sink.eof();
 }
 

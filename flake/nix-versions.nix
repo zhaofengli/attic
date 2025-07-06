@@ -36,16 +36,15 @@ in
       attic.nix-versions = {
         versions = {
           default = pkgs.nix;
-          "2.20" = pkgs.nixVersions.nix_2_20;
           "2.24" = pkgs.nixVersions.nix_2_24;
+          "2.25" = pkgs.nixVersions.nix_2_25;
+          "2.26" = pkgs.nixVersions.nix_2_26;
         };
 
         manifestFile = let
           manifest = lib.mapAttrs (_: nix: {
             inherit nix;
             shellHook = ''
-              export NIX_INCLUDE_PATH="${lib.getDev nix}/include"
-              export NIX_CFLAGS_COMPILE="-isystem $NIX_INCLUDE_PATH $NIX_CFLAGS_COMPILE"
               export NIX_LDFLAGS="-L${nix}/lib $NIX_LDFLAGS"
               export PKG_CONFIG_PATH="${lib.getDev nix}/lib/pkgconfig:$PKG_CONFIG_PATH"
               export PATH="${lib.getBin nix}/bin:$PATH"
