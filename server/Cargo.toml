@@ -33,7 +33,7 @@ base64 = "0.22.1"
 bytes = "1.10.1"
 chrono = "0.4.41"
 clap = { version = "4.5", features = ["derive"] }
-derivative = "2.2.0"
+derive_more = { version = "2.0.1", features = ["debug"] }
 digest = "0.10.7"
 displaydoc = "0.2.5"
 enum-as-inner = "0.6.1"
