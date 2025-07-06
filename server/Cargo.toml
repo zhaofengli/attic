@@ -22,47 +22,47 @@ doc = false
 attic = { path = "../attic", default-features = false, features = ["chunking", "stream", "tokio"] }
 attic-token = { path = "../token" }
 
-anyhow = "1.0.71"
-async-stream = "0.3.5"
-async-trait = "0.1.68"
-aws-config = "1.5.0"
-aws-sdk-s3 = "1.32.0"
-axum = "0.7.5"
-axum-macros = "0.4.1"
+anyhow = "1.0.98"
+async-stream = "0.3.6"
+async-trait = "0.1.88"
+aws-config = "1.8.1"
+aws-sdk-s3 = "1.96.0"
+axum = "0.7.9"
+axum-macros = "0.4.2"
 base64 = "0.22.1"
-bytes = "1.4.0"
-chrono = "0.4.24"
-clap = { version = "4.3", features = ["derive"] }
+bytes = "1.10.1"
+chrono = "0.4.41"
+clap = { version = "4.5", features = ["derive"] }
 derivative = "2.2.0"
 digest = "0.10.7"
-displaydoc = "0.2.4"
-enum-as-inner = "0.6.0"
-futures = "0.3.28"
+displaydoc = "0.2.5"
+enum-as-inner = "0.6.1"
+futures = "0.3.31"
 hex = "0.4.3"
-http-body-util = "0.1.1"
-humantime = "2.1.0"
+http-body-util = "0.1.3"
+humantime = "2.2.0"
 humantime-serde = "1.1.1"
 itoa = "=1.0.5"
 rand = "0.8.5"
-regex = "1.8.3"
-ryu = "1.0.13"
-sha2 = { version = "0.10.6", features = ["asm"] }
-serde = "1.0.163"
-serde_json = "1.0.96"
-serde_with = "3.0.0"
-tokio-util = { version = "0.7.8", features = [ "io" ] }
-toml = "0.8.8"
+regex = "1.11.1"
+ryu = "1.0.20"
+sha2 = { version = "0.10.9", features = ["asm"] }
+serde = "1.0.219"
+serde_json = "1.0.140"
+serde_with = "3.14.0"
+tokio-util = { version = "0.7.15", features = [ "io" ] }
+toml = "0.8.23"
 tower-http = { version = "0.5.2", features = [ "catch-panic", "trace" ] }
-tracing = "0.1.37"
-tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.17", features = [ "json" ] }
-uuid = { version = "1.3.3", features = ["v4"] }
+tracing = "0.1.41"
+tracing-error = "0.2.1"
+tracing-subscriber = { version = "0.3.19", features = [ "json" ] }
+uuid = { version = "1.17.0", features = ["v4"] }
 console-subscriber = "0.2.0"
-xdg = "2.5.0"
-rsa = "0.9.3"
+xdg = "2.5.2"
+rsa = "0.9.8"
 
 [dependencies.async-compression]
-version = "0.4.0"
+version = "0.4.25"
 features = [
 	"tokio",
 	"xz",
@@ -84,7 +84,7 @@ features = [
 version = "0.12.10"
 
 [dependencies.tokio]
-version = "1.28.2"
+version = "1.46.1"
 features = [
 	"fs",
 	"io-util",
