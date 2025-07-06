@@ -22,9 +22,9 @@ displaydoc = "0.2.5"
 enum-as-inner = "0.6.1"
 futures = "0.3.31"
 humantime = "2.2.0"
-indicatif = "0.17.11"
+indicatif = "0.18.0"
 lazy_static = "1.5.0"
-notify = { version = "7.0.0", default-features = false, features = ["macos_kqueue"] }
+notify = { version = "8.1.0", default-features = false, features = ["macos_kqueue"] }
 regex = "1.11.1"
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots", "stream"] }
 serde = { version = "1.0.219", features = ["derive"] }
