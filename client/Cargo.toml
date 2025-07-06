@@ -38,6 +38,7 @@ xdg = "2.5.2"
 version = "1.46.1"
 features = [
 	"fs",
+	"io-std",
 	"io-util",
 	"macros",
 	"process",
