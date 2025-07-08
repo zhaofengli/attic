@@ -39,7 +39,7 @@ use attic::api::v1::upload_path::{
 };
 use attic::chunking::chunk_stream;
 use attic::hash::Hash;
-use attic::stream::{read_chunk_async, StreamHasher};
+use attic::io::{read_chunk_async, StreamHasher};
 use attic::util::Finally;
 
 use crate::database::entity::cache;

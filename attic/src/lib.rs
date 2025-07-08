@@ -24,8 +24,8 @@ pub mod hash;
 pub mod mime;
 pub mod nix_store;
 pub mod signing;
-#[cfg(feature = "stream")]
-pub mod stream;
+#[cfg(feature = "io")]
+pub mod io;
 #[cfg(target_family = "unix")]
 pub mod testing;
 #[cfg(feature = "tokio")]

@@ -19,7 +19,7 @@ use tokio::io::AsyncRead;
 
 use super::{Download, RemoteFile, StorageBackend};
 use crate::error::{ErrorKind, ServerError, ServerResult};
-use attic::stream::read_chunk_async;
+use attic::io::read_chunk_async;
 use attic::util::Finally;
 
 /// The chunk size for each part in a multipart upload.

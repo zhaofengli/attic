@@ -34,7 +34,7 @@ use crate::{RequestState, State};
 use attic::cache::CacheName;
 use attic::mime;
 use attic::nix_store::StorePathHash;
-use attic::stream::merge_chunks;
+use attic::io::merge_chunks;
 
 /// Nix cache information.
 ///
