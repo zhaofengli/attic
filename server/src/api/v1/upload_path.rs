@@ -14,7 +14,6 @@ use axum::{
 };
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
-use digest::Output as DigestOutput;
 use futures::future::join_all;
 use futures::StreamExt;
 use sea_orm::entity::prelude::*;
@@ -22,13 +21,14 @@ use sea_orm::sea_query::Expr;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{QuerySelect, TransactionTrait};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, BufReader};
-use tokio::sync::{OnceCell, Semaphore};
+use tokio::io::{AsyncBufRead, AsyncReadExt};
+use tokio::sync::Semaphore;
 use tokio::task::spawn;
 use tokio_util::io::StreamReader;
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::compression::{CompressionStream, CompressorFn};
 use crate::config::CompressionType;
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
@@ -60,8 +60,6 @@ const CONCURRENT_CHUNK_UPLOADS: usize = 10;
 /// TODO: Make this configurable
 const MAX_NAR_INFO_SIZE: usize = 1 * 1024 * 1024; // 1 MiB
 
-type CompressorFn<C> = Box<dyn FnOnce(C) -> Box<dyn AsyncRead + Unpin + Send> + Send>;
-
 /// Data of a chunk.
 enum ChunkData {
     /// Some bytes in memory.
@@ -75,33 +73,6 @@ enum ChunkData {
 struct UploadChunkResult {
     guard: ChunkGuard,
     deduplicated: bool,
-}
-
-/// Applies compression to a stream, computing hashes along the way.
-///
-/// Our strategy is to stream directly onto a UUID-keyed file on the
-/// storage backend, performing compression and computing the hashes
-/// along the way. We delete the file if the hashes do not match.
-///
-/// ```text
-///                    ┌───────────────────────────────────►NAR Hash
-///                    │
-///                    │
-///                    ├───────────────────────────────────►NAR Size
-///                    │
-///              ┌─────┴────┐  ┌──────────┐  ┌───────────┐
-/// NAR Stream──►│NAR Hasher├─►│Compressor├─►│File Hasher├─►File Stream
-///              └──────────┘  └──────────┘  └─────┬─────┘
-///                                                │
-///                                                ├───────►File Hash
-///                                                │
-///                                                │
-///                                                └───────►File Size
-/// ```
-struct CompressionStream {
-    stream: Box<dyn AsyncRead + Unpin + Send>,
-    nar_compute: Arc<OnceCell<(DigestOutput<Sha256>, usize)>>,
-    file_compute: Arc<OnceCell<(DigestOutput<Sha256>, usize)>>,
 }
 
 trait UploadPathNarInfoExt {
@@ -813,73 +784,6 @@ impl ChunkData {
             Self::Bytes(bytes) => Box::new(Cursor::new(bytes)),
             Self::Stream(stream, _, _) => stream,
         }
-    }
-}
-
-impl CompressionStream {
-    /// Creates a new compression stream.
-    fn new<R>(stream: R, compressor: CompressorFn<BufReader<HashReader<R, Sha256>>>) -> Self
-    where
-        R: AsyncRead + Unpin + Send + 'static,
-    {
-        // compute NAR hash and size
-        let (stream, nar_compute) = HashReader::new(stream, Sha256::new());
-
-        // compress NAR
-        let stream = compressor(BufReader::new(stream));
-
-        // compute file hash and size
-        let (stream, file_compute) = HashReader::new(stream, Sha256::new());
-
-        Self {
-            stream: Box::new(stream),
-            nar_compute,
-            file_compute,
-        }
-    }
-
-    /*
-    /// Creates a compression stream without compute the uncompressed hash/size.
-    ///
-    /// This is useful if you already know the hash. `nar_hash_and_size` will
-    /// always return `None`.
-    fn new_without_nar_hash<R>(stream: R, compressor: CompressorFn<BufReader<R>>) -> Self
-    where
-        R: AsyncRead + Unpin + Send + 'static,
-    {
-        // compress NAR
-        let stream = compressor(BufReader::new(stream));
-
-        // compute file hash and size
-        let (stream, file_compute) = HashReader::new(stream, Sha256::new());
-
-        Self {
-            stream: Box::new(stream),
-            nar_compute: Arc::new(OnceCell::new()),
-            file_compute,
-        }
-    }
-    */
-
-    /// Returns the stream of the compressed object.
-    fn stream(&mut self) -> &mut (impl AsyncRead + Unpin) {
-        &mut self.stream
-    }
-
-    /// Returns the NAR hash and size.
-    ///
-    /// The hash is only finalized when the stream is fully read.
-    /// Otherwise, returns `None`.
-    fn nar_hash_and_size(&self) -> Option<&(DigestOutput<Sha256>, usize)> {
-        self.nar_compute.get()
-    }
-
-    /// Returns the file hash and size.
-    ///
-    /// The hash is only finalized when the stream is fully read.
-    /// Otherwise, returns `None`.
-    fn file_hash_and_size(&self) -> Option<&(DigestOutput<Sha256>, usize)> {
-        self.file_compute.get()
     }
 }
 
