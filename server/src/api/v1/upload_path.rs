@@ -185,40 +185,33 @@ pub(crate) async fn upload_path(
     let username = req_state.auth.username().map(str::to_string);
 
     // Try to acquire a lock on an existing NAR
-    let existing_nar = database.find_and_lock_nar(&upload_info.nar_hash).await?;
-    match existing_nar {
-        Some(existing_nar) => {
-            // Deduplicate?
-            let missing_chunk = ChunkRef::find()
-                .filter(chunkref::Column::NarId.eq(existing_nar.id))
-                .filter(chunkref::Column::ChunkId.is_null())
-                .limit(1)
-                .one(database)
-                .await
-                .map_err(ServerError::database_error)?;
+    if let Some(existing_nar) = database.find_and_lock_nar(&upload_info.nar_hash).await? {
+        // Deduplicate?
+        let missing_chunk = ChunkRef::find()
+            .filter(chunkref::Column::NarId.eq(existing_nar.id))
+            .filter(chunkref::Column::ChunkId.is_null())
+            .limit(1)
+            .one(database)
+            .await
+            .map_err(ServerError::database_error)?;
 
-            if missing_chunk.is_some() {
-                // Need to repair
-                upload_path_new(username, cache, upload_info, stream, database, &state).await
-            } else {
-                // Can actually be deduplicated
-                upload_path_dedup(
-                    username,
-                    cache,
-                    upload_info,
-                    stream,
-                    database,
-                    &state,
-                    existing_nar,
-                )
-                .await
-            }
-        }
-        None => {
-            // New NAR
-            upload_path_new(username, cache, upload_info, stream, database, &state).await
+        if missing_chunk.is_none() {
+            // Can actually be deduplicated
+            return upload_path_dedup(
+                username,
+                cache,
+                upload_info,
+                stream,
+                database,
+                &state,
+                existing_nar,
+            )
+            .await;
         }
     }
+
+    // New NAR or need to repair
+    upload_path_new(username, cache, upload_info, stream, database, &state).await
 }
 
 /// Uploads a path when there is already a matching NAR in the global cache.
