@@ -57,8 +57,7 @@ The design of Attic is driven by the desire to effectively utilize existing plat
 
 ## What happens if a chunk is corrupt/missing?
 
-When a chunk is deleted from the database, all dependent `.nar` will become unavailable (503).
-However, this can be recovered from automatically when any NAR containing the chunk is uploaded.
+When a chunk is deleted from the database, all dependent `.nar` will be deleted.
 
 At the moment, Attic cannot automatically detect when a chunk is corrupt or missing.
 Correctly distinguishing between transient and persistent failures is difficult.
