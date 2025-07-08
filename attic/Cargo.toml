@@ -16,6 +16,7 @@ futures = "0.3.31"
 hex = "0.4.3"
 lazy_static = "1.5.0"
 nix-base32 = "0.2.0"
+pin-project = "1.1.10"
 regex = "1.11.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_with = "3.14.0"
