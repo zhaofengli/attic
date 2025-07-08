@@ -3,7 +3,7 @@ use std::fmt;
 
 use anyhow::Result;
 use bytes::Bytes;
-use const_format::concatcp;
+use const_format::{concatcp, formatcp};
 use displaydoc::Display;
 use futures::{
     future,
@@ -27,7 +27,7 @@ use attic::nix_store::StorePathHash;
 
 /// The User-Agent string of Attic.
 const ATTIC_USER_AGENT: &str =
-    concatcp!("Attic/{} ({})", env!("CARGO_PKG_NAME"), ATTIC_DISTRIBUTOR);
+    formatcp!("Attic/{} ({})", env!("CARGO_PKG_NAME"), ATTIC_DISTRIBUTOR);
 
 /// The size threshold to send the upload info as part of the PUT body.
 const NAR_INFO_PREAMBLE_THRESHOLD: usize = 4 * 1024; // 4 KiB
