@@ -17,7 +17,7 @@ pub struct Model {
     pub id: i64,
 
     /// Unique name of the cache.
-    #[sea_orm(column_type = "String(Some(50))", unique, indexed)]
+    #[sea_orm(column_type = "String(StringLen::N(50))", unique, indexed)]
     pub name: String,
 
     /// Signing keypair for the cache.

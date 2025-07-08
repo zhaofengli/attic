@@ -10,7 +10,6 @@ use anyhow::Result;
 use async_compression::Level as CompressionLevel;
 use attic_token::SignatureType;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-use derivative::Derivative;
 use serde::{de, Deserialize};
 use xdg::BaseDirectories;
 
@@ -47,8 +46,7 @@ const ENV_TOKEN_RS256_PUBKEY_BASE64: &str = "ATTIC_SERVER_TOKEN_RS256_PUBKEY_BAS
 const ENV_DATABASE_URL: &str = "ATTIC_SERVER_DATABASE_URL";
 
 /// Configuration for the Attic Server.
-#[derive(Clone, Derivative, Deserialize)]
-#[derivative(Debug)]
+#[derive(Clone, Deserialize, derive_more::Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// Socket address to listen on.
@@ -133,13 +131,12 @@ pub struct Config {
     #[serde(rename = "token-hs256-secret-base64")]
     #[serde(default = "Default::default")]
     #[serde(deserialize_with = "deserialize_deprecated_token_hs256_secret")]
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub _depreated_token_hs256_secret: Option<String>,
 }
 
 /// JSON Web Token configuration.
-#[derive(Clone, Derivative, Deserialize)]
-#[derivative(Debug)]
+#[derive(Clone, Deserialize, derive_more::Debug)]
 pub struct JWTConfig {
     /// The `iss` claim of the JWT.
     ///
@@ -160,7 +157,7 @@ pub struct JWTConfig {
     /// JSON Web Token signing.
     #[serde(rename = "signing")]
     #[serde(default = "load_jwt_signing_config_from_env")]
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub signing_config: JWTSigningConfig,
 }
 
@@ -591,14 +588,14 @@ pub async fn load_config(config_path: Option<&Path>, allow_oobe: bool) -> Result
 }
 
 pub fn get_xdg_config_path() -> anyhow::Result<PathBuf> {
-    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX)?;
+    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX);
     let config_path = xdg_dirs.place_config_file("server.toml")?;
 
     Ok(config_path)
 }
 
 pub fn get_xdg_data_path() -> anyhow::Result<PathBuf> {
-    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX)?;
+    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX);
     let data_path = xdg_dirs.create_data_directory("")?;
 
     Ok(data_path)

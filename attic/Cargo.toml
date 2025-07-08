@@ -5,32 +5,29 @@ edition = "2021"
 publish = false
 
 [dependencies]
-async-stream = { version = "0.3.5", optional = true }
+async-stream = { version = "0.3.6", optional = true }
 base64 = "0.22.1"
-bytes = "1.4.0"
-displaydoc = "0.2.4"
+bytes = "1.10.1"
+displaydoc = "0.2.5"
 digest = "0.10.7"
-ed25519-compact = "2.0.4"
-fastcdc = "3.0.3"
-futures = "0.3.28"
+ed25519-compact = "2.1.1"
+fastcdc = "3.2.1"
+futures = "0.3.31"
 hex = "0.4.3"
-lazy_static = "1.4.0"
-log = "0.4.18"
+lazy_static = "1.5.0"
 nix-base32 = "0.2.0"
-regex = "1.8.3"
-serde = { version = "1.0.163", features = ["derive"] }
-serde_yaml = "0.9.21"
-serde_with = "3.0.0"
-sha2 = "0.10.6"
+regex = "1.11.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_with = "3.14.0"
+sha2 = "0.10.9"
 tempfile = "3"
-wildmatch = "2.1.1"
-xdg = "2.5.0"
+wildmatch = "2.4.0"
 
 # Native libnixstore bindings.
 cxx = { version = "1.0", optional = true }
 
 [dependencies.tokio]
-version = "1.28.2"
+version = "1.46.1"
 optional = true
 features = [
 	"io-util",
@@ -39,12 +36,12 @@ features = [
 ]
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.6.0", features = ["html_reports", "async_tokio"] }
 fastcdc = { version = "*", features = ["tokio"] }
-serde_json = "1.0.96"
+serde_json = "1.0.140"
 
 [build-dependencies]
-cc = "1.1.13"
+cc = "1.2.29"
 cxx-build = { version = "1.0", optional = true }
 system-deps = { version = "7.0", optional = true }
 version-compare = "0.2.0"

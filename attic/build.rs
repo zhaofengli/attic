@@ -11,7 +11,7 @@ fn main() {
 mod nix_store {
     use cc::Build;
     use system_deps::Dependencies;
-    use version_compare::Version;
+    use version_compare::{Part, Version};
 
     fn apply_variant_flags(build: &mut Build, deps: &Dependencies) {
         let nix_main = deps
@@ -21,11 +21,12 @@ mod nix_store {
 
         build.define("ATTIC_VARIANT_NIX", None);
 
-        let version = if version >= Version::from("2.26").unwrap() {
-            226
-        } else {
-            225
+        let (major, minor) = match (version.part(0), version.part(1)) {
+            (Ok(Part::Number(major)), Ok(Part::Number(minor))) if minor < 100 => (major, minor),
+            _ => panic!("Nix version {version} is not supported"),
         };
+
+        let version = major * 100 + minor;
         build.define("NIX_VERSION", &*format!("{version}"));
     }
 

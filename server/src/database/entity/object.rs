@@ -37,7 +37,7 @@ pub struct Model {
     pub nar_id: i64,
 
     /// The hash portion of the store path.
-    #[sea_orm(column_type = "String(Some(32))", indexed)]
+    #[sea_orm(column_type = "String(StringLen::N(32))", indexed)]
     pub store_path_hash: String,
 
     /// The full store path being cached, including the store directory.

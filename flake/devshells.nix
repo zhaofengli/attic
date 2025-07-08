@@ -90,7 +90,7 @@ in
         env = {
           ATTIC_DISTRIBUTOR = toplevel.config.attic.distributor;
 
-          RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
+          RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
 
           NIX_PATH = "nixpkgs=${pkgs.path}";
 

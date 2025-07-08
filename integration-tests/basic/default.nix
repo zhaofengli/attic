@@ -61,8 +61,8 @@ let
           ];
         };
 
-        systemd.services.postgresql.postStart = lib.mkAfter ''
-          $PSQL -tAc 'ALTER DATABASE "attic" OWNER TO "atticd"'
+        systemd.services.postgresql-setup.postStart = lib.mkAfter ''
+          psql -tAc 'ALTER DATABASE "attic" OWNER TO "atticd"'
         '';
 
         services.atticd.settings = {

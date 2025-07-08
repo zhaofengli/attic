@@ -9,7 +9,7 @@ pub type ChunkModel = Model;
 
 /// The state of a chunk.
 #[derive(EnumIter, DeriveActiveEnum, Debug, Clone, PartialEq, Eq)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(1))")]
 pub enum ChunkState {
     /// The chunk can be used.
     ///
@@ -81,7 +81,7 @@ pub struct Model {
     pub file_size: Option<i64>,
 
     /// The type of compression in use.
-    #[sea_orm(column_type = "String(Some(10))")]
+    #[sea_orm(column_type = "String(StringLen::N(10))")]
     pub compression: String,
 
     /// The remote file backing this chunk.

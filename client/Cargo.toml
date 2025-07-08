@@ -11,33 +11,34 @@ path = "src/main.rs"
 [dependencies]
 attic = { path = "../attic" }
 
-anyhow = "1.0.71"
-async-channel = "2.3.1"
-bytes = "1.4.0"
-clap = { version = "4.3", features = ["derive"] }
-clap_complete = "4.3.0"
-const_format = "0.2.30"
+anyhow = "1.0.98"
+async-channel = "2.5.0"
+bytes = "1.10.1"
+clap = { version = "4.5", features = ["derive"] }
+clap_complete = "4.5.54"
+const_format = "0.2.34"
 dialoguer = "0.11.0"
-displaydoc = "0.2.4"
-enum-as-inner = "0.6.0"
-futures = "0.3.28"
-humantime = "2.1.0"
-indicatif = "0.17.3"
-lazy_static = "1.4.0"
-notify = { version = "7.0.0", default-features = false, features = ["macos_kqueue"] }
-regex = "1.8.3"
-reqwest = { version = "0.12.4", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots", "stream"] }
-serde = { version = "1.0.163", features = ["derive"] }
-serde_json = "1.0.96"
-toml = "0.8.8"
-tracing = "0.1.37"
-tracing-subscriber = "0.3.17"
-xdg = "2.5.0"
+displaydoc = "0.2.5"
+enum-as-inner = "0.6.1"
+futures = "0.3.31"
+humantime = "2.2.0"
+indicatif = "0.18.0"
+lazy_static = "1.5.0"
+notify = { version = "8.1.0", default-features = false, features = ["macos_kqueue"] }
+regex = "1.11.1"
+reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots", "stream"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+toml = "0.8.23"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+xdg = "3.0.0"
 
 [dependencies.tokio]
-version = "1.28.2"
+version = "1.46.1"
 features = [
 	"fs",
+	"io-std",
 	"io-util",
 	"macros",
 	"process",

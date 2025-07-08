@@ -75,6 +75,8 @@ in
     (lib.mkRenamedOptionModule [ "services" "atticd" "credentialsFile" ] [ "services" "atticd" "environmentFile" ])
   ];
 
+  disabledModules = [ "services/networking/atticd.nix" ];
+
   options = {
     services.atticd = {
       enable = lib.mkEnableOption "the atticd, the Nix Binary Cache server";

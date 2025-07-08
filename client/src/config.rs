@@ -219,7 +219,7 @@ impl<'a> Drop for ConfigWriteGuard<'a> {
 }
 
 fn get_config_path() -> Result<PathBuf> {
-    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX)?;
+    let xdg_dirs = BaseDirectories::with_prefix(XDG_PREFIX);
     let config_path = xdg_dirs.place_config_file("config.toml")?;
 
     Ok(config_path)

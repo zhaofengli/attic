@@ -92,7 +92,7 @@ impl S3Backend {
     }
 
     async fn config_builder(config: &S3StorageConfig) -> ServerResult<S3ConfigBuilder> {
-        let shared_config = aws_config::load_defaults(BehaviorVersion::v2024_03_28()).await;
+        let shared_config = aws_config::load_defaults(BehaviorVersion::v2025_01_17()).await;
         let mut builder = S3ConfigBuilder::from(&shared_config);
 
         if let Some(credentials) = &config.credentials {
