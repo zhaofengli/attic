@@ -31,11 +31,16 @@ pub enum Command {
 #[tokio::main]
 async fn main() -> Result<()> {
     let opts = Opts::parse();
-    let config = config::load_config(opts.config.as_deref(), false).await?;
 
     match opts.command {
-        Command::MakeToken(_) => make_token::run(config, opts).await?,
+        Command::MakeToken(_) => {
+            if let Some(config) = config::load_config(opts.config.as_deref()).await {
+                make_token::run(config, opts).await?;
+            } else {
+                eprintln!();
+                eprintln!("No config found, please provide a config.toml with -f <CONFIG_PATH or --config <CONFIG_PATH>");
+            }
+        }
     }
-
     Ok(())
 }
