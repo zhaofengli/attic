@@ -66,7 +66,7 @@ enum ChunkData {
     Bytes(Bytes),
 
     /// A stream with a user-claimed hash and size that are potentially incorrect.
-    Stream(Box<dyn AsyncRead + Send + Unpin + 'static>, Hash, usize),
+    Stream(Box<dyn AsyncBufRead + Send + Unpin + 'static>, Hash, usize),
 }
 
 /// Result of a chunk upload.
@@ -190,7 +190,7 @@ async fn upload_path_dedup(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Unpin,
+    stream: impl AsyncBufRead + Unpin,
     database: &DatabaseConnection,
     state: &State,
     existing_nar: NarGuard,
@@ -270,7 +270,7 @@ async fn upload_path_new(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Send + Unpin + 'static,
+    stream: impl AsyncBufRead + Send + Unpin + 'static,
     database: &DatabaseConnection,
     state: &State,
 ) -> ServerResult<Json<UploadPathResult>> {
@@ -288,7 +288,7 @@ async fn upload_path_new_chunked(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Send + Unpin + 'static,
+    stream: impl AsyncBufRead + Send + Unpin + 'static,
     database: &DatabaseConnection,
     state: &State,
 ) -> ServerResult<Json<UploadPathResult>> {
@@ -479,7 +479,7 @@ async fn upload_path_new_unchunked(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Send + Unpin + 'static,
+    stream: impl AsyncBufRead + Send + Unpin + 'static,
     database: &DatabaseConnection,
     state: &State,
 ) -> ServerResult<Json<UploadPathResult>> {
@@ -592,7 +592,7 @@ async fn upload_chunk(
     {
         // There's an existing chunk matching the hash
         if require_proof_of_possession && !data.is_hash_trusted() {
-            let stream = data.into_async_read();
+            let stream = data.into_async_buf_read();
 
             let (mut stream, nar_compute) = HashReader::new(stream, Sha256::new());
             tokio::io::copy(&mut stream, &mut tokio::io::sink())
@@ -674,7 +674,7 @@ async fn upload_chunk(
 
     // Compress and stream to the storage backend
     let compressor = get_compressor_fn(compression_type, compression_level);
-    let mut stream = CompressionStream::new(data.into_async_read(), compressor);
+    let mut stream = CompressionStream::new(data.into_async_buf_read(), compressor);
 
     backend
         .upload_file(key, stream.stream())
@@ -778,8 +778,8 @@ impl ChunkData {
         matches!(self, ChunkData::Bytes(_))
     }
 
-    /// Turns the data into a stream.
-    fn into_async_read(self) -> Box<dyn AsyncRead + Unpin + Send> {
+    /// Turns the data into an AsyncBufRead.
+    fn into_async_buf_read(self) -> Box<dyn AsyncBufRead + Unpin + Send> {
         match self {
             Self::Bytes(bytes) => Box::new(Cursor::new(bytes)),
             Self::Stream(stream, _, _) => stream,

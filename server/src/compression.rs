@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use digest::Output as DigestOutput;
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncRead, BufReader};
+use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
 use tokio::sync::OnceCell;
 
 use attic::io::HashReader;
@@ -40,7 +40,7 @@ impl CompressionStream {
     /// Creates a new compression stream.
     pub fn new<R>(stream: R, compressor: CompressorFn<BufReader<HashReader<R, Sha256>>>) -> Self
     where
-        R: AsyncRead + Unpin + Send + 'static,
+        R: AsyncBufRead + Unpin + Send + 'static,
     {
         // compute NAR hash and size
         let (stream, nar_compute) = HashReader::new(stream, Sha256::new());
