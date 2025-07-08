@@ -39,7 +39,7 @@ use attic::api::v1::upload_path::{
 };
 use attic::chunking::chunk_stream;
 use attic::hash::Hash;
-use attic::io::{read_chunk_async, StreamHasher};
+use attic::io::{read_chunk_async, HashReader};
 use attic::util::Finally;
 
 use crate::database::entity::cache;
@@ -232,7 +232,7 @@ async fn upload_path_dedup(
     existing_nar: NarGuard,
 ) -> ServerResult<Json<UploadPathResult>> {
     if state.config.require_proof_of_possession {
-        let (mut stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+        let (mut stream, nar_compute) = HashReader::new(stream, Sha256::new());
         tokio::io::copy(&mut stream, &mut tokio::io::sink())
             .await
             .map_err(ServerError::request_error)?;
@@ -376,7 +376,7 @@ async fn upload_path_new_chunked(
     });
 
     let stream = stream.take(upload_info.nar_size as u64);
-    let (stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+    let (stream, nar_compute) = HashReader::new(stream, Sha256::new());
     let mut chunks = chunk_stream(
         stream,
         chunking_config.min_size,
@@ -630,7 +630,7 @@ async fn upload_chunk(
         if require_proof_of_possession && !data.is_hash_trusted() {
             let stream = data.into_async_read();
 
-            let (mut stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+            let (mut stream, nar_compute) = HashReader::new(stream, Sha256::new());
             tokio::io::copy(&mut stream, &mut tokio::io::sink())
                 .await
                 .map_err(ServerError::request_error)?;
@@ -825,18 +825,18 @@ impl ChunkData {
 
 impl CompressionStream {
     /// Creates a new compression stream.
-    fn new<R>(stream: R, compressor: CompressorFn<BufReader<StreamHasher<R, Sha256>>>) -> Self
+    fn new<R>(stream: R, compressor: CompressorFn<BufReader<HashReader<R, Sha256>>>) -> Self
     where
         R: AsyncRead + Unpin + Send + 'static,
     {
         // compute NAR hash and size
-        let (stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+        let (stream, nar_compute) = HashReader::new(stream, Sha256::new());
 
         // compress NAR
         let stream = compressor(BufReader::new(stream));
 
         // compute file hash and size
-        let (stream, file_compute) = StreamHasher::new(stream, Sha256::new());
+        let (stream, file_compute) = HashReader::new(stream, Sha256::new());
 
         Self {
             stream: Box::new(stream),
@@ -858,7 +858,7 @@ impl CompressionStream {
         let stream = compressor(BufReader::new(stream));
 
         // compute file hash and size
-        let (stream, file_compute) = StreamHasher::new(stream, Sha256::new());
+        let (stream, file_compute) = HashReader::new(stream, Sha256::new());
 
         Self {
             stream: Box::new(stream),

@@ -32,9 +32,9 @@ use crate::nix_manifest;
 use crate::storage::{Download, StorageBackend};
 use crate::{RequestState, State};
 use attic::cache::CacheName;
+use attic::io::merge_chunks;
 use attic::mime;
 use attic::nix_store::StorePathHash;
-use attic::io::merge_chunks;
 
 /// Nix cache information.
 ///
