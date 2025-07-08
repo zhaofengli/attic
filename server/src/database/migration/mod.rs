@@ -16,6 +16,7 @@ mod m20230112_000005_drop_old_nar_columns;
 mod m20230112_000006_add_nar_completeness_hint;
 mod m20260508_000001_add_chunk_state_holders_index;
 mod m20260611_000001_add_nar_state_holders_index;
+mod m20260624_000001_remove_chunk_recovery;
 
 pub struct Migrator;
 
@@ -37,6 +38,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230112_000006_add_nar_completeness_hint::Migration),
             Box::new(m20260508_000001_add_chunk_state_holders_index::Migration),
             Box::new(m20260611_000001_add_nar_state_holders_index::Migration),
+            Box::new(m20260624_000001_remove_chunk_recovery::Migration),
         ]
     }
 }

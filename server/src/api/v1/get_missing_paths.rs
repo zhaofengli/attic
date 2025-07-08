@@ -6,7 +6,6 @@ use sea_orm::{FromQueryResult, QuerySelect};
 use tracing::instrument;
 
 use crate::database::entity::cache;
-use crate::database::entity::nar;
 use crate::database::entity::object::{self, Entity as Object};
 use crate::error::{ServerError, ServerResult};
 use crate::{RequestState, State};
@@ -52,7 +51,6 @@ pub(crate) async fn get_missing_paths(
         .join(sea_orm::JoinType::InnerJoin, object::Relation::Nar.def())
         .filter(cache::Column::Name.eq(payload.cache.as_str()))
         .filter(object::Column::StorePathHash.is_in(query_in))
-        .filter(nar::Column::CompletenessHint.eq(true))
         .into_model::<StorePathHashOnly>()
         .all(database)
         .await

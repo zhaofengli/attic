@@ -103,10 +103,7 @@ pub fn build_cache_object_nar_query(include_chunks: bool) -> Select<Object> {
 
         If any element in the chunk `Vec` is `None`, it means the chunk is missing
         for some reason (e.g., corrupted) and the full NAR cannot be reconstructed.
-        In such cases, .narinfo/.nar requests will return HTTP 503 and the affected
-        store paths will be treated as non-existent in `get-missing-paths` so they
-        can be repaired automatically when any client upload a path containing the
-        missing chunk.
+        In such cases, .narinfo/.nar requests will return HTTP 503.
 
         It's a quintuple join and the query plans look reasonable on SQLite
         and Postgres. For each .narinfo/.nar request, we only submit a single query.
