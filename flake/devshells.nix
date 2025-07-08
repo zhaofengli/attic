@@ -62,7 +62,6 @@ in
           postgresql
           sqlite-interactive
 
-          flyctl
           skopeo
           manifest-tool
         ];
