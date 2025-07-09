@@ -19,7 +19,7 @@ path = "src/adm/main.rs"
 doc = false
 
 [dependencies]
-attic = { path = "../attic", default-features = false, features = ["chunking", "stream", "tokio"] }
+attic = { path = "../attic", default-features = false, features = ["chunking", "io", "tokio"] }
 attic-token = { path = "../token" }
 
 anyhow = "1.0.98"

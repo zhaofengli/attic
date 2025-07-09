@@ -27,7 +27,7 @@ ci-build-wasm:
 	export RUST_MIN_STACK=16777216
 
 	pushd attic
-	cargo build --target wasm32-unknown-unknown --no-default-features -F chunking -F stream
+	cargo build --target wasm32-unknown-unknown --no-default-features -F chunking -F io
 	popd
 	pushd token
 	cargo build --target wasm32-unknown-unknown

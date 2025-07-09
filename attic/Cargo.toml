@@ -16,6 +16,7 @@ futures = "0.3.31"
 hex = "0.4.3"
 lazy_static = "1.5.0"
 nix-base32 = "0.2.0"
+pin-project = "1.1.10"
 regex = "1.11.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_with = "3.14.0"
@@ -53,13 +54,13 @@ nix-main = { version = "2.24", feature = "nix_store" }
 [features]
 default = [
 	"chunking",
+	"io",
 	"nix_store",
-	"stream",
 	"tokio",
 ]
 
 # Chunking.
-chunking = ["tokio", "stream", "dep:async-stream"]
+chunking = ["tokio", "io", "dep:async-stream"]
 
 # Native libnixstore bindings.
 #
@@ -73,8 +74,8 @@ nix_store = [
 	"dep:system-deps",
 ]
 
-# Stream utilities.
-stream = ["tokio", "dep:async-stream"]
+# IO utilities.
+io = ["tokio", "dep:async-stream"]
 
 # Tokio runtime.
 tokio = ["dep:tokio", "tokio/rt", "tokio/time"]

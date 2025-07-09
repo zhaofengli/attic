@@ -15,6 +15,7 @@
 
 pub mod access;
 mod api;
+mod compression;
 pub mod config;
 pub mod database;
 pub mod error;

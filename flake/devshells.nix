@@ -40,9 +40,11 @@ in
         ];
 
         rust = [
+          cargo-audit
           cargo-expand
           cargo-outdated
           cargo-edit
+          cargo-udeps
           tokio-console
         ];
 
@@ -62,7 +64,6 @@ in
           postgresql
           sqlite-interactive
 
-          flyctl
           skopeo
           manifest-tool
         ];

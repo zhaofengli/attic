@@ -14,7 +14,6 @@ use axum::{
 };
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
-use digest::Output as DigestOutput;
 use futures::future::join_all;
 use futures::StreamExt;
 use sea_orm::entity::prelude::*;
@@ -22,13 +21,14 @@ use sea_orm::sea_query::Expr;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{QuerySelect, TransactionTrait};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, BufReader};
-use tokio::sync::{OnceCell, Semaphore};
+use tokio::io::{AsyncBufRead, AsyncReadExt};
+use tokio::sync::Semaphore;
 use tokio::task::spawn;
 use tokio_util::io::StreamReader;
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::compression::{CompressionStream, CompressorFn};
 use crate::config::CompressionType;
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
@@ -39,7 +39,7 @@ use attic::api::v1::upload_path::{
 };
 use attic::chunking::chunk_stream;
 use attic::hash::Hash;
-use attic::stream::{read_chunk_async, StreamHasher};
+use attic::io::{read_chunk_async, HashReader};
 use attic::util::Finally;
 
 use crate::database::entity::cache;
@@ -60,48 +60,19 @@ const CONCURRENT_CHUNK_UPLOADS: usize = 10;
 /// TODO: Make this configurable
 const MAX_NAR_INFO_SIZE: usize = 1 * 1024 * 1024; // 1 MiB
 
-type CompressorFn<C> = Box<dyn FnOnce(C) -> Box<dyn AsyncRead + Unpin + Send> + Send>;
-
 /// Data of a chunk.
 enum ChunkData {
     /// Some bytes in memory.
     Bytes(Bytes),
 
     /// A stream with a user-claimed hash and size that are potentially incorrect.
-    Stream(Box<dyn AsyncRead + Send + Unpin + 'static>, Hash, usize),
+    Stream(Box<dyn AsyncBufRead + Send + Unpin + 'static>, Hash, usize),
 }
 
 /// Result of a chunk upload.
 struct UploadChunkResult {
     guard: ChunkGuard,
     deduplicated: bool,
-}
-
-/// Applies compression to a stream, computing hashes along the way.
-///
-/// Our strategy is to stream directly onto a UUID-keyed file on the
-/// storage backend, performing compression and computing the hashes
-/// along the way. We delete the file if the hashes do not match.
-///
-/// ```text
-///                    ┌───────────────────────────────────►NAR Hash
-///                    │
-///                    │
-///                    ├───────────────────────────────────►NAR Size
-///                    │
-///              ┌─────┴────┐  ┌──────────┐  ┌───────────┐
-/// NAR Stream──►│NAR Hasher├─►│Compressor├─►│File Hasher├─►File Stream
-///              └──────────┘  └──────────┘  └─────┬─────┘
-///                                                │
-///                                                ├───────►File Hash
-///                                                │
-///                                                │
-///                                                └───────►File Size
-/// ```
-struct CompressionStream {
-    stream: Box<dyn AsyncRead + Unpin + Send>,
-    nar_compute: Arc<OnceCell<(DigestOutput<Sha256>, usize)>>,
-    file_compute: Arc<OnceCell<(DigestOutput<Sha256>, usize)>>,
 }
 
 trait UploadPathNarInfoExt {
@@ -185,40 +156,33 @@ pub(crate) async fn upload_path(
     let username = req_state.auth.username().map(str::to_string);
 
     // Try to acquire a lock on an existing NAR
-    let existing_nar = database.find_and_lock_nar(&upload_info.nar_hash).await?;
-    match existing_nar {
-        Some(existing_nar) => {
-            // Deduplicate?
-            let missing_chunk = ChunkRef::find()
-                .filter(chunkref::Column::NarId.eq(existing_nar.id))
-                .filter(chunkref::Column::ChunkId.is_null())
-                .limit(1)
-                .one(database)
-                .await
-                .map_err(ServerError::database_error)?;
+    if let Some(existing_nar) = database.find_and_lock_nar(&upload_info.nar_hash).await? {
+        // Deduplicate?
+        let missing_chunk = ChunkRef::find()
+            .filter(chunkref::Column::NarId.eq(existing_nar.id))
+            .filter(chunkref::Column::ChunkId.is_null())
+            .limit(1)
+            .one(database)
+            .await
+            .map_err(ServerError::database_error)?;
 
-            if missing_chunk.is_some() {
-                // Need to repair
-                upload_path_new(username, cache, upload_info, stream, database, &state).await
-            } else {
-                // Can actually be deduplicated
-                upload_path_dedup(
-                    username,
-                    cache,
-                    upload_info,
-                    stream,
-                    database,
-                    &state,
-                    existing_nar,
-                )
-                .await
-            }
-        }
-        None => {
-            // New NAR
-            upload_path_new(username, cache, upload_info, stream, database, &state).await
+        if missing_chunk.is_none() {
+            // Can actually be deduplicated
+            return upload_path_dedup(
+                username,
+                cache,
+                upload_info,
+                stream,
+                database,
+                &state,
+                existing_nar,
+            )
+            .await;
         }
     }
+
+    // New NAR or need to repair
+    upload_path_new(username, cache, upload_info, stream, database, &state).await
 }
 
 /// Uploads a path when there is already a matching NAR in the global cache.
@@ -226,13 +190,13 @@ async fn upload_path_dedup(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Unpin,
+    stream: impl AsyncBufRead + Unpin,
     database: &DatabaseConnection,
     state: &State,
     existing_nar: NarGuard,
 ) -> ServerResult<Json<UploadPathResult>> {
     if state.config.require_proof_of_possession {
-        let (mut stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+        let (mut stream, nar_compute) = HashReader::new(stream, Sha256::new());
         tokio::io::copy(&mut stream, &mut tokio::io::sink())
             .await
             .map_err(ServerError::request_error)?;
@@ -306,7 +270,7 @@ async fn upload_path_new(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Send + Unpin + 'static,
+    stream: impl AsyncBufRead + Send + Unpin + 'static,
     database: &DatabaseConnection,
     state: &State,
 ) -> ServerResult<Json<UploadPathResult>> {
@@ -324,7 +288,7 @@ async fn upload_path_new_chunked(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Send + Unpin + 'static,
+    stream: impl AsyncBufRead + Send + Unpin + 'static,
     database: &DatabaseConnection,
     state: &State,
 ) -> ServerResult<Json<UploadPathResult>> {
@@ -376,7 +340,7 @@ async fn upload_path_new_chunked(
     });
 
     let stream = stream.take(upload_info.nar_size as u64);
-    let (stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+    let (stream, nar_compute) = HashReader::new(stream, Sha256::new());
     let mut chunks = chunk_stream(
         stream,
         chunking_config.min_size,
@@ -515,7 +479,7 @@ async fn upload_path_new_unchunked(
     username: Option<String>,
     cache: cache::Model,
     upload_info: UploadPathNarInfo,
-    stream: impl AsyncRead + Send + Unpin + 'static,
+    stream: impl AsyncBufRead + Send + Unpin + 'static,
     database: &DatabaseConnection,
     state: &State,
 ) -> ServerResult<Json<UploadPathResult>> {
@@ -628,9 +592,9 @@ async fn upload_chunk(
     {
         // There's an existing chunk matching the hash
         if require_proof_of_possession && !data.is_hash_trusted() {
-            let stream = data.into_async_read();
+            let stream = data.into_async_buf_read();
 
-            let (mut stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
+            let (mut stream, nar_compute) = HashReader::new(stream, Sha256::new());
             tokio::io::copy(&mut stream, &mut tokio::io::sink())
                 .await
                 .map_err(ServerError::request_error)?;
@@ -710,7 +674,7 @@ async fn upload_chunk(
 
     // Compress and stream to the storage backend
     let compressor = get_compressor_fn(compression_type, compression_level);
-    let mut stream = CompressionStream::new(data.into_async_read(), compressor);
+    let mut stream = CompressionStream::new(data.into_async_buf_read(), compressor);
 
     backend
         .upload_file(key, stream.stream())
@@ -814,79 +778,12 @@ impl ChunkData {
         matches!(self, ChunkData::Bytes(_))
     }
 
-    /// Turns the data into a stream.
-    fn into_async_read(self) -> Box<dyn AsyncRead + Unpin + Send> {
+    /// Turns the data into an AsyncBufRead.
+    fn into_async_buf_read(self) -> Box<dyn AsyncBufRead + Unpin + Send> {
         match self {
             Self::Bytes(bytes) => Box::new(Cursor::new(bytes)),
             Self::Stream(stream, _, _) => stream,
         }
-    }
-}
-
-impl CompressionStream {
-    /// Creates a new compression stream.
-    fn new<R>(stream: R, compressor: CompressorFn<BufReader<StreamHasher<R, Sha256>>>) -> Self
-    where
-        R: AsyncRead + Unpin + Send + 'static,
-    {
-        // compute NAR hash and size
-        let (stream, nar_compute) = StreamHasher::new(stream, Sha256::new());
-
-        // compress NAR
-        let stream = compressor(BufReader::new(stream));
-
-        // compute file hash and size
-        let (stream, file_compute) = StreamHasher::new(stream, Sha256::new());
-
-        Self {
-            stream: Box::new(stream),
-            nar_compute,
-            file_compute,
-        }
-    }
-
-    /*
-    /// Creates a compression stream without compute the uncompressed hash/size.
-    ///
-    /// This is useful if you already know the hash. `nar_hash_and_size` will
-    /// always return `None`.
-    fn new_without_nar_hash<R>(stream: R, compressor: CompressorFn<BufReader<R>>) -> Self
-    where
-        R: AsyncRead + Unpin + Send + 'static,
-    {
-        // compress NAR
-        let stream = compressor(BufReader::new(stream));
-
-        // compute file hash and size
-        let (stream, file_compute) = StreamHasher::new(stream, Sha256::new());
-
-        Self {
-            stream: Box::new(stream),
-            nar_compute: Arc::new(OnceCell::new()),
-            file_compute,
-        }
-    }
-    */
-
-    /// Returns the stream of the compressed object.
-    fn stream(&mut self) -> &mut (impl AsyncRead + Unpin) {
-        &mut self.stream
-    }
-
-    /// Returns the NAR hash and size.
-    ///
-    /// The hash is only finalized when the stream is fully read.
-    /// Otherwise, returns `None`.
-    fn nar_hash_and_size(&self) -> Option<&(DigestOutput<Sha256>, usize)> {
-        self.nar_compute.get()
-    }
-
-    /// Returns the file hash and size.
-    ///
-    /// The hash is only finalized when the stream is fully read.
-    /// Otherwise, returns `None`.
-    fn file_hash_and_size(&self) -> Option<&(DigestOutput<Sha256>, usize)> {
-        self.file_compute.get()
     }
 }
 

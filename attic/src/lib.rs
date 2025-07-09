@@ -21,11 +21,11 @@ pub mod cache;
 pub mod chunking;
 pub mod error;
 pub mod hash;
+#[cfg(feature = "io")]
+pub mod io;
 pub mod mime;
 pub mod nix_store;
 pub mod signing;
-#[cfg(feature = "stream")]
-pub mod stream;
 #[cfg(target_family = "unix")]
 pub mod testing;
 #[cfg(feature = "tokio")]

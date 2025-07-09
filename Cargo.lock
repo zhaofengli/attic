@@ -242,6 +242,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "nix-base32",
+ "pin-project",
  "regex",
  "serde",
  "serde_json",
