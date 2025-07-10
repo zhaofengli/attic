@@ -45,6 +45,9 @@ pub enum ErrorKind {
     /// The requested cache does not exist.
     NoSuchCache,
 
+    /// The requested pin does not exist.
+    NoSuchPin,
+
     /// The cache already exists.
     CacheAlreadyExists,
 
@@ -175,6 +178,7 @@ impl ErrorKind {
 
             Self::NoSuchObject => "NoSuchObject",
             Self::NoSuchCache => "NoSuchCache",
+            Self::NoSuchPin => "NoSuchPin",
             Self::CacheAlreadyExists => "CacheAlreadyExists",
             Self::InvalidCompressionType { .. } => "InvalidCompressionType",
             Self::IncompleteNar => "IncompleteNar",
@@ -193,6 +197,7 @@ impl ErrorKind {
         match self {
             Self::NoSuchCache => Self::Unauthorized,
             Self::NoSuchObject => Self::Unauthorized,
+            Self::NoSuchPin => Self::Unauthorized,
             Self::AccessError(_) => Self::Unauthorized,
 
             _ => self,
@@ -220,6 +225,7 @@ impl ErrorKind {
 
             Self::AccessError(_) => StatusCode::FORBIDDEN,
             Self::NoSuchCache => StatusCode::NOT_FOUND,
+            Self::NoSuchPin => StatusCode::NOT_FOUND,
             Self::NoSuchObject => StatusCode::NOT_FOUND,
             Self::CacheAlreadyExists => StatusCode::BAD_REQUEST,
             Self::IncompleteNar => StatusCode::SERVICE_UNAVAILABLE,
