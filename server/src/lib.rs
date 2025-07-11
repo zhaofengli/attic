@@ -25,6 +25,7 @@ pub mod nix_manifest;
 pub mod oobe;
 mod storage;
 
+use std::collections::HashSet;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,12 +33,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use attic::signing::NixKeypair;
 use axum::{
     extract::Extension,
     http::{uri::Scheme, Uri},
     Router,
 };
+use chrono::Utc;
 use sea_orm::{query::Statement, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{EntityTrait, IntoActiveModel, Set};
 use tokio::net::TcpListener;
 use tokio::sync::OnceCell;
 use tokio::time;
@@ -51,6 +55,9 @@ use database::migration::{Migrator, MigratorTrait};
 use error::{ErrorKind, ServerError, ServerResult};
 use middleware::{init_request_state, restrict_host, set_visibility_header};
 use storage::{LocalBackend, S3Backend, StorageBackend};
+
+use crate::database::entity::cache::{self, Entity as Cache};
+use crate::database::entity::Json as DbJson;
 
 type State = Arc<StateInner>;
 type RequestState = Arc<RequestStateInner>;
@@ -262,5 +269,71 @@ pub async fn run_migrations(config: Config) -> Result<()> {
     let db = state.database().await?;
     Migrator::up(db, None).await?;
 
+    eprintln!("Aligning caches with config...");
+
+    let db_caches = Cache::find().all(db).await?;
+    let mut exists = HashSet::new();
+    for cache in db_caches {
+        if let Some(configured) = state.config.caches.get(&cache.name) {
+            exists.insert(cache.name.clone());
+            let mut update = cache.clone().into_active_model();
+            let mut modified = false;
+            if configured.public != cache.is_public {
+                update.is_public = Set(configured.public);
+                modified = true;
+            }
+            let retention = configured
+                .retention_period
+                .map(|duration| duration.as_secs() as i32);
+            if retention != cache.retention_period {
+                update.retention_period = Set(retention);
+                modified = true;
+            }
+            if configured.priority != cache.priority {
+                update.priority = Set(configured.priority);
+                modified = true;
+            }
+            if configured.upstream_cache_key_names != cache.upstream_cache_key_names.0 {
+                update.upstream_cache_key_names =
+                    Set(DbJson(configured.upstream_cache_key_names.clone()));
+                modified = true;
+            }
+            if modified {
+                eprintln!("Updating cache {:#?}...", cache.name);
+                Cache::update(update).exec(db).await?;
+            }
+        } else if state.config.declarative {
+            eprintln!("Removing cache {:#?}...", cache.name);
+            Cache::delete_by_id(cache.id).exec(db).await?;
+        }
+    }
+
+    if exists.len() == state.config.caches.len() {
+        return Ok(());
+    }
+
+    for (name, config) in state
+        .config
+        .caches
+        .iter()
+        .filter(|(name, _)| !exists.contains(name.as_str()))
+    {
+        eprintln!("Creating cache {:#?}...", name);
+        let keypair = NixKeypair::generate(name.as_str())?;
+        let retention = config.retention_period.map(|dur| dur.as_secs() as i32);
+        Cache::insert(cache::ActiveModel {
+            name: Set(name.to_string()),
+            keypair: Set(keypair.export_keypair()),
+            is_public: Set(config.public),
+            store_dir: Set("/nix/store".to_string()),
+            priority: Set(config.priority),
+            retention_period: Set(retention),
+            upstream_cache_key_names: Set(DbJson(config.upstream_cache_key_names.clone())),
+            created_at: Set(Utc::now()),
+            ..Default::default()
+        })
+        .exec(db)
+        .await?;
+    }
     Ok(())
 }
