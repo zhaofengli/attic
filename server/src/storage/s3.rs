@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use aws_config::BehaviorVersion;
+use aws_config::{retry::RetryConfig, BehaviorVersion};
 use aws_sdk_s3::{
     config::Builder as S3ConfigBuilder,
     config::{Credentials, Region},
@@ -83,6 +83,7 @@ impl S3Backend {
         let s3_config = Self::config_builder(&config)
             .await?
             .region(Region::new(config.region.to_owned()))
+            .retry_config(RetryConfig::adaptive())
             .build();
 
         Ok(Self {
