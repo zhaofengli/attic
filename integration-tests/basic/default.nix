@@ -267,6 +267,41 @@ in {
           client.succeed(f"nix-store --delete {test2_file}")
           client.succeed(f"nix-store -r {test2_file}")
 
+      with subtest("Check that we can set the keypair using an already exisiting one"):
+          client.succeed("nix-store --generate-binary-cache-key cache.example.com-1 ./cache-key.secret ./cache-key.pub")
+          pubkey = client.succeed("cat ./cache-key.pub").strip()
+          client.succeed("attic cache configure test --keypair-path ./cache-key.secret")
+          client.succeed("attic use root:test")
+          client.succeed(f"nix-store -r {test_file}")
+          cache_info = client.succeed("attic cache info test 2>&1")
+          assert pubkey in cache_info, f"LHS: {pubkey}, RHS: {cache_info}"
+
+      with subtest("Check that we can delete a path"):
+          # first build a new path
+          client.succeed("${makeTestDerivation} test3.nix")
+          # then push it
+          test3_file = client.succeed("nix-build --no-out-link test3.nix")
+          client.succeed(f"attic push test {test3_file}")
+          # then delete it locally
+          client.succeed(f"nix-store --delete {test3_file}")
+          # then pull it back
+          client.succeed(f"nix-store -r {test3_file}")
+          # then delete it from the cache and from the local store
+          client.succeed(f"attic cache delete test {test3_file}")
+          client.succeed(f"nix-store --delete {test3_file}")
+          # then check that it's not there anymore
+          client.fail(f"nix-store -r {test3_file}")
+
+      with subtest("Check that we can create a new store using an already exisiting keypair"):
+          client.succeed("attic cache create test3 --keypair-path ./cache-key.secret")
+          client.succeed("attic use root:test3")
+          test3_file = client.succeed("nix-build --no-out-link test.nix")
+          client.succeed(f"attic push test3 {test3_file}")
+          client.succeed(f"nix-store --delete {test3_file}")
+          client.succeed(f"nix-store -r {test3_file}")
+          cache_info = client.succeed("attic cache info test3 2>&1")
+          assert pubkey in cache_info, f"LHS: {pubkey}, RHS: {cache_info}"
+
       with subtest("Check that we can destroy the cache"):
           client.succeed("attic cache info test")
           client.succeed("attic cache destroy --no-confirm test")

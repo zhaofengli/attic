@@ -1,6 +1,7 @@
 mod cache_config;
 mod get_missing_paths;
 mod upload_path;
+mod delete_path;
 
 use axum::{
     routing::{delete, get, patch, post, put},
@@ -29,6 +30,10 @@ pub(crate) fn get_router() -> Router {
         .route(
             "/_api/v1/cache-config/:cache",
             patch(cache_config::configure_cache),
+        )
+        .route(
+            "/_api/v1/delete-path/:cache/:store_path_hash",
+            delete(delete_path::delete_path),
         )
         .route(
             "/_api/v1/cache-config/:cache",
