@@ -21,7 +21,7 @@ jobs:
         run: |
           command -v brew && brew install bash || true
 
-      - uses: DeterminateSystems/nix-installer-action@v18
+      - uses: DeterminateSystems/nix-installer-action@v19
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -86,7 +86,7 @@ jobs:
         run: |
           command -v brew && brew install bash || true
 
-      - uses: DeterminateSystems/nix-installer-action@v18
+      - uses: DeterminateSystems/nix-installer-action@v19
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -143,7 +143,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4.1.7
-      - uses: DeterminateSystems/nix-installer-action@v18
+      - uses: DeterminateSystems/nix-installer-action@v19
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -190,7 +190,7 @@ jobs:
         run: |
           command -v brew && brew install bash || true
 
-      - uses: DeterminateSystems/nix-installer-action@v18
+      - uses: DeterminateSystems/nix-installer-action@v19
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
@@ -241,7 +241,7 @@ jobs:
         run: |
           command -v brew && brew install bash || true
 
-      - uses: DeterminateSystems/nix-installer-action@v18
+      - uses: DeterminateSystems/nix-installer-action@v19
         continue-on-error: true # Self-hosted runners already have Nix installed
 
       - name: Install Attic
