@@ -1,6 +1,5 @@
 //! Garbage collection.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
@@ -10,7 +9,6 @@ use sea_orm::entity::prelude::*;
 use sea_orm::query::QuerySelect;
 use sea_orm::sea_query::{LockBehavior, LockType, Query};
 use sea_orm::{ConnectionTrait, FromQueryResult};
-use tokio::sync::Semaphore;
 use tokio::time;
 use tracing::instrument;
 
@@ -56,6 +54,7 @@ pub async fn run_garbage_collection_once(config: Config) -> Result<()> {
     let state = StateInner::new(config).await;
     run_time_based_garbage_collection(&state).await?;
     run_reap_orphan_nars(&state).await?;
+    run_mark_orphan_chunks(&state).await?;
     run_reap_orphan_chunks(&state).await?;
 
     Ok(())
@@ -154,18 +153,8 @@ async fn run_reap_orphan_nars(state: &State) -> Result<()> {
 }
 
 #[instrument(skip_all)]
-async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
+async fn run_mark_orphan_chunks(state: &State) -> Result<()> {
     let db = state.database().await?;
-    let storage = state.storage().await?;
-
-    let orphan_chunk_limit = match db.get_database_backend() {
-        // Arbitrarily chosen sensible value since there's no good default to choose from for MySQL
-        sea_orm::DatabaseBackend::MySql => 1000,
-        // Panic limit set by sqlx for postgresql: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
-        sea_orm::DatabaseBackend::Postgres => u64::from(u16::MAX),
-        // Default statement limit imposed by sqlite: https://www.sqlite.org/limits.html#max_variable_number
-        sea_orm::DatabaseBackend::Sqlite => 500,
-    };
 
     // find all orphan chunks...
     let orphan_chunk_ids = Query::select()
@@ -197,9 +186,16 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
 
     db.execute(transition_statement).await?;
 
+    Ok(())
+}
+
+#[instrument(skip_all)]
+async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
+    let db = state.database().await?;
+    let storage = state.storage().await?;
+
     let orphan_chunks: Vec<chunk::Model> = Chunk::find()
         .filter(chunk::Column::State.eq(ChunkState::Deleted))
-        .limit(orphan_chunk_limit)
         .all(db)
         .await?;
 
@@ -207,47 +203,43 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
         return Ok(());
     }
 
-    // Delete the chunks from remote storage
-    let delete_limit = Arc::new(Semaphore::new(20)); // TODO: Make this configurable
-    let futures: Vec<_> = orphan_chunks
-        .into_iter()
-        .map(|chunk| {
-            let delete_limit = delete_limit.clone();
-            async move {
-                let permit = delete_limit.acquire().await?;
+    let mut deleted_count = 0;
+    for batch in orphan_chunks.chunks(20) {
+        // Delete the chunks from remote storage
+        let futures: Vec<_> = batch
+            .iter()
+            .map(|chunk| async move {
                 storage.delete_file_db(&chunk.remote_file.0).await?;
-                drop(permit);
                 Result::<_, anyhow::Error>::Ok(chunk.id)
-            }
-        })
-        .collect();
+            })
+            .collect();
 
-    // Deletions can result in spurious failures, tolerate them
-    //
-    // Chunks that failed to be deleted from the remote storage will
-    // just be stuck in Deleted state.
-    //
-    // TODO: Maybe have an interactive command to retry deletions?
-    let deleted_chunk_ids: Vec<_> = join_all(futures)
-        .await
-        .into_iter()
-        .filter(|r| {
-            if let Err(e) = r {
-                tracing::warn!("Deletion failed: {}", e);
-            }
+        // Deletions can result in spurious failures, tolerate them
+        //
+        // Chunks that failed to be deleted from the remote storage will
+        // just be stuck in Deleted state and get retried next time
+        let deleted_chunk_ids: Vec<_> = join_all(futures)
+            .await
+            .into_iter()
+            .filter(|r| {
+                if let Err(e) = r {
+                    tracing::warn!("Deletion failed: {}", e);
+                }
 
-            r.is_ok()
-        })
-        .map(|r| r.unwrap())
-        .collect();
+                r.is_ok()
+            })
+            .map(|r| r.unwrap())
+            .collect();
 
-    // Finally, delete them from the database
-    let deletion = Chunk::delete_many()
-        .filter(chunk::Column::Id.is_in(deleted_chunk_ids))
-        .exec(db)
-        .await?;
+        // Finally, delete them from the database
+        let deletion = Chunk::delete_many()
+            .filter(chunk::Column::Id.is_in(deleted_chunk_ids))
+            .exec(db)
+            .await?;
 
-    tracing::info!("Deleted {} orphan chunks", deletion.rows_affected);
+        deleted_count += deletion.rows_affected;
+    }
+    tracing::info!("Deleted {} orphan chunks", deleted_count);
 
     Ok(())
 }
