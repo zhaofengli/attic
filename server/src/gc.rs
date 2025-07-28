@@ -1,6 +1,5 @@
 //! Garbage collection.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
@@ -10,7 +9,6 @@ use sea_orm::entity::prelude::*;
 use sea_orm::query::QuerySelect;
 use sea_orm::sea_query::{LockBehavior, LockType, Query};
 use sea_orm::{ConnectionTrait, FromQueryResult};
-use tokio::sync::Semaphore;
 use tokio::time;
 use tracing::instrument;
 
@@ -205,37 +203,21 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
         return Ok(());
     }
 
-    let orphan_chunk_limit = match db.get_database_backend() {
-        // Arbitrarily chosen sensible value since there's no good default to choose from for MySQL
-        sea_orm::DatabaseBackend::MySql => 1000,
-        // Panic limit set by sqlx for postgresql: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
-        sea_orm::DatabaseBackend::Postgres => usize::from(u16::MAX),
-        // Default statement limit imposed by sqlite: https://www.sqlite.org/limits.html#max_variable_number
-        sea_orm::DatabaseBackend::Sqlite => 500,
-    };
-
-    for batch in orphan_chunks.chunks(orphan_chunk_limit) {
+    let mut deleted_count = 0;
+    for batch in orphan_chunks.chunks(20) {
         // Delete the chunks from remote storage
-        let delete_limit = Arc::new(Semaphore::new(20)); // TODO: Make this configurable
         let futures: Vec<_> = batch
             .iter()
-            .map(|chunk| {
-                let delete_limit = delete_limit.clone();
-                async move {
-                    let permit = delete_limit.acquire().await?;
-                    storage.delete_file_db(&chunk.remote_file.0).await?;
-                    drop(permit);
-                    Result::<_, anyhow::Error>::Ok(chunk.id)
-                }
+            .map(|chunk| async move {
+                storage.delete_file_db(&chunk.remote_file.0).await?;
+                Result::<_, anyhow::Error>::Ok(chunk.id)
             })
             .collect();
 
         // Deletions can result in spurious failures, tolerate them
         //
         // Chunks that failed to be deleted from the remote storage will
-        // just be stuck in Deleted state.
-        //
-        // TODO: Maybe have an interactive command to retry deletions?
+        // just be stuck in Deleted state and get retried next time
         let deleted_chunk_ids: Vec<_> = join_all(futures)
             .await
             .into_iter()
@@ -255,8 +237,9 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
             .exec(db)
             .await?;
 
-        tracing::info!("Deleted {} orphan chunks", deletion.rows_affected);
+        deleted_count += deletion.rows_affected;
     }
+    tracing::info!("Deleted {} orphan chunks", deleted_count);
 
     Ok(())
 }
