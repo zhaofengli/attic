@@ -3,7 +3,7 @@
 Let's spin up Attic in just 15 minutes (yes, it works on macOS too!):
 
 ```bash
-nix-shell https://github.com/zhaofengli/attic/tarball/main -A demo
+$ nix shell github:zhaofengli/attic
 ```
 
 Simply run `atticd` to start the server in monolithic mode with a SQLite database and local storage:
@@ -31,6 +31,8 @@ Enjoy!
 -----------------
 
 Running migrations...
+* Migrating NARs to chunks...
+* Migrating NAR schema...
 Starting API server...
 Listening on [::]:8080...
 ```
