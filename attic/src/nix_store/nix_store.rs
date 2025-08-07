@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::task::spawn_blocking;
 
 use super::bindings::{open_nix_store, AsyncWriteAdapter, FfiNixStore};
-use super::{to_base_name, StorePath, ValidPathInfo};
+use super::{StorePath, ValidPathInfo};
 use crate::error::AtticResult;
 use crate::hash::Hash;
 
@@ -75,8 +75,7 @@ impl NixStore {
     /// The path must be under the store directory. See `follow_store_path`
     /// for an alternative that follows symlinks.
     pub fn parse_store_path<P: AsRef<Path>>(&self, path: P) -> AtticResult<StorePath> {
-        let base_name = to_base_name(&self.store_dir, path.as_ref())?;
-        StorePath::from_base_name(base_name)
+        StorePath::parse_store_path(&self.store_dir, path.as_ref())
     }
 
     /// Returns the full path for a base store path.
