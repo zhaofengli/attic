@@ -37,6 +37,9 @@ allowed-hosts = []
 # cache.
 #require-proof-of-possession = true
 
+# Whether caches not declared in the config file should be deleted
+#declarative = false
+
 # Database connection
 [database]
 # Connection URL
@@ -164,3 +167,30 @@ token-rs256-secret-base64 = "%token_rs256_secret_base64%"
 # You can also set it via the `ATTIC_SERVER_TOKEN_HS256_SECRET_BASE64`
 # environment variable.
 #token-hs256-secret-base64 = ""
+
+# Caches that should be automatically set up as configured
+#
+# If one of these caches is updated manually, then on the next migration
+# it will be restored to what is configured here
+#[caches.<name>]
+#  Whether the cache is public or not.
+#
+#  Anonymous clients are implicitly granted the "pull"
+#  permission to public caches.
+#public = false
+#
+# The retention period of the cache.
+# Unset will use the global default
+#retention-period = "6 months"
+#
+# The priority of the binary cache.
+#
+# A lower number denotes a higher priority.
+# <https://cache.nixos.org> has a priority of 40.
+#priority = 41
+#
+# A list of signing key names of upstream caches.
+#
+# The list serves as a hint to clients to avoid uploading
+# store paths signed with such keys.
+#upstream-cache-key-names = ["cache.nixos.org-1"]
