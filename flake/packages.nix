@@ -111,7 +111,7 @@ in
               pkgs.dockerTools.fakeNss
             ];
             config = {
-              Entrypoint = [ "${self'.packages.attic-server}/bin/atticd" ];
+              Entrypoint = [ "/bin/atticd" ];
               Env = [
                 "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
               ];
