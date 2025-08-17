@@ -21,6 +21,7 @@ use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object};
+use crate::database::entity::pin::{self, Entity as Pin};
 
 #[derive(Debug, FromQueryResult)]
 struct CacheIdAndRetentionPeriod {
@@ -97,14 +98,32 @@ async fn run_time_based_garbage_collection(state: &State) -> Result<()> {
             )
         })?;
 
-        let deletion = Object::delete_many()
-            .filter(object::Column::CacheId.eq(cache.id))
-            .filter(object::Column::CreatedAt.lt(cutoff))
-            .filter(
+        // Find all pinned paths ...
+        let pinned_store_path_hashes = Query::select()
+            .from(Pin)
+            .expr(pin::Column::StorePathHash.into_expr())
+            .and_where(pin::Column::CacheId.eq(cache.id))
+            .lock_with_tables(LockType::Share, [Pin])
+            .to_owned();
+
+        // ... find all old not pinned objects ...
+        let expired_object_ids = Query::select()
+            .from(Object)
+            .expr(object::Column::Id.into_expr())
+            .and_where(object::Column::CacheId.eq(cache.id))
+            .and_where(object::Column::CreatedAt.lt(cutoff))
+            .and_where(
                 object::Column::LastAccessedAt
                     .is_null()
                     .or(object::Column::LastAccessedAt.lt(cutoff)),
             )
+            .and_where(object::Column::StorePathHash.not_in_subquery(pinned_store_path_hashes))
+            .lock_with_tables_behavior(LockType::Update, [Object], LockBehavior::SkipLocked)
+            .to_owned();
+
+        // ... and simply delete them
+        let deletion = Object::delete_many()
+            .filter(object::Column::Id.in_subquery(expired_object_ids))
             .exec(db)
             .await?;
 
