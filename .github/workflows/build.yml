@@ -14,7 +14,7 @@ jobs:
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v5.0.0
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
@@ -79,7 +79,7 @@ jobs:
           - "default"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v5.0.0
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
@@ -142,7 +142,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v5.0.0
       - uses: DeterminateSystems/nix-installer-action@v18
         continue-on-error: true # Self-hosted runners already have Nix installed
 
@@ -183,7 +183,7 @@ jobs:
     strategy:
       matrix: ${{fromJSON(needs.nix-matrix.outputs.matrix)}}
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v5.0.0
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
@@ -234,7 +234,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v5.0.0
 
       - name: Install current Bash on macOS
         if: runner.os == 'macOS'
