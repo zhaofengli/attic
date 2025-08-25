@@ -24,6 +24,23 @@ To configure Nix to automatically use cache `foo`:
 attic use foo
 ```
 
+On NixOS you can add the cache declaratively in your `configuration.nix`:
+```
+nix.settings = {
+  substituters = [
+    "BINARY_CACHE_ENDPOINT"
+  ];
+  trusted-public-keys = [
+    "CACHE_PUBLIC_KEY"
+  ];
+};
+```
+
+To view the binary cache endpoint and cache public key for `foo`:
+```
+attic cache info foo
+```
+
 ## Disabling a cache
 
 To configure Nix to no longer use a cache, remove the corresponding entries from the list of `substituters` and `trusted-public-keys` in `~/.config/nix/nix.conf`
