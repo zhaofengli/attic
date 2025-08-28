@@ -24,6 +24,36 @@ To configure Nix to automatically use cache `foo`:
 attic use foo
 ```
 
+This adds the binary cache to your `~/.config/nix/nix.conf` and configures the credentials required to access it.
+
+If you wish to configure Nix manually, you can view the binary cache endpoint and the cache public key:
+
+```console
+$ attic cache info foo
+               Public: true
+           Public Key: foo:WcnO6s4aVkB6CKRaPPpKvHLZykWXASV6c+/Ssg8uQEY=
+Binary Cache Endpoint: https://attic.domain.tld/foo
+      Store Directory: /nix/store
+             Priority: 41
+  Upstream Cache Keys: ["cache.nixos.org-1"]
+     Retention Period: Global Default
+```
+
+On NixOS, you can configure the cache declaratively in your system configuration with the above information:
+
+```nix
+{
+  nix.settings = {
+    substituters = [
+      "https://attic.domain.tld/foo"
+    ];
+    trusted-public-keys = [
+      "foo:WcnO6s4aVkB6CKRaPPpKvHLZykWXASV6c+/Ssg8uQEY="
+    ];
+  };
+}
+```
+
 ## Disabling a cache
 
 To configure Nix to no longer use a cache, remove the corresponding entries from the list of `substituters` and `trusted-public-keys` in `~/.config/nix/nix.conf`
