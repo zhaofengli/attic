@@ -189,7 +189,7 @@ async fn create_cache(sub: Create) -> Result<()> {
     };
 
     api.create_cache(cache, request).await?;
-    eprintln!(
+    println!(
         "✨ Created cache \"{}\" on \"{}\"",
         cache.as_str(),
         server_name.as_str()
@@ -239,7 +239,7 @@ async fn configure_cache(sub: Configure) -> Result<()> {
     let api = ApiClient::from_server_config(server.clone())?;
     api.configure_cache(cache, &patch).await?;
 
-    eprintln!(
+    println!(
         "✅ Configured \"{}\" on \"{}\"",
         cache.as_str(),
         server_name.as_str()
@@ -254,12 +254,12 @@ async fn destroy_cache(sub: Destroy) -> Result<()> {
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
 
     if !sub.no_confirm {
-        eprintln!("When you destory a cache:");
-        eprintln!();
-        eprintln!("1. Everyone will lose access.");
-        eprintln!("2. The underlying data won't be deleted immediately.");
-        eprintln!("3. You may not be able to create a cache of the same name.");
-        eprintln!();
+        println!("When you destory a cache:");
+        println!();
+        println!("1. Everyone will lose access.");
+        println!("2. The underlying data won't be deleted immediately.");
+        println!("3. You may not be able to create a cache of the same name.");
+        println!();
 
         let answer: String = Input::new()
             .with_prompt(format!(
@@ -278,7 +278,7 @@ async fn destroy_cache(sub: Destroy) -> Result<()> {
     let api = ApiClient::from_server_config(server.clone())?;
     api.destroy_cache(cache).await?;
 
-    eprintln!("🗑️ The cache was destroyed.");
+    println!("🗑️ The cache was destroyed.");
 
     Ok(())
 }
@@ -291,40 +291,40 @@ async fn show_cache_config(sub: Info) -> Result<()> {
     let cache_config = api.get_cache_config(cache).await?;
 
     if let Some(is_public) = cache_config.is_public {
-        eprintln!("               Public: {}", is_public);
+        println!("               Public: {}", is_public);
     }
 
     if let Some(public_key) = cache_config.public_key {
-        eprintln!("           Public Key: {}", public_key);
+        println!("           Public Key: {}", public_key);
     }
 
     if let Some(substituter_endpoint) = cache_config.substituter_endpoint {
-        eprintln!("Binary Cache Endpoint: {}", substituter_endpoint);
+        println!("Binary Cache Endpoint: {}", substituter_endpoint);
     }
 
     if let Some(api_endpoint) = cache_config.api_endpoint {
-        eprintln!("         API Endpoint: {}", api_endpoint);
+        println!("         API Endpoint: {}", api_endpoint);
     }
 
     if let Some(store_dir) = cache_config.store_dir {
-        eprintln!("      Store Directory: {}", store_dir);
+        println!("      Store Directory: {}", store_dir);
     }
 
     if let Some(priority) = cache_config.priority {
-        eprintln!("             Priority: {}", priority);
+        println!("             Priority: {}", priority);
     }
 
     if let Some(upstream_cache_key_names) = cache_config.upstream_cache_key_names {
-        eprintln!("  Upstream Cache Keys: {:?}", upstream_cache_key_names);
+        println!("  Upstream Cache Keys: {:?}", upstream_cache_key_names);
     }
 
     if let Some(retention_period) = cache_config.retention_period {
         match retention_period {
             RetentionPeriodConfig::Period(period) => {
-                eprintln!("     Retention Period: {:?}", period);
+                println!("     Retention Period: {:?}", period);
             }
             RetentionPeriodConfig::Global => {
-                eprintln!("     Retention Period: Global Default");
+                println!("     Retention Period: Global Default");
             }
         }
     }

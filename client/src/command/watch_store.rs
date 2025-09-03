@@ -91,7 +91,7 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     watcher.watch(&store_dir, RecursiveMode::NonRecursive)?;
 
-    eprintln!(
+    println!(
         "👀 Pushing new store paths to \"{cache}\" on \"{server}\"",
         cache = cache.as_str(),
         server = server_name.as_str(),

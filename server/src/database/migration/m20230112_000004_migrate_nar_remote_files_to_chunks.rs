@@ -24,7 +24,7 @@ impl MigrationTrait for Migration {
         // When this migration is run, we assume that there are no
         // preexisting chunks.
 
-        eprintln!("* Migrating NARs to chunks...");
+        println!("* Migrating NARs to chunks...");
 
         // Add a temporary column into `chunk` to store the related `nar_id`.
         manager

@@ -16,7 +16,7 @@ impl MigrationName for Migration {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        eprintln!("* Migrating NAR schema...");
+        println!("* Migrating NAR schema...");
 
         if manager.get_database_backend() == DatabaseBackend::Sqlite {
             // Just copy all data to a new table

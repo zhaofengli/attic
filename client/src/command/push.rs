@@ -91,7 +91,7 @@ impl PushContext {
 
             return Ok(());
         } else {
-            eprintln!("⚙️ Pushing {num_missing_paths} paths to \"{cache}\" on \"{server}\" ({num_already_cached} already cached, {num_upstream} in upstream)...",
+            println!("⚙️ Pushing {num_missing_paths} paths to \"{cache}\" on \"{server}\" ({num_already_cached} already cached, {num_upstream} in upstream)...",
                 cache = self.cache_name.as_str(),
                 server = self.server_name.as_str(),
                 num_missing_paths = plan.store_path_map.len(),

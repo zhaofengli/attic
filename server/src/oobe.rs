@@ -77,25 +77,25 @@ pub async fn run_oobe() -> Result<()> {
         token.encode(&SignatureType::RS256(key), &None, &None)?
     };
 
-    eprintln!();
-    eprintln!("-----------------");
-    eprintln!("Welcome to Attic!");
-    eprintln!();
-    eprintln!("A simple setup using SQLite and local storage has been configured for you in:");
-    eprintln!();
-    eprintln!("    {}", config_path.to_str().unwrap());
-    eprintln!();
-    eprintln!("Run the following command to log into this server:");
-    eprintln!();
-    eprintln!("    attic login local http://localhost:8080 {root_token}");
-    eprintln!();
-    eprintln!("Documentations and guides:");
-    eprintln!();
-    eprintln!("    https://docs.attic.rs");
-    eprintln!();
-    eprintln!("Enjoy!");
-    eprintln!("-----------------");
-    eprintln!();
+    println!();
+    println!("-----------------");
+    println!("Welcome to Attic!");
+    println!();
+    println!("A simple setup using SQLite and local storage has been configured for you in:");
+    println!();
+    println!("    {}", config_path.to_str().unwrap());
+    println!();
+    println!("Run the following command to log into this server:");
+    println!();
+    println!("    attic login local http://localhost:8080 {root_token}");
+    println!();
+    println!("Documentations and guides:");
+    println!();
+    println!("    https://docs.attic.rs");
+    println!();
+    println!("Enjoy!");
+    println!("-----------------");
+    println!();
 
     Ok(())
 }

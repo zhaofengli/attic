@@ -217,7 +217,7 @@ async fn fallback(_: Uri) -> ServerResult<()> {
 
 /// Runs the API server.
 pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> Result<()> {
-    eprintln!("Starting API server...");
+    println!("Starting API server...");
 
     let state = StateInner::new(config).await;
 
@@ -239,7 +239,7 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
         .layer(TraceLayer::new_for_http())
         .layer(CatchPanicLayer::new());
 
-    eprintln!("Listening on {:?}...", listen);
+    println!("Listening on {:?}...", listen);
 
     let listener = TcpListener::bind(&listen).await?;
 
@@ -256,7 +256,7 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
 /// Runs database migrations.
 pub async fn run_migrations(config: Config) -> Result<()> {
-    eprintln!("Running migrations...");
+    println!("Running migrations...");
 
     let state = StateInner::new(config).await;
     let db = state.database().await?;

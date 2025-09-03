@@ -595,7 +595,7 @@ pub async fn upload_path(
             };
 
             mp.suspend(|| {
-                eprintln!(
+                println!(
                     "✅ {} ({})",
                     path.as_os_str().to_string_lossy(),
                     info_string
