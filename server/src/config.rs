@@ -108,6 +108,7 @@ pub struct Config {
     pub max_nar_info_size: usize,
 
     /// Database connection.
+    #[serde(default = "Default::default")]
     pub database: DatabaseConfig,
 
     /// Storage.
@@ -418,6 +419,15 @@ fn load_database_url_from_env() -> String {
         "Database URL must be specified in either database.url \
         or the {ENV_DATABASE_URL} environment."
     ))
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: load_database_url_from_env(),
+            heartbeat: default_db_heartbeat(),
+        }
+    }
 }
 
 impl Default for JWTConfig {
