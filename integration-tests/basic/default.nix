@@ -45,10 +45,11 @@ let
       server = {
         services.postgresql = {
           enable = true;
-          ensureDatabases = [ "attic" ];
+          ensureDatabases = [ "atticd" ];
           ensureUsers = [
             {
               name = "atticd";
+              ensureDBOwnership = true;
             }
 
             # For testing only - Don't actually do this
@@ -61,19 +62,15 @@ let
           ];
         };
 
-        systemd.services.postgresql-setup.postStart = lib.mkAfter ''
-          psql -tAc 'ALTER DATABASE "attic" OWNER TO "atticd"'
-        '';
-
         services.atticd.settings = {
-          database.url = "postgresql:///attic?host=/run/postgresql";
+          database.url = "postgresql:///atticd?host=/run/postgresql";
         };
       };
       testScriptPost = ''
         from pathlib import Path
         import os
 
-        schema = server.succeed("pg_dump --schema-only attic")
+        schema = server.succeed("pg_dump --schema-only atticd")
 
         schema_path = Path(os.environ.get("out", os.getcwd())) / "schema.sql"
         with open(schema_path, 'w') as f:
