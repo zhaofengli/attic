@@ -112,9 +112,22 @@ pub async fn apply_auth(req: Request, next: Next) -> Response {
 
             if let Err(e) = &res_token {
                 tracing::debug!("Ignoring bad JWT token: {}", e);
+                return None;
             }
 
-            res_token.ok()
+            let token = res_token.ok()?;
+
+            // Check if subject of the token is blacklisted
+            if let Some(blacklist) = &state.config.jwt.blacklist {
+                if let Some(subject) = token.sub() {
+                    if blacklist.subjects.contains(subject) {
+                        tracing::warn!("Rejecting token with blacklisted subject: {}", subject);
+                        return None;
+                    }
+                }
+            }
+
+            Some(token)
         });
 
     if let Some(token) = token {

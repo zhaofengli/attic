@@ -150,6 +150,15 @@ interval = "12 hours"
 # contains at least one of these values.
 #token-bound-audiences = ["some-audience1", "some-audience2"]
 
+# JWT token blacklist
+[jwt.blacklist]
+# Blacklisted JWT subjects
+#
+# List of JWT `sub` claims that should be rejected.
+# Tokens with these subjects will be denied access regardless
+# of signature validity.
+#subjects = ["alice", "bob"]
+
 [jwt.signing]
 # JWT RS256 secret key
 #
