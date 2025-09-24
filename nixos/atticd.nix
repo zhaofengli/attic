@@ -71,6 +71,11 @@ let
     config.services.postgresql.enable && lib.hasPrefix "postgresql://" url && hasLocalStrings;
 in
 {
+  disabledModules = [
+    # Override the upstream NixOS module, which also declares services.atticd.enable
+    "services/networking/atticd.nix"
+  ];
+
   imports = [
     (lib.mkRenamedOptionModule [ "services" "atticd" "credentialsFile" ] [ "services" "atticd" "environmentFile" ])
   ];
