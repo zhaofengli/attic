@@ -201,6 +201,8 @@ For a less temporary setup, you can set up `atticd` with PostgreSQL and S3.
 You should also place it behind a load balancer like NGINX to provide HTTPS.
 Take a look at `~/.config/attic/server.toml` to see what you can configure!
 
+For S3 storage, you can configure separate internal and public endpoints using the `public-endpoint` option, which is useful for scenarios like internal MinIO with public reverse proxy access.
+
 While it's easy to get started by running `atticd` in monolithic mode, for production use it's best to run different components of `atticd` separately with `--mode`:
 
 - `api-server`: Stateless and can be replicated.

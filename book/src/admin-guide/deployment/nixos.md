@@ -7,6 +7,7 @@ Attic provides [a NixOS module](https://github.com/zhaofengli/attic/blob/main/ni
 1. A machine running NixOS
 1. _(Optional)_ A dedicated bucket on S3 or a S3-compatible storage service
     - You can either [set up Minio](https://search.nixos.org/options?query=services.minio) or use a hosted service like [Backblaze B2](https://www.backblaze.com/b2/docs) and [Cloudflare R2](https://developers.cloudflare.com/r2).
+    - When using internal S3-compatible storage, you can configure separate `endpoint` (for internal server access) and `public-endpoint` (for client redirects) in the storage configuration.
 1. _(Optional)_ A PostgreSQL database
 
 ## Generating the Credentials File
