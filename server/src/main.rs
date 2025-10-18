@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use tokio::join;
+use tokio::sync::broadcast;
 use tokio::task::spawn;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::prelude::*;
@@ -73,9 +74,15 @@ async fn main() -> Result<()> {
         ServerMode::Monolithic => {
             attic_server::run_migrations(config.clone()).await?;
 
+            let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+
             let (api_server, _) = join!(
-                attic_server::run_api_server(opts.listen, config.clone()),
-                attic_server::gc::run_garbage_collection(config.clone()),
+                attic_server::run_api_server_with_shutdown(
+                    opts.listen,
+                    config.clone(),
+                    Some(shutdown_tx)
+                ),
+                attic_server::gc::run_garbage_collection_with_shutdown(config.clone(), shutdown_rx),
             );
 
             api_server?;
