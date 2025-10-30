@@ -26,6 +26,9 @@ pub enum AtticError {
     /// Invalid cache name "{name}"
     InvalidCacheName { name: String },
 
+    /// Invalid pin name "{name}"
+    InvalidPinName { name: String },
+
     /// Signing error: {0}
     SigningError(super::signing::Error),
 
@@ -46,6 +49,7 @@ impl AtticError {
             Self::InvalidStorePathName { .. } => "InvalidStorePathName",
             Self::InvalidStorePathHash { .. } => "InvalidStorePathHash",
             Self::InvalidCacheName { .. } => "InvalidCacheName",
+            Self::InvalidPinName { .. } => "InvalidPinName",
             Self::SigningError(_) => "SigningError",
             Self::HashError(_) => "HashError",
             Self::IoError { .. } => "IoError",

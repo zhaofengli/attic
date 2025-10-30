@@ -184,6 +184,19 @@ impl StorePath {
         Self { base_name }
     }
 
+    /// Returns the base store path of a path.
+    ///
+    /// This function does not validate whether the path is actually in the
+    /// Nix store or not.
+    ///
+    /// The path must be under the store directory.
+    pub fn parse_store_path<P1: AsRef<Path>, P2: AsRef<Path>>(
+        store_dir: P1,
+        path: P2,
+    ) -> AtticResult<Self> {
+        Self::from_base_name(to_base_name(store_dir.as_ref(), path.as_ref())?)
+    }
+
     /// Gets the hash portion of the store path.
     #[cfg(target_family = "unix")]
     pub fn to_hash(&self) -> StorePathHash {

@@ -201,6 +201,10 @@ in {
       with subtest("Check that we can create a cache"):
           client.succeed("attic cache create test")
 
+      with subtest("Check that we can list pins on an empty cache"):
+          pins = client.succeed("attic pin list test 2>&1")
+          assert pins.strip() == ""
+
       with subtest("Check that we can push a path"):
           client.succeed("${makeTestDerivation} test.nix")
           test_file = client.succeed("nix-build --no-out-link test.nix").strip()
@@ -218,6 +222,24 @@ in {
       with subtest("Check that we cannot push without required permissions"):
           client.fail(f"attic push readonly:test {test_file}")
           client.fail(f"attic push anon:test {test_file} 2>&1")
+
+      with subtest("Check that we can pin a path"):
+          client.succeed(f"attic pin create test my_pin {test_file}")
+          pins = client.succeed("attic pin list test 2>&1")
+          assert pins.strip() == f"my_pin -> {test_file}"
+          pin = client.succeed("attic pin get test my_pin 2>&1")
+          assert pin.strip() == test_file
+
+      with subtest("Check that we cannot edit pins without required permissions"):
+          client.fail("attic pin destroy readonly:test my_pin")
+          client.fail(f"attic pin create readonly:test my_pin2 {test_file}")
+
+      with subtest("Check that we cannot read pins without required permissions"):
+          client.fail("attic pin list readonly:test")
+          client.fail("attic pin get readonly:test my_pin")
+
+      with subtest("Check that we cannot get non-existent pins"):
+          client.fail("attic pin get test missing")
 
       with subtest("Check that we can push a list of paths from stdin"):
           paths = []
@@ -245,10 +267,24 @@ in {
           client.succeed("curl -sL --fail-with-body http://server:8080/test/nix-cache-info")
           client.succeed(f"curl -sL --fail-with-body http://server:8080/test/{test_file_hash}.narinfo")
 
-      with subtest("Check that we can trigger garbage collection"):
-          test_file_hash = test_file.removeprefix("/nix/store/")[:32]
+      with subtest("Check that we cannot edit pins without required permissions, even on public caches"):
+          client.fail("attic pin destroy readonly:test my_pin")
+          client.fail(f"attic pin create readonly:test my_pin2 {test_file}")
+
+      with subtest("Check that we cannot read pins without required permissions, even on public caches"):
+          client.fail("attic pin list readonly:test")
+          client.fail("attic pin get readonly:test my_pin")
+
+      with subtest("Check that garbage collection won't delete pinned paths"):
           client.succeed(f"curl -sL --fail-with-body http://server:8080/test/{test_file_hash}.narinfo")
           client.succeed("attic cache configure test --retention-period 1s")
+          time.sleep(2)
+          server.succeed("${cmd.atticd} --mode garbage-collector-once")
+          client.succeed(f"curl -sL --fail-with-body http://server:8080/test/{test_file_hash}.narinfo")
+
+      with subtest("Check that we can trigger garbage collection"):
+          client.succeed(f"curl -sL --fail-with-body http://server:8080/test/{test_file_hash}.narinfo")
+          client.succeed("attic pin destroy test my_pin")
           time.sleep(2)
           server.succeed("${cmd.atticd} --mode garbage-collector-once")
           client.fail(f"curl -sL --fail-with-body http://server:8080/test/{test_file_hash}.narinfo")
