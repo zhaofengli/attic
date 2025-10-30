@@ -25,6 +25,7 @@ pub mod hash;
 pub mod io;
 pub mod mime;
 pub mod nix_store;
+pub mod pin;
 pub mod signing;
 #[cfg(target_family = "unix")]
 pub mod testing;

@@ -10,6 +10,7 @@ use enum_as_inner::EnumAsInner;
 use crate::command::cache::{self, Cache};
 use crate::command::get_closure::{self, GetClosure};
 use crate::command::login::{self, Login};
+use crate::command::pin::{self, Pin};
 use crate::command::push::{self, Push};
 use crate::command::r#use::{self, Use};
 use crate::command::watch_store::{self, WatchStore};
@@ -28,6 +29,7 @@ pub enum Command {
     Login(Login),
     Use(Use),
     Push(Push),
+    Pin(Pin),
     Cache(Cache),
     WatchStore(WatchStore),
 
@@ -53,6 +55,7 @@ pub async fn run() -> Result<()> {
     match opts.command {
         Command::Login(_) => login::run(opts).await,
         Command::Use(_) => r#use::run(opts).await,
+        Command::Pin(_) => pin::run(opts).await,
         Command::Push(_) => push::run(opts).await,
         Command::Cache(_) => cache::run(opts).await,
         Command::WatchStore(_) => watch_store::run(opts).await,
