@@ -36,7 +36,7 @@ mod nix_store {
         let mut build = cxx_build::bridge("src/nix_store/bindings/mod.rs");
         build
             .file("src/nix_store/bindings/nix.cpp")
-            .flag("-std=c++2a")
+            .flag("-std=c++23")
             .flag("-O2")
             .includes(deps.all_include_paths());
 

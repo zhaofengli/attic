@@ -73,9 +73,9 @@ jobs:
           - ubuntu-latest
           - macos-latest
         nix:
-          - "2.24"
-          - "2.26"
           - "2.28"
+          - "2.30"
+          - "2.31"
           - "default"
     runs-on: ${{ matrix.os }}
     steps:

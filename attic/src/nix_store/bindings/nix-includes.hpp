@@ -1,4 +1,8 @@
 #if defined(ATTIC_VARIANT_NIX)
+	#if NIX_VERSION >= 229
+		#include <nix/store/globals.hh>
+		#include <nix/store/store-open.hh>
+	#endif
 	#if NIX_VERSION >= 228
 		#include <nix/store/store-api.hh>
 		#include <nix/store/local-store.hh>
