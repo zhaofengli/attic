@@ -16,9 +16,10 @@ To select the `foo` cache from server `central`, use one of the following:
 
 To configure the default server, set `default-server` in `~/.config/attic/config.toml`.
 
-## Stateless Login
+## Environment Variables Login
 
-`attic login` modifies local state. In cases where you don’t want to persist state--such as CI--you can use environment variables instead.
+`attic login` normally takes arguments.
+In cases where you want/need to run commands unattended, such as CI, you can use environment variables instead.
 
 Supported ENVs:
 
@@ -33,6 +34,8 @@ Example:
 ATTIC_LOGIN_NAME=test \
 ATTIC_LOGIN_ENDPOINT=https://attic.example.com \
 ATTIC_LOGIN_TOKEN=eyJ... \
+attic login
+# Now that you have been logged in you can now use any other command.
 attic push test:foo paths
 ```
 
