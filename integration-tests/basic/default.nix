@@ -108,6 +108,8 @@ let
             endpoint = "http://server:9000";
             region = "us-east-1";
             bucket = "attic";
+            # Path-style addressing is required for Minio
+            force-path-style = true;
             credentials = {
               access_key_id = accessKey;
               secret_access_key = secretKey;

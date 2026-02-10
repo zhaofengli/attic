@@ -51,6 +51,17 @@ pub struct S3StorageConfig {
     /// If not specified, it's read from the `AWS_ACCESS_KEY_ID` and
     /// `AWS_SECRET_ACCESS_KEY` environment variables.
     credentials: Option<S3CredentialsConfig>,
+
+    /// Whether to use path-style addressing for S3 requests.
+    ///
+    /// When enabled, requests use the format `https://s3.region.amazonaws.com/bucket/key`.
+    /// When disabled, requests use virtual-hosted-style addressing: `https://bucket.s3.region.amazonaws.com/key`.
+    ///
+    /// This is typically required for S3-compatible services like Minio.
+    /// Defaults to `true` for backward compatibility.
+    #[serde(rename = "force-path-style")]
+    #[serde(default = "default_force_path_style")]
+    force_path_style: bool,
 }
 
 /// S3 credential configuration.
@@ -61,6 +72,10 @@ pub struct S3CredentialsConfig {
 
     /// Secret access key.
     secret_access_key: String,
+}
+
+fn default_force_path_style() -> bool {
+    true
 }
 
 /// Reference to a file in an S3-compatible storage bucket.
@@ -106,7 +121,7 @@ impl S3Backend {
         }
 
         if let Some(endpoint) = &config.endpoint {
-            builder = builder.endpoint_url(endpoint).force_path_style(true);
+            builder = builder.endpoint_url(endpoint).force_path_style(config.force_path_style);
         }
 
         Ok(builder)
@@ -371,5 +386,60 @@ impl StorageBackend for S3Backend {
             bucket: self.config.bucket.clone(),
             key: name,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_s3_config_default_force_path_style() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+            endpoint = "https://s3.example.com"
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.force_path_style, true);
+    }
+
+    #[test]
+    fn test_s3_config_explicit_force_path_style_true() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+            endpoint = "https://s3.example.com"
+            force-path-style = true
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.force_path_style, true);
+    }
+
+    #[test]
+    fn test_s3_config_explicit_force_path_style_false() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+            endpoint = "https://s3.example.com"
+            force-path-style = false
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.force_path_style, false);
+    }
+
+    #[test]
+    fn test_s3_config_without_endpoint_no_force_path_style() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        // force_path_style should still have the default value
+        assert_eq!(config.force_path_style, true);
     }
 }
