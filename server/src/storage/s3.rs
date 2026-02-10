@@ -121,7 +121,9 @@ impl S3Backend {
         }
 
         if let Some(endpoint) = &config.endpoint {
-            builder = builder.endpoint_url(endpoint).force_path_style(config.force_path_style);
+            builder = builder
+                .endpoint_url(endpoint)
+                .force_path_style(config.force_path_style);
         }
 
         Ok(builder)
