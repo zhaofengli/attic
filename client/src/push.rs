@@ -58,6 +58,12 @@ pub struct PushSessionConfig {
     /// Push the specified paths only and do not compute closures.
     pub no_closure: bool,
 
+    /// Push the outputs of included derivations.
+    pub include_outputs: bool,
+
+    /// Push the derivers of selected paths.
+    pub include_derivers: bool,
+
     /// Ignore the upstream cache filter.
     pub ignore_upstream_cache_filter: bool,
 }
@@ -202,6 +208,8 @@ impl Pusher {
         &self,
         roots: Vec<StorePath>,
         no_closure: bool,
+        include_outputs: bool,
+        include_derivers: bool,
         ignore_upstream_filter: bool,
     ) -> Result<PushPlan> {
         PushPlan::plan(
@@ -211,6 +219,8 @@ impl Pusher {
             &self.cache_config,
             roots,
             no_closure,
+            include_outputs,
+            include_derivers,
             ignore_upstream_filter,
         )
         .await
@@ -348,6 +358,8 @@ impl PushSession {
                 .plan(
                     roots_vec,
                     config.no_closure,
+                    config.include_outputs,
+                    config.include_derivers,
                     config.ignore_upstream_cache_filter,
                 )
                 .await?;
@@ -409,6 +421,8 @@ impl PushPlan {
         cache_config: &CacheConfig,
         roots: Vec<StorePath>,
         no_closure: bool,
+        include_outputs: bool,
+        include_derivers: bool,
         ignore_upstream_filter: bool,
     ) -> Result<Self> {
         // Compute closure
@@ -416,7 +430,7 @@ impl PushPlan {
             roots
         } else {
             store
-                .compute_fs_closure_multi(roots, false, false, false)
+                .compute_fs_closure_multi(roots, false, include_outputs, include_derivers)
                 .await?
         };
 

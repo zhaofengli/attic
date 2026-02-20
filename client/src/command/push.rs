@@ -34,6 +34,14 @@ pub struct Push {
     #[clap(long)]
     no_closure: bool,
 
+    /// For derivations, include their outputs.
+    #[clap(long)]
+    include_outputs: bool,
+
+    /// For outputs, include their derivers.
+    #[clap(long)]
+    include_derivers: bool,
+
     /// Ignore the upstream cache filter.
     #[clap(long)]
     ignore_upstream_cache_filter: bool,
@@ -53,6 +61,8 @@ struct PushContext {
     server_name: ServerName,
     pusher: Pusher,
     no_closure: bool,
+    include_outputs: bool,
+    include_derivers: bool,
     ignore_upstream_cache_filter: bool,
 }
 
@@ -75,7 +85,7 @@ impl PushContext {
 
         let plan = self
             .pusher
-            .plan(roots, self.no_closure, self.ignore_upstream_cache_filter)
+            .plan(roots, self.no_closure, self.include_outputs, self.include_derivers, self.ignore_upstream_cache_filter)
             .await?;
 
         if plan.store_path_map.is_empty() {
@@ -113,6 +123,8 @@ impl PushContext {
     async fn push_stdin(self) -> Result<()> {
         let session = self.pusher.into_push_session(PushSessionConfig {
             no_closure: self.no_closure,
+            include_outputs: self.include_outputs,
+            include_derivers: self.include_derivers,
             ignore_upstream_cache_filter: self.ignore_upstream_cache_filter,
         });
 
@@ -178,6 +190,8 @@ pub async fn run(opts: Opts) -> Result<()> {
         server_name: server_name.clone(),
         pusher,
         no_closure: sub.no_closure,
+        include_outputs: sub.include_outputs,
+        include_derivers: sub.include_derivers,
         ignore_upstream_cache_filter: sub.ignore_upstream_cache_filter,
     };
 
