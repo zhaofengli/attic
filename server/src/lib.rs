@@ -251,16 +251,14 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let listener = TcpListener::bind(&listen).await?;
 
-    let (server_ret, heartbeat_ret) = tokio::join!(
-        axum::serve(listener, rest).into_future(),
-        async {
+    let (server_ret, heartbeat_ret) =
+        tokio::join!(axum::serve(listener, rest).into_future(), async {
             if state.config.database.heartbeat {
                 state.run_db_heartbeat().await
             } else {
                 std::future::pending::<ServerResult<()>>().await
             }
-        },
-    );
+        },);
 
     // If the heartbeat failed, surface it as a fatal error so the process exits
     // and can be restarted by the supervisor (e.g. Kubernetes).
