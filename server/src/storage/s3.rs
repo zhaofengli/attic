@@ -13,7 +13,6 @@ use aws_sdk_s3::{
     Client,
 };
 use bytes::BytesMut;
-use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
@@ -248,8 +247,8 @@ impl StorageBackend for S3Backend {
             }
         });
 
-        let mut part_number = 1;
-        let mut parts = Vec::new();
+        let mut part_number = 1i32;
+        let mut completed_parts = Vec::new();
         let mut first_chunk = Some(first_chunk);
 
         loop {
@@ -266,42 +265,31 @@ impl StorageBackend for S3Backend {
                 break;
             }
 
-            let client = self.client.clone();
-            let fut = tokio::task::spawn({
-                client
-                    .upload_part()
-                    .bucket(&self.config.bucket)
-                    .key(&name)
-                    .upload_id(upload_id)
-                    .part_number(part_number)
-                    .body(chunk.clone().into())
-                    .send()
-            });
+            let part = self
+                .client
+                .upload_part()
+                .bucket(&self.config.bucket)
+                .key(&name)
+                .upload_id(upload_id)
+                .part_number(part_number)
+                .body(chunk.into())
+                .send()
+                .await
+                .map_err(ServerError::storage_error)?;
 
-            parts.push(fut);
-            part_number += 1;
-        }
-
-        let completed_parts = join_all(parts)
-            .await
-            .into_iter()
-            .map(|join_result| join_result.unwrap())
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(ServerError::storage_error)?
-            .into_iter()
-            .enumerate()
-            .map(|(idx, part)| {
-                let part_number = idx + 1;
+            completed_parts.push(
                 CompletedPart::builder()
                     .set_e_tag(part.e_tag().map(str::to_string))
-                    .set_part_number(Some(part_number as i32))
+                    .set_part_number(Some(part_number))
                     .set_checksum_crc32(part.checksum_crc32().map(str::to_string))
                     .set_checksum_crc32_c(part.checksum_crc32_c().map(str::to_string))
                     .set_checksum_sha1(part.checksum_sha1().map(str::to_string))
                     .set_checksum_sha256(part.checksum_sha256().map(str::to_string))
-                    .build()
-            })
-            .collect::<Vec<_>>();
+                    .build(),
+            );
+
+            part_number += 1;
+        }
 
         let completed_multipart_upload = CompletedMultipartUpload::builder()
             .set_parts(Some(completed_parts))
