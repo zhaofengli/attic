@@ -53,7 +53,7 @@ pub async fn run_garbage_collection(config: Config) {
 pub async fn run_garbage_collection_once(config: Config) -> Result<()> {
     tracing::info!("Running garbage collection...");
 
-    let state = StateInner::new(config).await;
+    let state = StateInner::new(config).await?;
     run_time_based_garbage_collection(&state).await?;
     run_reap_orphan_nars(&state).await?;
     run_reap_orphan_chunks(&state).await?;

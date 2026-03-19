@@ -13,7 +13,6 @@ use aws_sdk_s3::{
     Client,
 };
 use bytes::BytesMut;
-use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
@@ -51,6 +50,17 @@ pub struct S3StorageConfig {
     /// If not specified, it's read from the `AWS_ACCESS_KEY_ID` and
     /// `AWS_SECRET_ACCESS_KEY` environment variables.
     credentials: Option<S3CredentialsConfig>,
+
+    /// Whether to use path-style addressing for S3 requests.
+    ///
+    /// When enabled, requests use the format `https://s3.region.amazonaws.com/bucket/key`.
+    /// When disabled, requests use virtual-hosted-style addressing: `https://bucket.s3.region.amazonaws.com/key`.
+    ///
+    /// This is typically required for S3-compatible services like Minio.
+    /// Defaults to `true` for backward compatibility.
+    #[serde(rename = "force-path-style")]
+    #[serde(default = "default_force_path_style")]
+    force_path_style: bool,
 }
 
 /// S3 credential configuration.
@@ -61,6 +71,10 @@ pub struct S3CredentialsConfig {
 
     /// Secret access key.
     secret_access_key: String,
+}
+
+fn default_force_path_style() -> bool {
+    true
 }
 
 /// Reference to a file in an S3-compatible storage bucket.
@@ -106,7 +120,9 @@ impl S3Backend {
         }
 
         if let Some(endpoint) = &config.endpoint {
-            builder = builder.endpoint_url(endpoint).force_path_style(true);
+            builder = builder
+                .endpoint_url(endpoint)
+                .force_path_style(config.force_path_style);
         }
 
         Ok(builder)
@@ -231,8 +247,8 @@ impl StorageBackend for S3Backend {
             }
         });
 
-        let mut part_number = 1;
-        let mut parts = Vec::new();
+        let mut part_number = 1i32;
+        let mut completed_parts = Vec::new();
         let mut first_chunk = Some(first_chunk);
 
         loop {
@@ -249,42 +265,31 @@ impl StorageBackend for S3Backend {
                 break;
             }
 
-            let client = self.client.clone();
-            let fut = tokio::task::spawn({
-                client
-                    .upload_part()
-                    .bucket(&self.config.bucket)
-                    .key(&name)
-                    .upload_id(upload_id)
-                    .part_number(part_number)
-                    .body(chunk.clone().into())
-                    .send()
-            });
+            let part = self
+                .client
+                .upload_part()
+                .bucket(&self.config.bucket)
+                .key(&name)
+                .upload_id(upload_id)
+                .part_number(part_number)
+                .body(chunk.into())
+                .send()
+                .await
+                .map_err(ServerError::storage_error)?;
 
-            parts.push(fut);
-            part_number += 1;
-        }
-
-        let completed_parts = join_all(parts)
-            .await
-            .into_iter()
-            .map(|join_result| join_result.unwrap())
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(ServerError::storage_error)?
-            .into_iter()
-            .enumerate()
-            .map(|(idx, part)| {
-                let part_number = idx + 1;
+            completed_parts.push(
                 CompletedPart::builder()
                     .set_e_tag(part.e_tag().map(str::to_string))
-                    .set_part_number(Some(part_number as i32))
+                    .set_part_number(Some(part_number))
                     .set_checksum_crc32(part.checksum_crc32().map(str::to_string))
                     .set_checksum_crc32_c(part.checksum_crc32_c().map(str::to_string))
                     .set_checksum_sha1(part.checksum_sha1().map(str::to_string))
                     .set_checksum_sha256(part.checksum_sha256().map(str::to_string))
-                    .build()
-            })
-            .collect::<Vec<_>>();
+                    .build(),
+            );
+
+            part_number += 1;
+        }
 
         let completed_multipart_upload = CompletedMultipartUpload::builder()
             .set_parts(Some(completed_parts))
@@ -371,5 +376,60 @@ impl StorageBackend for S3Backend {
             bucket: self.config.bucket.clone(),
             key: name,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_s3_config_default_force_path_style() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+            endpoint = "https://s3.example.com"
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.force_path_style, true);
+    }
+
+    #[test]
+    fn test_s3_config_explicit_force_path_style_true() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+            endpoint = "https://s3.example.com"
+            force-path-style = true
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.force_path_style, true);
+    }
+
+    #[test]
+    fn test_s3_config_explicit_force_path_style_false() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+            endpoint = "https://s3.example.com"
+            force-path-style = false
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.force_path_style, false);
+    }
+
+    #[test]
+    fn test_s3_config_without_endpoint_no_force_path_style() {
+        let toml = r#"
+            region = "us-east-1"
+            bucket = "test-bucket"
+        "#;
+
+        let config: S3StorageConfig = toml::from_str(toml).unwrap();
+        // force_path_style should still have the default value
+        assert_eq!(config.force_path_style, true);
     }
 }

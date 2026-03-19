@@ -219,7 +219,7 @@ async fn get_nar(
             Download::Url(url) => Ok(Redirect::temporary(&url).into_response()),
             Download::AsyncRead(stream) => {
                 let stream = ReaderStream::new(stream).map_err(|e| {
-                    tracing::error!(%e, "Stream error");
+                    tracing::warn!(%e, "Stream error (client may have disconnected)");
                     e
                 });
                 let body = Body::from_stream(stream);
@@ -263,7 +263,7 @@ async fn get_nar(
         // TODO: Make num_prefetch configurable
         // The ideal size depends on the average chunk size
         let merged = merge_chunks(chunks, streamer, storage, 2).map_err(|e| {
-            tracing::error!(%e, "Stream error");
+            tracing::warn!(%e, "Stream error (client may have disconnected)");
             e
         });
         let body = Body::from_stream(merged);

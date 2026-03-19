@@ -63,7 +63,7 @@ pub struct StateInner {
     config: Config,
 
     /// Handle to the database.
-    database: OnceCell<DatabaseConnection>,
+    database: DatabaseConnection,
 
     /// Handle to the storage backend.
     storage: OnceCell<Arc<Box<dyn StorageBackend>>>,
@@ -95,42 +95,43 @@ struct RequestStateInner {
 }
 
 impl StateInner {
-    async fn new(config: Config) -> State {
-        Arc::new(Self {
+    async fn new(config: Config) -> Result<State> {
+        let database = Self::connect_database(&config).await?;
+        Ok(Arc::new(Self {
             config,
-            database: OnceCell::new(),
+            database,
             storage: OnceCell::new(),
-        })
+        }))
+    }
+
+    /// Connects to the database and applies SQLite-specific optimizations.
+    async fn connect_database(config: &Config) -> Result<DatabaseConnection> {
+        let db = Database::connect(&config.database.url)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to connect to database: {}", e))?;
+        if let DatabaseConnection::SqlxSqlitePoolConnection(ref conn) = db {
+            // execute some sqlite-specific performance optimizations
+            // see https://phiresky.github.io/blog/2020/sqlite-performance-tuning/ for
+            // more details
+            // intentionally ignore errors from this: this is purely for performance,
+            // not for correctness, so we can live without this
+            _ = conn
+                .execute_unprepared(
+                    "
+                pragma journal_mode=WAL;
+                pragma synchronous=normal;
+                pragma temp_store=memory;
+                pragma mmap_size = 30000000000;
+                ",
+                )
+                .await;
+        }
+        Ok(db)
     }
 
     /// Returns a handle to the database.
     async fn database(&self) -> ServerResult<&DatabaseConnection> {
-        self.database
-            .get_or_try_init(|| async {
-                let db = Database::connect(&self.config.database.url)
-                    .await
-                    .map_err(ServerError::database_error);
-                if let Ok(DatabaseConnection::SqlxSqlitePoolConnection(ref conn)) = db {
-                    // execute some sqlite-specific performance optimizations
-                    // see https://phiresky.github.io/blog/2020/sqlite-performance-tuning/ for
-                    // more details
-                    // intentionally ignore errors from this: this is purely for performance,
-                    // not for correctness, so we can live without this
-                    _ = conn
-                        .execute_unprepared(
-                            "
-                        pragma journal_mode=WAL;
-                        pragma synchronous=normal;
-                        pragma temp_store=memory;
-                        pragma mmap_size = 30000000000;
-                        ",
-                        )
-                        .await;
-                }
-
-                db
-            })
-            .await
+        Ok(&self.database)
     }
 
     /// Returns a handle to the storage backend.
@@ -154,14 +155,20 @@ impl StateInner {
     }
 
     /// Sends periodic heartbeat queries to the database.
+    ///
+    /// Returns an error if the heartbeat query fails, which will cause
+    /// the server to exit and be restarted by the process supervisor.
     async fn run_db_heartbeat(&self) -> ServerResult<()> {
         let db = self.database().await?;
         let stmt =
             Statement::from_string(db.get_database_backend(), "SELECT 'heartbeat';".to_string());
 
         loop {
-            let _ = db.execute(stmt.clone()).await;
             time::sleep(Duration::from_secs(60)).await;
+            if let Err(e) = db.execute(stmt.clone()).await {
+                tracing::error!(%e, "Database heartbeat failed - connection may be lost");
+                return Err(ServerError::database_error(e));
+            }
         }
     }
 }
@@ -220,7 +227,7 @@ async fn fallback(_: Uri) -> ServerResult<()> {
 pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> Result<()> {
     eprintln!("Starting API server...");
 
-    let state = StateInner::new(config).await;
+    let state = StateInner::new(config).await?;
 
     let listen = if let Some(cli_listen) = cli_listen {
         cli_listen
@@ -244,12 +251,18 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let listener = TcpListener::bind(&listen).await?;
 
-    let (server_ret, _) = tokio::join!(axum::serve(listener, rest).into_future(), async {
-        if state.config.database.heartbeat {
-            let _ = state.run_db_heartbeat().await;
-        }
-    },);
+    let (server_ret, heartbeat_ret) =
+        tokio::join!(axum::serve(listener, rest).into_future(), async {
+            if state.config.database.heartbeat {
+                state.run_db_heartbeat().await
+            } else {
+                std::future::pending::<ServerResult<()>>().await
+            }
+        },);
 
+    // If the heartbeat failed, surface it as a fatal error so the process exits
+    // and can be restarted by the supervisor (e.g. Kubernetes).
+    heartbeat_ret?;
     server_ret?;
 
     Ok(())
@@ -259,7 +272,7 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 pub async fn run_migrations(config: Config) -> Result<()> {
     eprintln!("Running migrations...");
 
-    let state = StateInner::new(config).await;
+    let state = StateInner::new(config).await?;
     let db = state.database().await?;
     Migrator::up(db, None).await?;
 
