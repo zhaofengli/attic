@@ -3,13 +3,15 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr as _;
+use std::sync::Arc;
 
 use async_stream::try_stream;
 use futures::Stream;
-use serde::Deserialize;
+use nix_daemon::{Progress, Store};
 use tokio::io::AsyncReadExt;
 use tokio::net::UnixStream;
 use tokio::process::Command;
+use tokio::sync::Mutex;
 
 use super::{to_base_name, StorePath, ValidPathInfo};
 use crate::error::AtticResult;
@@ -18,40 +20,23 @@ use crate::AtticError;
 
 /// High-level wrapper for the Unix Domain Socket Nix Store.
 pub struct NixStore {
-    daemon: nix_daemon::nix::DaemonStore<UnixStream>,
+    daemon: Arc<Mutex<nix_daemon::nix::DaemonStore<UnixStream>>>,
 
     /// Path to the Nix store itself.
     store_dir: PathBuf,
 }
 
-/// The output of `nix path-info --json`.
-#[derive(Debug, Clone, Deserialize)]
-struct NixPathInfoJson {
-    // Depending on the Nix version this might or might not be there.
-    path: Option<PathBuf>,
-
-    #[serde(rename = "narHash")]
-    nar_hash: String,
-
-    #[serde(rename = "narSize")]
-    nar_size: u64,
-
-    #[serde(default)]
-    references: Vec<PathBuf>,
-
-    #[serde(default)]
-    signatures: Vec<String>,
-}
-
 impl NixStore {
     pub async fn connect() -> AtticResult<Self> {
         Ok(Self {
-            daemon: nix_daemon::nix::DaemonStore::builder()
-                .connect_unix("/nix/var/nix/daemon-socket/socket")
-                .await
-                .map_err(|e| AtticError::StoreConnectError {
-                    reason: e.to_string(),
-                })?,
+            daemon: Arc::new(Mutex::new(
+                nix_daemon::nix::DaemonStore::builder()
+                    .connect_unix("/nix/var/nix/daemon-socket/socket")
+                    .await
+                    .map_err(|e| AtticError::StoreConnectError {
+                        reason: e.to_string(),
+                    })?,
+            )),
             // TODO: Make this method async and call nix-instantiate --raw --eval -E 'builtins.storeDir'
             store_dir: PathBuf::from_str("/nix/store").unwrap(),
         })
@@ -201,55 +186,35 @@ impl NixStore {
 
     /// Returns detailed information on a path.
     pub async fn query_path_info(&self, store_path: StorePath) -> AtticResult<ValidPathInfo> {
-        let full_store_path = self.store_dir().join(&store_path.base_name);
-        let child = Command::new("nix")
-            .arg("--experimental-features")
-            .arg("nix-command")
-            .arg("path-info")
-            .arg("--json")
-            .arg("--")
-            .arg(&full_store_path)
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
+        let path_info = {
+            let full_store_path = self.get_full_path(&store_path);
+            let full_store_path_str =
+                full_store_path
+                    .to_str()
+                    .ok_or_else(|| AtticError::InvalidStorePath {
+                        path: full_store_path.clone(),
+                        reason: "Invalid UTF-8",
+                    })?;
 
-        if !child.status.success() {
-            return Err(std::io::Error::other(format!(
-                "nix path-info {} exited with {}: {}",
-                full_store_path.display(),
-                child.status,
-                str::from_utf8(&child.stderr).unwrap_or("(invalid UTF-8)")
-            )))?;
-        }
-
-        //eprintln!("{}", str::from_utf8(&child.stdout).unwrap());
-
-        let path_info: serde_json::Value = serde_json::from_slice(&child.stdout)?;
-
-        // We have three cases here depending on the Nix version! This is kind
-        // of ugly, because we tried to be Nix version agnostic.
-        //
-        // TODO Find a better way to handle this.
-        //
-        // Either:
-        // 1. The output is a single object (e.g. `{"path": ...}`)
-        // 2. The output is an array of objects (e.g. `[{"path": ...}]`)
-        // 3. The output is a JSON object with a single key (e.g. `{"/nix/store/...": {"path": ...}}`)
-
-        let path_info: NixPathInfoJson = if path_info.is_array() {
-            serde_json::from_value(path_info[0].clone())?
-        } else if path_info.is_object() {
-            let key = path_info.as_object().unwrap().keys().next().unwrap();
-            let mut path_info: NixPathInfoJson = serde_json::from_value(path_info[key].clone())?;
-            path_info.path = Some(key.clone().into());
-            path_info
-        } else {
-            serde_json::from_value(path_info)?
+            let mut daemon = self.daemon.lock().await;
+            daemon
+                .query_pathinfo(full_store_path_str)
+                .result()
+                .await
+                .map_err(|_e| AtticError::InvalidStorePath {
+                    path: full_store_path.clone(),
+                    reason: "Failed to query",
+                })?
+                .ok_or_else(|| AtticError::InvalidStorePath {
+                    path: full_store_path,
+                    reason: "Missing path",
+                })?
         };
 
         Ok(ValidPathInfo {
-            path: self.parse_store_path(path_info.path.unwrap())?,
-            nar_hash: Hash::from_sri(&path_info.nar_hash)?,
+            path: store_path,
+            // TODO The documentation of PathInfo lies that the string has a sha256- prefix.
+            nar_hash: Hash::from_typed(&format!("sha256:{}", path_info.nar_hash))?,
             nar_size: path_info.nar_size,
             references: path_info
                 .references
@@ -257,9 +222,7 @@ impl NixStore {
                 .map(|p| -> AtticResult<PathBuf> { Ok(self.parse_store_path(p)?.base_name) })
                 .collect::<AtticResult<Vec<_>>>()?,
             sigs: path_info.signatures,
-
-            // TODO Remove the ca field across the codebase.
-            ca: None,
+            ca: path_info.ca,
         })
     }
 }
