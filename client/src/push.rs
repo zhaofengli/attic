@@ -26,7 +26,7 @@ use anyhow::{anyhow, Context as _, Result};
 use async_channel as channel;
 use bytes::Bytes;
 use futures::future::join_all;
-use futures::stream::{self, Stream, StreamExt, TryStreamExt};
+use futures::stream::{Stream, TryStreamExt};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::{spawn, JoinHandle};
@@ -425,7 +425,8 @@ impl PushPlan {
         };
 
         let mut store_path_map: HashMap<StorePathHash, ValidPathInfo> = {
-            stream::iter(closure.iter().cloned())
+            let futures = closure
+                .iter()
                 .map(|path| {
                     let store = store.clone();
                     let path = path.clone();
@@ -433,15 +434,12 @@ impl PushPlan {
 
                     async move {
                         let path_info = store.query_path_info(path).await?;
-                        Ok::<_, anyhow::Error>((path_hash, path_info))
+                        Ok((path_hash, path_info))
                     }
                 })
-                // TODO While we shell out to the nix CLI to query path info,
-                // limit the total concurrency. Otherwise, we see the Nix daemon
-                // rejecting connections.
-                .buffer_unordered(10)
-                .try_collect()
-                .await?
+                .collect::<Vec<_>>();
+
+            join_all(futures).await.into_iter().collect::<Result<_>>()?
         };
 
         let num_all_paths = store_path_map.len();
