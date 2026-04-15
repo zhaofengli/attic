@@ -142,7 +142,7 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     let config = Config::load()?;
 
-    let store = Arc::new(NixStore::connect()?);
+    let store = Arc::new(NixStore::connect().await?);
 
     let (server_name, server, cache_name) = config.resolve_cache(&sub.cache)?;
 

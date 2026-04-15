@@ -2,12 +2,13 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::str::FromStr;
+use std::str::FromStr as _;
 
 use async_stream::try_stream;
 use futures::Stream;
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
+use tokio::net::UnixStream;
 use tokio::process::Command;
 
 use super::{to_base_name, StorePath, ValidPathInfo};
@@ -17,6 +18,8 @@ use crate::AtticError;
 
 /// High-level wrapper for the Unix Domain Socket Nix Store.
 pub struct NixStore {
+    daemon: nix_daemon::nix::DaemonStore<UnixStream>,
+
     /// Path to the Nix store itself.
     store_dir: PathBuf,
 }
@@ -41,8 +44,14 @@ struct NixPathInfoJson {
 }
 
 impl NixStore {
-    pub fn connect() -> AtticResult<Self> {
+    pub async fn connect() -> AtticResult<Self> {
         Ok(Self {
+            daemon: nix_daemon::nix::DaemonStore::builder()
+                .connect_unix("/nix/var/nix/daemon-socket/socket")
+                .await
+                .map_err(|e| AtticError::StoreConnectError {
+                    reason: e.to_string(),
+                })?,
             // TODO: Make this method async and call nix-instantiate --raw --eval -E 'builtins.storeDir'
             store_dir: PathBuf::from_str("/nix/store").unwrap(),
         })

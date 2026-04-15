@@ -21,7 +21,7 @@ pub struct GetClosure {
 pub async fn run(opts: Opts) -> Result<()> {
     let sub = opts.command.as_get_closure().unwrap();
 
-    let store = NixStore::connect()?;
+    let store = NixStore::connect().await?;
     let store_path = store.follow_store_path(&sub.store_path)?;
     let closure = store
         .compute_fs_closure(store_path, sub.include_outputs)

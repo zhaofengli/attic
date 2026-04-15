@@ -11,6 +11,9 @@ pub type AtticResult<T> = Result<T, AtticError>;
 /// An error.
 #[derive(Debug, Display)]
 pub enum AtticError {
+    /// Failed to connect to the Nix store: {reason}
+    StoreConnectError { reason: String },
+
     /// Invalid store path {path:?}: {reason}
     InvalidStorePath { path: PathBuf, reason: &'static str },
 
@@ -42,6 +45,7 @@ pub enum AtticError {
 impl AtticError {
     pub fn name(&self) -> &'static str {
         match self {
+            Self::StoreConnectError { .. } => "StoreConnectError",
             Self::InvalidStorePath { .. } => "InvalidStorePath",
             Self::InvalidStorePathName { .. } => "InvalidStorePathName",
             Self::InvalidStorePathHash { .. } => "InvalidStorePathHash",

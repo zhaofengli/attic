@@ -25,6 +25,7 @@ nix-base32 = "0.2.0"
 pin-project = "1.1.10"
 tempfile = "3"
 wildmatch = "2.4.0"
+nix-daemon = "0.1.1"
 
 [dependencies.tokio]
 workspace = true
