@@ -84,7 +84,7 @@ RString CPathInfo::ca() {
 // =========
 
 CNixStore::CNixStore() {
-	std::map<std::string, std::string> params;
+	nix::StoreReference::Params params;
 	std::lock_guard<std::mutex> lock(g_init_nix_mutex);
 
 	if (!g_init_nix_done) {
