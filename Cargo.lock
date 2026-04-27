@@ -314,7 +314,7 @@ dependencies = [
  "humantime",
  "humantime-serde",
  "itoa",
- "rand 0.8.5",
+ "rand 0.9.1",
  "regex",
  "rsa 0.9.8",
  "ryu",
