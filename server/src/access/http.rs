@@ -108,6 +108,7 @@ pub async fn apply_auth(req: Request, next: Next) -> Response {
                 &signature_type,
                 &state.config.jwt.token_bound_issuer,
                 &state.config.jwt.token_bound_audiences,
+                state.config.jwt.time_tolerance,
             );
 
             if let Err(e) = &res_token {
