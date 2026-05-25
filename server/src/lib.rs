@@ -237,6 +237,7 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
         .with_prefix("atticd")
+        .with_default_metrics()
         .with_metrics_from_fn(|| {
             PrometheusBuilder::new()
                 .set_buckets_for_metric(
@@ -261,7 +262,6 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
                 .install_recorder()
                 .unwrap()
         })
-        .with_default_metrics()
         .build_pair();
 
     let metrics_route =
