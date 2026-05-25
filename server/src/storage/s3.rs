@@ -397,16 +397,6 @@ impl StorageBackend for S3Backend {
         Ok(())
     }
 
-    async fn download_file(&self, name: String, prefer_stream: bool) -> ServerResult<Download> {
-        let req = self
-            .client
-            .get_object()
-            .bucket(&self.config.bucket)
-            .key(&name);
-
-        self.get_download(req, prefer_stream).await
-    }
-
     async fn download_file_db(
         &self,
         file: &RemoteFile,
