@@ -185,12 +185,12 @@ async fn upload_path_dedup(
     state: &State,
     existing_nar: NarGuard,
 ) -> ServerResult<Json<UploadPathResult>> {
-    if state.config.require_proof_of_possession {
-        let (mut stream, nar_compute) = HashReader::new(stream, Sha256::new());
-        tokio::io::copy(&mut stream, &mut tokio::io::sink())
-            .await
-            .map_err(ServerError::request_error)?;
+    let (mut stream, nar_compute) = HashReader::new(stream, Sha256::new());
+    tokio::io::copy(&mut stream, &mut tokio::io::sink())
+        .await
+        .map_err(ServerError::request_error)?;
 
+    if state.config.require_proof_of_possession {
         // FIXME: errors
         let (nar_hash, nar_size) = nar_compute.get().unwrap();
         let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
