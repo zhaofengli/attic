@@ -39,6 +39,7 @@ use axum::{
     routing::get,
     Router,
 };
+use axum_prometheus::metrics_exporter_prometheus::{Matcher, PrometheusBuilder};
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use sea_orm::{query::Statement, ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use tokio::net::TcpListener;
@@ -236,6 +237,30 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
         .with_prefix("atticd")
+        .with_metrics_from_fn(|| {
+            PrometheusBuilder::new()
+                .set_buckets_for_metric(
+                    Matcher::Full("atticd_http_requests_duration_seconds".to_string()),
+                    &[
+                        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+                    ],
+                )
+                .unwrap()
+                .set_buckets_for_metric(
+                    Matcher::Full("atticd_oss_request_duration_seconds".to_string()),
+                    &[
+                        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+                    ],
+                )
+                .unwrap()
+                .set_buckets_for_metric(
+                    Matcher::Full("atticd_db_query_duration_seconds".to_string()),
+                    &[0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+                )
+                .unwrap()
+                .install_recorder()
+                .unwrap()
+        })
         .with_default_metrics()
         .build_pair();
 
