@@ -36,8 +36,10 @@ use anyhow::Result;
 use axum::{
     extract::Extension,
     http::{uri::Scheme, Uri},
+    routing::get,
     Router,
 };
+use axum_prometheus::PrometheusMetricLayerBuilder;
 use sea_orm::{query::Statement, ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use tokio::net::TcpListener;
 use tokio::sync::OnceCell;
@@ -232,14 +234,27 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
         state.config.listen.to_owned()
     };
 
-    let rest = Router::new()
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayerBuilder::new()
+        .with_prefix("atticd")
+        .with_default_metrics()
+        .build_pair();
+
+    let metrics_route =
+        Router::new().route("/metrics", get(|| async move { metric_handle.render() }));
+
+    let api_routes = Router::new()
         .merge(api::get_router())
-        .fallback(fallback)
-        // middlewares
+        // middlewares — apply only to API routes, not /metrics
         .layer(axum::middleware::from_fn(apply_auth))
         .layer(axum::middleware::from_fn(set_visibility_header))
         .layer(axum::middleware::from_fn(init_request_state))
-        .layer(axum::middleware::from_fn(restrict_host))
+        .layer(axum::middleware::from_fn(restrict_host));
+
+    let rest = Router::new()
+        .merge(metrics_route)
+        .merge(api_routes)
+        .fallback(fallback)
+        .layer(prometheus_layer)
         .layer(Extension(state.clone()))
         .layer(TraceLayer::new_for_http())
         .layer(CatchPanicLayer::new());

@@ -2,6 +2,7 @@ pub mod entity;
 pub mod migration;
 
 use std::ops::Deref;
+use std::time::Instant;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -156,10 +157,16 @@ impl AtticDatabase for DatabaseConnection {
         }
 
         let stmt = query.build(self.get_database_backend());
-        let results = self
-            .query_all(stmt)
-            .await
-            .map_err(ServerError::database_error)?;
+        let start = Instant::now();
+        let query_result = self.query_all(stmt).await;
+        let status = if query_result.is_ok() { "ok" } else { "err" };
+        metrics::histogram!(
+            "atticd_db_query_duration_seconds",
+            "query" => "find_object_and_chunks",
+            "status" => status,
+        )
+        .record(start.elapsed().as_secs_f64());
+        let results = query_result.map_err(ServerError::database_error)?;
 
         if results.is_empty() {
             return Err(ErrorKind::NoSuchObject.into());
@@ -308,14 +315,22 @@ impl AtticDatabase for DatabaseConnection {
     async fn bump_object_last_accessed(&self, object_id: i64) -> ServerResult<()> {
         let now = Utc::now();
 
-        Object::update(object::ActiveModel {
+        let start = Instant::now();
+        let result = Object::update(object::ActiveModel {
             id: Set(object_id),
             last_accessed_at: Set(Some(now)),
             ..Default::default()
         })
         .exec(self)
-        .await
-        .map_err(ServerError::database_error)?;
+        .await;
+        let status = if result.is_ok() { "ok" } else { "err" };
+        metrics::histogram!(
+            "atticd_db_query_duration_seconds",
+            "query" => "bump_object_last_accessed",
+            "status" => status,
+        )
+        .record(start.elapsed().as_secs_f64());
+        result.map_err(ServerError::database_error)?;
 
         Ok(())
     }

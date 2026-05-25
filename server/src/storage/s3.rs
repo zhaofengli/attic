@@ -1,6 +1,6 @@
 //! S3 remote files.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
@@ -146,7 +146,16 @@ impl S3Backend {
         prefer_stream: bool,
     ) -> ServerResult<Download> {
         if prefer_stream {
-            let output = req.send().await.map_err(ServerError::storage_error)?;
+            let start = Instant::now();
+            let result = req.send().await;
+            let status = if result.is_ok() { "ok" } else { "err" };
+            metrics::histogram!(
+                "atticd_oss_request_duration_seconds",
+                "op" => "get_object",
+                "status" => status,
+            )
+            .record(start.elapsed().as_secs_f64());
+            let output = result.map_err(ServerError::storage_error)?;
 
             Ok(Download::AsyncRead(Box::new(output.body.into_async_read())))
         } else {
@@ -154,10 +163,16 @@ impl S3Backend {
             let presign_config = PresigningConfig::expires_in(Duration::from_secs(600))
                 .map_err(ServerError::storage_error)?;
 
-            let presigned = req
-                .presigned(presign_config)
-                .await
-                .map_err(ServerError::storage_error)?;
+            let start = Instant::now();
+            let result = req.presigned(presign_config).await;
+            let status = if result.is_ok() { "ok" } else { "err" };
+            metrics::histogram!(
+                "atticd_oss_request_duration_seconds",
+                "op" => "get_object_presign",
+                "status" => status,
+            )
+            .record(start.elapsed().as_secs_f64());
+            let presigned = result.map_err(ServerError::storage_error)?;
 
             Ok(Download::Url(presigned.uri().to_string()))
         }
@@ -178,15 +193,23 @@ impl StorageBackend for S3Backend {
 
         if first_chunk.len() < CHUNK_SIZE {
             // do a normal PutObject
-            let put_object = self
+            let start = Instant::now();
+            let result = self
                 .client
                 .put_object()
                 .bucket(&self.config.bucket)
                 .key(&name)
                 .body(first_chunk.into())
                 .send()
-                .await
-                .map_err(ServerError::storage_error)?;
+                .await;
+            let status = if result.is_ok() { "ok" } else { "err" };
+            metrics::histogram!(
+                "atticd_oss_request_duration_seconds",
+                "op" => "put_object",
+                "status" => status,
+            )
+            .record(start.elapsed().as_secs_f64());
+            let put_object = result.map_err(ServerError::storage_error)?;
 
             tracing::debug!("put_object -> {:#?}", put_object);
 
@@ -197,14 +220,22 @@ impl StorageBackend for S3Backend {
             }));
         }
 
-        let multipart = self
+        let start = Instant::now();
+        let result = self
             .client
             .create_multipart_upload()
             .bucket(&self.config.bucket)
             .key(&name)
             .send()
-            .await
-            .map_err(ServerError::storage_error)?;
+            .await;
+        let status = if result.is_ok() { "ok" } else { "err" };
+        metrics::histogram!(
+            "atticd_oss_request_duration_seconds",
+            "op" => "create_multipart_upload",
+            "status" => status,
+        )
+        .record(start.elapsed().as_secs_f64());
+        let multipart = result.map_err(ServerError::storage_error)?;
 
         let upload_id = multipart.upload_id().unwrap();
 
@@ -250,15 +281,30 @@ impl StorageBackend for S3Backend {
             }
 
             let client = self.client.clone();
-            let fut = tokio::task::spawn({
-                client
+            let bucket = self.config.bucket.clone();
+            let name_for_part = name.clone();
+            let upload_id_for_part = upload_id.to_owned();
+            let chunk_for_part = chunk.clone();
+            let pn = part_number;
+            let fut = tokio::task::spawn(async move {
+                let start = Instant::now();
+                let result = client
                     .upload_part()
-                    .bucket(&self.config.bucket)
-                    .key(&name)
-                    .upload_id(upload_id)
-                    .part_number(part_number)
-                    .body(chunk.clone().into())
+                    .bucket(bucket)
+                    .key(name_for_part)
+                    .upload_id(upload_id_for_part)
+                    .part_number(pn)
+                    .body(chunk_for_part.into())
                     .send()
+                    .await;
+                let status = if result.is_ok() { "ok" } else { "err" };
+                metrics::histogram!(
+                    "atticd_oss_request_duration_seconds",
+                    "op" => "upload_part",
+                    "status" => status,
+                )
+                .record(start.elapsed().as_secs_f64());
+                result
             });
 
             parts.push(fut);
@@ -290,7 +336,8 @@ impl StorageBackend for S3Backend {
             .set_parts(Some(completed_parts))
             .build();
 
-        let completion = self
+        let start = Instant::now();
+        let result = self
             .client
             .complete_multipart_upload()
             .bucket(&self.config.bucket)
@@ -298,8 +345,15 @@ impl StorageBackend for S3Backend {
             .upload_id(upload_id)
             .multipart_upload(completed_multipart_upload)
             .send()
-            .await
-            .map_err(ServerError::storage_error)?;
+            .await;
+        let status = if result.is_ok() { "ok" } else { "err" };
+        metrics::histogram!(
+            "atticd_oss_request_duration_seconds",
+            "op" => "complete_multipart_upload",
+            "status" => status,
+        )
+        .record(start.elapsed().as_secs_f64());
+        let completion = result.map_err(ServerError::storage_error)?;
 
         tracing::debug!("complete_multipart_upload -> {:#?}", completion);
 
