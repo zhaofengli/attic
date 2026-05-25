@@ -262,7 +262,14 @@ async fn get_nar(
 
         // TODO: Make num_prefetch configurable
         // The ideal size depends on the average chunk size
-        let merged = merge_chunks(chunks, streamer, storage, 2).map_err(|e| {
+        //
+        // Bumped from 2 to 16 to reduce per-NAR-stream latency.
+        // With OSS RTT ~33ms and chunks of ~64 KiB, prefetch=2 caps a single
+        // NAR-stream at ~3.8 MiB/s, causing 10-min nix-store timeouts on
+        // large (LLVM, GCC, etc.) derivations under concurrent worker pulls.
+        // At prefetch=16 the per-stream cap becomes ~30 MiB/s, comfortably
+        // covering all closures within the timeout.
+        let merged = merge_chunks(chunks, streamer, storage, 16).map_err(|e| {
             tracing::error!(%e, "Stream error");
             e
         });
