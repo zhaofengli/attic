@@ -255,7 +255,9 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
                 .unwrap()
                 .set_buckets_for_metric(
                     Matcher::Full("atticd_db_query_duration_seconds".to_string()),
-                    &[0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+                    &[
+                        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+                    ],
                 )
                 .unwrap()
                 .install_recorder()
