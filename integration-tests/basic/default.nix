@@ -63,6 +63,7 @@ let
 
         systemd.services.postgresql-setup.postStart = lib.mkAfter ''
           psql -tAc 'ALTER DATABASE "attic" OWNER TO "atticd"'
+          psql -d attic -tAc 'GRANT CREATE ON SCHEMA public TO "atticd"'
         '';
 
         services.atticd.settings = {
