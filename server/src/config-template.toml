@@ -82,6 +82,19 @@ path = "%storage_path%"
 #  access_key_id = ""
 #  secret_access_key = ""
 
+# Stream resume
+#
+# When atticd streams a NAR through itself (multi-chunk reassembly,
+# or single-object downloads with `prefer-stream` enabled) and the
+# upstream S3 connection drops mid-transfer, the client response has
+# already started — the only way to deliver a complete NAR is to
+# reconnect to S3 with a Range request and keep feeding the same
+# downstream body. These settings control that behavior.
+#[storage.stream-resume]
+#  max-retries = 3          # 0 disables stream resume
+#  initial-backoff-ms = 100
+#  max-backoff-ms = 5000
+
 # Data chunking
 #
 # Warning: If you change any of the values here, it will be
