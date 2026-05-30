@@ -51,6 +51,23 @@ pub struct S3StorageConfig {
     /// If not specified, it's read from the `AWS_ACCESS_KEY_ID` and
     /// `AWS_SECRET_ACCESS_KEY` environment variables.
     credentials: Option<S3CredentialsConfig>,
+
+    /// Whether to stream NARs through atticd instead of redirecting
+    /// clients to presigned S3 URLs.
+    ///
+    /// When false (the default), single-object downloads are served
+    /// via an HTTP redirect to a presigned URL — the client fetches
+    /// bytes directly from the S3 endpoint. This is cheapest for
+    /// atticd but requires that clients can reach the configured S3
+    /// endpoint themselves.
+    ///
+    /// When true, atticd fetches from S3 and streams the bytes
+    /// through itself. Useful when the S3 endpoint is not reachable
+    /// from clients, or to apply bandwidth/audit controls at the
+    /// atticd layer. Multi-chunk NAR reassembly always streams
+    /// regardless of this setting.
+    #[serde(rename = "prefer-stream", default)]
+    prefer_stream: bool,
 }
 
 /// S3 credential configuration.
@@ -145,7 +162,7 @@ impl S3Backend {
         req: GetObjectFluentBuilder,
         prefer_stream: bool,
     ) -> ServerResult<Download> {
-        if prefer_stream {
+        if prefer_stream || self.config.prefer_stream {
             let output = req.send().await.map_err(ServerError::storage_error)?;
 
             Ok(Download::AsyncRead(Box::new(output.body.into_async_read())))
@@ -371,5 +388,49 @@ impl StorageBackend for S3Backend {
             bucket: self.config.bucket.clone(),
             key: name,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(s: &str) -> S3StorageConfig {
+        toml::from_str(s).expect("failed to parse S3StorageConfig")
+    }
+
+    #[test]
+    fn prefer_stream_defaults_to_false() {
+        let cfg = parse(
+            r#"
+            region = "us-east-1"
+            bucket = "my-bucket"
+            "#,
+        );
+        assert!(!cfg.prefer_stream);
+    }
+
+    #[test]
+    fn prefer_stream_can_be_enabled() {
+        let cfg = parse(
+            r#"
+            region = "us-east-1"
+            bucket = "my-bucket"
+            prefer-stream = true
+            "#,
+        );
+        assert!(cfg.prefer_stream);
+    }
+
+    #[test]
+    fn prefer_stream_can_be_explicitly_disabled() {
+        let cfg = parse(
+            r#"
+            region = "us-east-1"
+            bucket = "my-bucket"
+            prefer-stream = false
+            "#,
+        );
+        assert!(!cfg.prefer_stream);
     }
 }
