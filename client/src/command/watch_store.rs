@@ -35,6 +35,10 @@ pub struct WatchStore {
     #[clap(short = 'j', long, default_value = "5")]
     jobs: usize,
 
+    /// The maximum size of each uploaded part in bytes.
+    #[clap(long)]
+    chunk_size: Option<usize>,
+
     /// Always send the upload info as part of the payload.
     #[clap(long, hide = true)]
     force_preamble: bool,
@@ -45,7 +49,9 @@ pub async fn run(opts: Opts) -> Result<()> {
     if sub.jobs == 0 {
         return Err(anyhow!("The number of jobs cannot be 0"));
     }
-
+    if sub.chunk_size == Some(0) {
+        return Err(anyhow!("The chunk size cannot be 0"));
+    }
     let config = Config::load()?;
 
     let store = Arc::new(NixStore::connect()?);
@@ -65,6 +71,7 @@ pub async fn run(opts: Opts) -> Result<()> {
     let push_config = PushConfig {
         num_workers: sub.jobs,
         force_preamble: sub.force_preamble,
+        chunk_size: sub.chunk_size,
     };
 
     let push_session_config = PushSessionConfig {

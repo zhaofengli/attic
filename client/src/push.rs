@@ -18,13 +18,14 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 use async_channel as channel;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::future::join_all;
 use futures::stream::{Stream, TryStreamExt};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
@@ -32,9 +33,12 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::{spawn, JoinHandle};
 use tokio::time;
 
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 use attic::api::v1::cache_config::CacheConfig;
-use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
+use attic::api::v1::upload_path::{
+    FinalizeUploadSessionResponse, StartUploadPathSessionResponse, UploadChunkingConfig,
+    UploadPathNarInfo, UploadPathResult, UploadPathResultKind,
+};
 use attic::cache::CacheName;
 use attic::error::AtticResult;
 use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
@@ -50,6 +54,9 @@ pub struct PushConfig {
 
     /// Whether to always include the upload info in the PUT payload.
     pub force_preamble: bool,
+
+    /// Maximum size of each transport upload part.
+    pub chunk_size: Option<usize>,
 }
 
 /// Configuration for a push session.
@@ -141,6 +148,11 @@ struct NarStreamProgress<S> {
     bar: ProgressBar,
 }
 
+struct UploadProgress {
+    bar: ProgressBar,
+    uploaded: AtomicU64,
+}
+
 impl Pusher {
     pub fn new(
         store: Arc<NixStore>,
@@ -159,6 +171,7 @@ impl Pusher {
                 store.clone(),
                 api.clone(),
                 cache.clone(),
+                cache_config.upload_chunking.clone(),
                 mp.clone(),
                 config,
             )));
@@ -230,6 +243,7 @@ impl Pusher {
         store: Arc<NixStore>,
         api: ApiClient,
         cache: CacheName,
+        upload_chunking: Option<UploadChunkingConfig>,
         mp: MultiProgress,
         config: PushConfig,
     ) -> HashMap<StorePath, Result<()>> {
@@ -251,8 +265,9 @@ impl Pusher {
                 store.clone(),
                 api.clone(),
                 &cache,
+                upload_chunking.clone(),
                 mp.clone(),
-                config.force_preamble,
+                config,
             )
             .await;
 
@@ -501,8 +516,9 @@ pub async fn upload_path(
     store: Arc<NixStore>,
     api: ApiClient,
     cache: &CacheName,
+    upload_chunking: Option<UploadChunkingConfig>,
     mp: MultiProgress,
-    force_preamble: bool,
+    config: PushConfig,
 ) -> Result<()> {
     let path = &path_info.path;
     let upload_info = {
@@ -537,7 +553,7 @@ pub async fn upload_path(
     };
 
     let template = format!(
-        "{{spinner}} {: <20.20} {{bar:40.green/blue}} {{human_bytes:10}} ({{average_speed}})",
+        "{{spinner}} {: <20.20} {{bar:40.green/blue}} {{human_bytes:10}} ({{average_speed}}) {{msg}}",
         path.name(),
     );
     let style = ProgressStyle::with_template(&template)
@@ -560,14 +576,53 @@ pub async fn upload_path(
         );
     let bar = mp.add(ProgressBar::new(path_info.nar_size));
     bar.set_style(style);
-    let nar_stream = NarStreamProgress::new(store.nar_from_path(path.to_owned()), bar.clone())
-        .map_ok(Bytes::from);
+    let nar_stream = || store.nar_from_path(path.to_owned());
 
     let start = Instant::now();
-    match api
-        .upload_path(upload_info, nar_stream, force_preamble)
+    let upload_chunking = upload_chunking.filter(|c| c.max_chunk_size > 0);
+    if config.chunk_size.is_some() && upload_chunking.is_none() {
+        return Err(anyhow!("Chunked transport upload is not enabled by server"));
+    }
+
+    let upload_result = if let Some(upload_chunking) = upload_chunking {
+        let chunk_size = match config.chunk_size {
+            Some(chunk_size) if chunk_size > upload_chunking.max_chunk_size => {
+                return Err(anyhow!("Chunk size exceeds server limit"));
+            }
+            Some(chunk_size) => chunk_size,
+            None => upload_chunking.max_chunk_size,
+        };
+
+        if (path_info.nar_size as usize) <= chunk_size.max(1) {
+            api.upload_path(
+                upload_info,
+                NarStreamProgress::new(nar_stream(), bar.clone()).map_ok(Bytes::from),
+                config.force_preamble,
+            )
+            .await
+        } else {
+            let progress = Arc::new(UploadProgress::new(bar.clone()));
+
+            upload_path_chunked(
+                &api,
+                upload_info,
+                nar_stream().map_ok(Bytes::from),
+                chunk_size,
+                progress,
+            )
+            .await
+            .map(Some)
+        }
+    } else {
+        api.upload_path(
+            upload_info,
+            NarStreamProgress::new(nar_stream(), bar.clone()).map_ok(Bytes::from),
+            config.force_preamble,
+        )
         .await
-    {
+    };
+
+    match upload_result {
         Ok(r) => {
             let r = r.unwrap_or(UploadPathResult {
                 kind: UploadPathResultKind::Uploaded,
@@ -615,9 +670,120 @@ pub async fn upload_path(
     }
 }
 
+async fn upload_path_chunked<S>(
+    api: &ApiClient,
+    upload_info: UploadPathNarInfo,
+    stream: S,
+    chunk_size: usize,
+    progress: Arc<UploadProgress>,
+) -> Result<UploadPathResult>
+where
+    S: Stream<Item = AtticResult<Bytes>> + Send + 'static,
+{
+    let session = api
+        .start_upload_session(upload_info, Some(chunk_size))
+        .await?;
+    let (session_id, chunk_size) = match session {
+        StartUploadPathSessionResponse::Session {
+            session_id,
+            chunk_size,
+            ..
+        } => (session_id, chunk_size),
+        StartUploadPathSessionResponse::Completed { result } => return Ok(result),
+    };
+    let part_stream = byte_chunker(stream, chunk_size.max(1));
+    futures::pin_mut!(part_stream);
+
+    while let Some((seq, bytes)) = match part_stream.try_next().await {
+        Ok(part) => part,
+        Err(e) => {
+            let _ = api.abort_upload_session(session_id).await;
+            return Err(e);
+        }
+    } {
+        let upload_progress = progress.clone();
+        if let Err(e) = api
+            .upload_session_part_with_progress(session_id, seq, bytes, move |len| {
+                upload_progress.add(len);
+            })
+            .await
+        {
+            let _ = api.abort_upload_session(session_id).await;
+            return Err(e);
+        }
+    }
+
+    progress.set_message("finalizing");
+    let mut error_delay = Duration::from_secs(1);
+    loop {
+        match api.finalize_upload_session(session_id).await {
+            Ok(FinalizeUploadSessionResponse::Completed { result }) => return Ok(result),
+            Ok(FinalizeUploadSessionResponse::Failed { message }) => return Err(anyhow!(message)),
+            Ok(FinalizeUploadSessionResponse::Pending) => {
+                error_delay = Duration::from_secs(1);
+                time::sleep(Duration::from_secs(2)).await;
+            }
+            Err(e) => {
+                if e.downcast_ref::<ApiError>()
+                    .is_some_and(|e| !e.is_retryable())
+                {
+                    return Err(e);
+                }
+
+                progress.set_message("finalizing (retrying)");
+                time::sleep(error_delay).await;
+                error_delay = (error_delay * 2).min(Duration::from_secs(30));
+                progress.set_message("finalizing");
+            }
+        }
+    }
+}
+
+fn byte_chunker<S>(stream: S, chunk_size: usize) -> impl Stream<Item = Result<(u32, Bytes)>>
+where
+    S: Stream<Item = AtticResult<Bytes>> + Send + 'static,
+{
+    async_stream::try_stream! {
+        futures::pin_mut!(stream);
+        let mut seq = 0u32;
+        let mut buffer = BytesMut::new();
+
+        while let Some(bytes) = stream.try_next().await? {
+            buffer.extend_from_slice(&bytes);
+            while buffer.len() >= chunk_size {
+                let chunk = buffer.split_to(chunk_size).freeze();
+                yield (seq, chunk);
+                seq = seq.checked_add(1).ok_or_else(|| anyhow!("Too many upload parts"))?;
+            }
+        }
+
+        if !buffer.is_empty() {
+            yield (seq, buffer.freeze());
+        }
+    }
+}
+
 impl<S: Stream<Item = AtticResult<Vec<u8>>>> NarStreamProgress<S> {
     fn new(stream: S, bar: ProgressBar) -> Self {
         Self { stream, bar }
+    }
+}
+
+impl UploadProgress {
+    fn new(bar: ProgressBar) -> Self {
+        Self {
+            bar,
+            uploaded: AtomicU64::new(0),
+        }
+    }
+
+    fn add(&self, amount: u64) {
+        let new_position = self.uploaded.fetch_add(amount, Ordering::Relaxed) + amount;
+        self.bar.set_position(new_position);
+    }
+
+    fn set_message(&self, message: &'static str) {
+        self.bar.set_message(message);
     }
 }
 
@@ -643,4 +809,64 @@ impl<S: Stream<Item = AtticResult<Vec<u8>>> + Unpin> Stream for NarStreamProgres
 fn average_speed(bytes: u64, duration: Duration) -> String {
     let speed = bytes as f64 * 1000_f64 / duration.as_millis() as f64;
     format!("{}/s", HumanBytes(speed as u64))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use futures::stream;
+
+    #[tokio::test]
+    async fn byte_chunker_splits_fragmented_stream_into_fixed_parts() {
+        let input = stream::iter([
+            Ok(Bytes::from_static(b"ab")),
+            Ok(Bytes::from_static(b"cdefg")),
+            Ok(Bytes::from_static(b"hij")),
+        ]);
+
+        let chunks = byte_chunker(input, 4)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            chunks,
+            vec![
+                (0, Bytes::from_static(b"abcd")),
+                (1, Bytes::from_static(b"efgh")),
+                (2, Bytes::from_static(b"ij")),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn byte_chunker_does_not_emit_empty_tail_for_exact_multiple() {
+        let input = stream::iter([Ok(Bytes::from_static(b"abcdefgh"))]);
+
+        let chunks = byte_chunker(input, 4)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            chunks,
+            vec![
+                (0, Bytes::from_static(b"abcd")),
+                (1, Bytes::from_static(b"efgh")),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn byte_chunker_emits_no_parts_for_empty_stream() {
+        let input = stream::empty();
+
+        let chunks = byte_chunker(input, 4)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+
+        assert!(chunks.is_empty());
+    }
 }
