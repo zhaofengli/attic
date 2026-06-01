@@ -8,8 +8,8 @@ use chrono::{Duration as ChronoDuration, Utc};
 use futures::future::join_all;
 use sea_orm::entity::prelude::*;
 use sea_orm::query::QuerySelect;
-use sea_orm::sea_query::{LockBehavior, LockType, Query};
-use sea_orm::{ConnectionTrait, FromQueryResult};
+use sea_orm::sea_query::{Expr, LockBehavior, LockType, Query};
+use sea_orm::{ConnectionTrait, FromQueryResult, TransactionTrait};
 use tokio::sync::Semaphore;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
@@ -22,7 +22,13 @@ use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object};
+use crate::database::entity::upload_session::{self, Entity as UploadSession, UploadSessionState};
+use crate::database::entity::upload_session_part::{self, Entity as UploadSessionPart};
+use crate::storage::RemoteFile;
 use crate::storage::StorageBackend;
+
+const UPLOAD_SESSION_ACTIVE_GRACE: Duration = Duration::from_secs(30 * 60);
+const UPLOAD_SESSION_FINALIZE_STALE_AFTER: Duration = Duration::from_secs(2 * 60);
 
 #[derive(Debug, FromQueryResult)]
 struct CacheIdAndRetentionPeriod {
@@ -71,6 +77,14 @@ pub async fn run_garbage_collection_once(config: Config) -> Result<()> {
 
     let state = StateInner::new(config).await;
     run_time_based_garbage_collection(&state).await?;
+    let (deleted_sessions, deleted_parts) = reap_expired_upload_sessions(&state).await?;
+    if deleted_sessions != 0 || deleted_parts != 0 {
+        tracing::info!(
+            "Deleted {} expired upload sessions and {} uploaded parts",
+            deleted_sessions,
+            deleted_parts
+        );
+    }
     run_reap_orphan_nars(&state).await?;
     run_reap_orphan_chunks(&state).await?;
 
@@ -136,6 +150,198 @@ async fn run_time_based_garbage_collection(state: &State) -> Result<()> {
     tracing::info!("Deleted {} objects in total", objects_deleted);
 
     Ok(())
+}
+
+/// Reaps expired chunked transport upload sessions.
+///
+/// The session row is only deleted after every referenced part object is
+/// deleted, so failed storage cleanup leaves the DB references available for a
+/// future retry.
+#[instrument(skip_all)]
+pub(crate) async fn reap_expired_upload_sessions(state: &State) -> Result<(u64, u64)> {
+    let db = state.database().await?;
+    let now = Utc::now();
+    let active_after = now - ChronoDuration::from_std(UPLOAD_SESSION_ACTIVE_GRACE)?;
+    let stale_finalizing_before =
+        now - ChronoDuration::from_std(UPLOAD_SESSION_FINALIZE_STALE_AFTER)?;
+
+    let sessions = UploadSession::find()
+        .filter(upload_session::Column::ExpiresAt.lt(now))
+        .filter(upload_session::Column::UpdatedAt.lt(active_after))
+        .filter(
+            upload_session::Column::State
+                .ne(UploadSessionState::Finalizing.as_str())
+                .or(upload_session::Column::UpdatedAt.lt(stale_finalizing_before)),
+        )
+        .all(db)
+        .await?;
+
+    delete_upload_sessions(state, sessions).await
+}
+
+/// Deletes all upload sessions for a cache after their temporary part objects
+/// have been cleaned up.
+pub(crate) async fn delete_upload_sessions_for_cache(
+    state: &State,
+    cache_id: i64,
+) -> Result<(u64, u64)> {
+    let db = state.database().await?;
+    let txn = db.begin().await?;
+
+    let sessions = UploadSession::find()
+        .filter(upload_session::Column::CacheId.eq(cache_id))
+        .all(&txn)
+        .await?;
+
+    for session in &sessions {
+        if !claim_upload_session_for_cleanup(&txn, session).await? {
+            txn.rollback().await?;
+            return Err(anyhow!(
+                "Cannot delete upload session {} while it is active",
+                session.id
+            ));
+        }
+    }
+
+    txn.commit().await?;
+
+    delete_claimed_upload_sessions(state, sessions).await
+}
+
+async fn delete_upload_sessions(
+    state: &State,
+    sessions: Vec<upload_session::Model>,
+) -> Result<(u64, u64)> {
+    if sessions.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let db = state.database().await?;
+    let mut claimed_sessions = Vec::new();
+
+    for session in sessions {
+        if !claim_upload_session_for_cleanup(db, &session).await? {
+            continue;
+        }
+
+        claimed_sessions.push(session);
+    }
+
+    delete_claimed_upload_sessions(state, claimed_sessions).await
+}
+
+async fn delete_claimed_upload_sessions(
+    state: &State,
+    sessions: Vec<upload_session::Model>,
+) -> Result<(u64, u64)> {
+    let db = state.database().await?;
+
+    if sessions.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let mut deleted_sessions = 0;
+    let mut deleted_parts = 0;
+
+    for session in sessions {
+        let deleted_part_count = match delete_upload_session_parts(state, &session.id).await {
+            Ok(deleted_part_count) => deleted_part_count,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to delete upload session parts for session {}: {}",
+                    session.id,
+                    e
+                );
+                continue;
+            }
+        };
+
+        let deletion = UploadSession::delete_many()
+            .filter(upload_session::Column::Id.eq(session.id))
+            .filter(upload_session::Column::State.eq(UploadSessionState::Reaping.as_str()))
+            .exec(db)
+            .await?;
+
+        deleted_sessions += deletion.rows_affected;
+        deleted_parts += deleted_part_count;
+    }
+
+    Ok((deleted_sessions, deleted_parts))
+}
+
+async fn claim_upload_session_for_cleanup<C>(
+    db: &C,
+    session: &upload_session::Model,
+) -> Result<bool>
+where
+    C: ConnectionTrait,
+{
+    let update = UploadSession::update_many()
+        .col_expr(
+            upload_session::Column::State,
+            Expr::value(UploadSessionState::Reaping.as_str()),
+        )
+        .col_expr(upload_session::Column::UpdatedAt, Expr::value(Utc::now()))
+        .filter(upload_session::Column::Id.eq(session.id.clone()));
+
+    let update = if session.state == UploadSessionState::Finalizing.as_str() {
+        update
+            .filter(upload_session::Column::State.eq(UploadSessionState::Finalizing.as_str()))
+            .filter(
+                upload_session::Column::UpdatedAt.lt(
+                    Utc::now() - ChronoDuration::from_std(UPLOAD_SESSION_FINALIZE_STALE_AFTER)?,
+                ),
+            )
+    } else {
+        update.filter(upload_session::Column::State.is_in([
+            UploadSessionState::Uploading.as_str(),
+            UploadSessionState::Reaping.as_str(),
+            UploadSessionState::Completed.as_str(),
+            UploadSessionState::Aborted.as_str(),
+            UploadSessionState::Failed.as_str(),
+        ]))
+    };
+
+    let result = update.exec(db).await?;
+    Ok(result.rows_affected == 1)
+}
+
+/// Deletes all uploaded part objects for a session and then deletes their DB rows.
+///
+/// Missing storage objects are treated as already deleted so that sessions whose
+/// parts were cleaned up by finalize or abort can still be reaped later.
+pub(crate) async fn delete_upload_session_parts(state: &State, session_id: &str) -> Result<u64> {
+    let db = state.database().await?;
+    let storage = state.storage().await?;
+
+    let parts = UploadSessionPart::find()
+        .filter(upload_session_part::Column::SessionId.eq(session_id.to_string()))
+        .all(db)
+        .await?;
+    let remote_files = parts
+        .iter()
+        .map(|part| serde_json::from_str::<RemoteFile>(&part.remote_file))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for remote_file in &remote_files {
+        if let Err(e) = storage.delete_file_db(remote_file).await {
+            if e.is_storage_not_found() {
+                tracing::debug!(
+                    "Upload session part for session {} was already deleted",
+                    session_id
+                );
+                continue;
+            }
+            return Err(e.into());
+        }
+    }
+
+    let deletion = UploadSessionPart::delete_many()
+        .filter(upload_session_part::Column::SessionId.eq(session_id.to_string()))
+        .exec(db)
+        .await?;
+
+    Ok(deletion.rows_affected)
 }
 
 #[instrument(skip_all)]
