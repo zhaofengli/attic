@@ -8,6 +8,7 @@ publish = false
 async-stream = { version = "0.3.6", optional = true }
 base64 = "0.22.1"
 bytes = "1.10.1"
+chrono = { version = "0.4.41", features = ["serde"] }
 displaydoc = "0.2.5"
 digest = "0.11.3"
 ed25519-compact = "2.1.1"
@@ -22,6 +23,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_with = "3.14.0"
 sha2 = "0.11.0"
 tempfile = "3"
+uuid = { version = "1.17.0", features = ["serde", "v4"] }
 wildmatch = "2.4.0"
 
 # Native libnixstore bindings.
