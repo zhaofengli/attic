@@ -630,14 +630,17 @@ pub async fn upload_path(
                 frac_deduplicated: None,
             });
 
+            let total_size = HumanBytes(path_info.nar_size).to_string();
             let info_string: String = match r.kind {
-                UploadPathResultKind::Deduplicated => "deduplicated".to_string(),
+                UploadPathResultKind::Deduplicated => {
+                    format!("{}, deduplicated", total_size)
+                }
                 _ => {
                     let elapsed = start.elapsed();
                     let seconds = elapsed.as_secs_f64();
                     let speed = (path_info.nar_size as f64 / seconds) as u64;
 
-                    let mut s = format!("{}/s", HumanBytes(speed));
+                    let mut s = format!("{}, {}/s", total_size, HumanBytes(speed));
 
                     if let Some(frac_deduplicated) = r.frac_deduplicated {
                         if frac_deduplicated > 0.01f64 {
