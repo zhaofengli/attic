@@ -278,10 +278,6 @@ impl StorageBackend for S3Backend {
                 CompletedPart::builder()
                     .set_e_tag(part.e_tag().map(str::to_string))
                     .set_part_number(Some(part_number as i32))
-                    .set_checksum_crc32(part.checksum_crc32().map(str::to_string))
-                    .set_checksum_crc32_c(part.checksum_crc32_c().map(str::to_string))
-                    .set_checksum_sha1(part.checksum_sha1().map(str::to_string))
-                    .set_checksum_sha256(part.checksum_sha256().map(str::to_string))
                     .build()
             })
             .collect::<Vec<_>>();
