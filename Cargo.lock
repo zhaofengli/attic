@@ -231,6 +231,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "cc",
+ "chrono",
  "criterion",
  "cxx",
  "cxx-build",
@@ -251,6 +252,7 @@ dependencies = [
  "system-deps",
  "tempfile",
  "tokio",
+ "uuid",
  "version-compare",
  "wildmatch",
 ]
@@ -261,6 +263,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
+ "async-stream",
  "attic",
  "bytes",
  "clap",
@@ -282,6 +285,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "xdg",
 ]
 
