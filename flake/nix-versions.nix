@@ -39,6 +39,7 @@ in
           "2.28" = pkgs.nixVersions.nix_2_28;
           "2.30" = pkgs.nixVersions.nix_2_30;
           "2.31" = pkgs.nixVersions.nix_2_31;
+          "2.34" = pkgs.nixVersions.nix_2_34;
         };
 
         manifestFile = let
