@@ -203,8 +203,6 @@ pub mod tests {
         };
     }
 
-    pub(crate) use cache;
-
     #[test]
     fn test_cache_name() {
         let names = vec![
