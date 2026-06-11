@@ -128,6 +128,24 @@ impl ApiClient {
         }
     }
 
+    /// Deletes a store path from a cache.
+    pub async fn delete_path(&self, cache: &CacheName, store_path_hash: &StorePathHash) -> Result<()> {
+        let endpoint = self
+            .endpoint
+            .join("_api/v1/delete-path")?
+            .join(cache.as_str())?
+            .join(store_path_hash.as_str())?;
+
+        let res = self.client.delete(endpoint).send().await?;
+
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
     /// Destroys a cache.
     pub async fn destroy_cache(&self, cache: &CacheName) -> Result<()> {
         let endpoint = self
