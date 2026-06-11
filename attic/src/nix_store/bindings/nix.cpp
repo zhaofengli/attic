@@ -58,7 +58,11 @@ uint64_t CPathInfo::nar_size() {
 std::unique_ptr<std::vector<std::string>> CPathInfo::sigs() {
 	std::vector<std::string> result;
 	for (auto&& elem : this->pi->sigs) {
+#if NIX_VERSION >= 234
+		result.push_back(elem.to_string());
+#else
 		result.push_back(std::string(elem));
+#endif
 	}
 	return std::make_unique<std::vector<std::string>>(result);
 }
@@ -84,7 +88,7 @@ RString CPathInfo::ca() {
 // =========
 
 CNixStore::CNixStore() {
-	std::map<std::string, std::string> params;
+	nix::StoreReference::Params params;
 	std::lock_guard<std::mutex> lock(g_init_nix_mutex);
 
 	if (!g_init_nix_done) {
@@ -92,7 +96,11 @@ CNixStore::CNixStore() {
 		g_init_nix_done = true;
 	}
 
+#if NIX_VERSION >= 234
+	this->store = nix::openStore();
+#else
 	this->store = nix::openStore(nix::settings.storeUri.get(), params);
+#endif
 }
 
 RString CNixStore::store_dir() {

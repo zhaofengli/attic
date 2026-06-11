@@ -30,7 +30,7 @@ let
   basicTests = let
     matrix = {
       database = [ "sqlite" "postgres" ];
-      storage = [ "local" "minio" ];
+      storage = [ "local" "garage" ];
     };
   in builtins.listToAttrs (map (e: {
     name = "basic-${e.database}-${e.storage}";

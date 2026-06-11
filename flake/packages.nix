@@ -46,7 +46,7 @@ in
 
   config = {
     _module.args.makeCranePkgs = lib.mkDefault (pkgs: let
-      perSystemConfig = getSystem pkgs.system;
+      perSystemConfig = getSystem pkgs.stdenv.hostPlatform.system;
       craneLib = builtins.foldl' (acc: f: f acc) pkgs [
         inputs.crane.mkLib
         (craneLib:
@@ -120,7 +120,7 @@ in
         };
       })
 
-      (lib.mkIf (pkgs.system == "x86_64-linux") {
+      (lib.mkIf (pkgs.stdenv.hostPlatform.system == "x86_64-linux") {
         packages = {
           attic-server-image-aarch64 = let
             eval = evalCross {
