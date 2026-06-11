@@ -49,6 +49,25 @@ url = "%database_url%"
 # If enabled, a heartbeat query will be sent every minute
 #heartbeat = false
 
+# Maximum number of connections in the database pool
+#
+# The default is 25 connections. When uploading large files with many chunks,
+# multiple concurrent tasks may hold connections simultaneously. If you experience
+# "Failed to acquire connection from pool" errors, increase this value.
+#max-connections = 25
+
+# Minimum number of connections in the database pool
+#
+# The default is 1 connection.
+#min-connections = 1
+
+# Maximum time to wait when acquiring a connection from the pool
+#
+# The default is 10 seconds. Increase this if you see "Failed to acquire
+# connection from pool" errors under load, for example when an SQLite backend
+# serializes writes and connections are held for longer.
+#acquire-timeout = "10s"
+
 # File storage configuration
 [storage]
 # Storage type
@@ -103,6 +122,13 @@ avg-size = 65536            # 64 KiB
 
 # The preferred maximum size of a chunk, in bytes
 max-size = 262144           # 256 KiB
+
+# Number of chunks to upload to the storage backend concurrently
+#
+# The default is 10. Increase this for faster uploads if your storage backend
+# can handle the concurrent load, or decrease it to reduce concurrent load
+# and memory usage.
+#concurrent-uploads = 10
 
 # Compression
 [compression]

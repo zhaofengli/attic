@@ -214,6 +214,29 @@ pub struct DatabaseConfig {
     /// If enabled, a heartbeat query will be sent every minute.
     #[serde(default = "default_db_heartbeat")]
     pub heartbeat: bool,
+
+    /// Maximum number of connections in the database pool.
+    ///
+    /// The default is 25 connections, which should be sufficient for most workloads.
+    /// When uploading large files with many chunks, multiple concurrent tasks may hold
+    /// connections simultaneously, so this should be set high enough to avoid pool exhaustion.
+    #[serde(rename = "max-connections")]
+    #[serde(default = "default_db_max_connections")]
+    pub max_connections: u32,
+
+    /// Minimum number of connections in the database pool.
+    #[serde(rename = "min-connections")]
+    #[serde(default = "default_db_min_connections")]
+    pub min_connections: u32,
+
+    /// Maximum time to wait when acquiring a connection from the pool.
+    ///
+    /// The default is 10 seconds. Increase this if you see "Failed to acquire
+    /// connection from pool" errors under load, for example when an SQLite
+    /// backend serializes writes and connections are held for longer.
+    #[serde(rename = "acquire-timeout")]
+    #[serde(with = "humantime_serde", default = "default_db_acquire_timeout")]
+    pub acquire_timeout: Duration,
 }
 
 /// File storage configuration.
@@ -267,6 +290,11 @@ pub struct ChunkingConfig {
     /// The preferred maximum size of a chunk, in bytes.
     #[serde(rename = "max-size")]
     pub max_size: usize,
+
+    /// Number of chunks to upload to the storage backend concurrently.
+    #[serde(rename = "concurrent-uploads")]
+    #[serde(default = "default_concurrent_uploads")]
+    pub concurrent_uploads: usize,
 }
 
 /// Compression configuration.
@@ -544,12 +572,28 @@ fn default_db_heartbeat() -> bool {
     false
 }
 
+fn default_db_max_connections() -> u32 {
+    25
+}
+
+fn default_db_min_connections() -> u32 {
+    1
+}
+
+fn default_db_acquire_timeout() -> Duration {
+    Duration::from_secs(10)
+}
+
 fn default_soft_delete_caches() -> bool {
     false
 }
 
 fn default_require_proof_of_possession() -> bool {
     true
+}
+
+fn default_concurrent_uploads() -> usize {
+    10
 }
 
 fn default_gc_interval() -> Duration {
