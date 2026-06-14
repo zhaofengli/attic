@@ -128,8 +128,10 @@ fn test_basic() {
         assert!(perm_team.require_delete().is_err());
         assert!(perm_team.require_create_cache().is_ok());
 
-        assert!(!decoded
-            .get_permission_for_cache(&cache! { "forbidden-cache" })
-            .can_discover());
+        assert!(
+            !decoded
+                .get_permission_for_cache(&cache! { "forbidden-cache" })
+                .can_discover()
+        );
     }
 }

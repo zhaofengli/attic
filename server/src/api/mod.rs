@@ -3,7 +3,7 @@
 mod binary_cache;
 mod v1;
 
-use axum::{response::Html, routing::get, Router};
+use axum::{Router, response::Html, routing::get};
 
 async fn placeholder() -> Html<&'static str> {
     Html(include_str!("placeholder.html"))

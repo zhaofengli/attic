@@ -7,8 +7,8 @@ use clap::{Parser, ValueEnum};
 use tokio::join;
 use tokio::task::spawn;
 use tracing_error::ErrorLayer;
-use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
 
 use attic_server::config;
 

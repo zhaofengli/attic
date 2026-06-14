@@ -1,7 +1,7 @@
 use std::marker::Unpin;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use digest::{Digest, Output as DigestOutput};
 use pin_project::pin_project;
@@ -55,7 +55,10 @@ where
 
     fn eof(&mut self) {
         if let Some(digest) = self.digest.take() {
-            assert!(self.bytes_hashed == self.bytes_consumed, "bytes_hashed != bytes_consumed but EOF - Unconsumed bytes disappeared from buffer??");
+            assert!(
+                self.bytes_hashed == self.bytes_consumed,
+                "bytes_hashed != bytes_consumed but EOF - Unconsumed bytes disappeared from buffer??"
+            );
             self.finalized
                 .set((digest.finalize(), self.bytes_hashed))
                 .expect("Hash has already been finalized");

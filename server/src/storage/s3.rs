@@ -5,12 +5,12 @@ use std::time::Duration;
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
+    Client,
     config::Builder as S3ConfigBuilder,
     config::{Credentials, Region},
     operation::get_object::builders::GetObjectFluentBuilder,
     presigning::PresigningConfig,
     types::{CompletedMultipartUpload, CompletedPart},
-    Client,
 };
 use bytes::BytesMut;
 use futures::future::join_all;

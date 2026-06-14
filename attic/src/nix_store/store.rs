@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use tokio::task::spawn_blocking;
 
-use super::bindings::{open_nix_store, AsyncWriteAdapter, FfiNixStore};
-use super::{to_base_name, StorePath, ValidPathInfo};
+use super::bindings::{AsyncWriteAdapter, FfiNixStore, open_nix_store};
+use super::{StorePath, ValidPathInfo, to_base_name};
 use crate::error::AtticResult;
 use crate::hash::Hash;
 

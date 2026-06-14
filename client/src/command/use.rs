@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use reqwest::Url;
 
@@ -31,8 +31,11 @@ pub async fn run(opts: Opts) -> Result<()> {
     let substituter = cache_config
         .substituter_endpoint
         .ok_or_else(|| anyhow!("The server did not tell us where the binary cache endpoint is."))?;
-    let public_key = cache_config.public_key
-        .ok_or_else(|| anyhow!("The server did not tell us which public key it uses. Is signing managed by the client?"))?;
+    let public_key = cache_config.public_key.ok_or_else(|| {
+        anyhow!(
+            "The server did not tell us which public key it uses. Is signing managed by the client?"
+        )
+    })?;
 
     eprintln!(
         "Configuring Nix to use \"{cache}\" on \"{server_name}\":",

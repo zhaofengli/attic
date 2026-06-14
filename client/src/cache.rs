@@ -11,7 +11,7 @@
 use std::ops::Deref;
 use std::str::FromStr;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 pub use attic::cache::CacheName;

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::{Duration as ChronoDuration, Utc};
 use clap::Parser;
 use humantime::Duration;

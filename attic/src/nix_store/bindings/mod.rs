@@ -37,7 +37,7 @@ pub unsafe fn open_nix_store() -> AtticResult<FfiNixStore> {
 mod mpsc {
     // Tokio
     pub use tokio::sync::mpsc::{
-        error::SendError, unbounded_channel, UnboundedReceiver, UnboundedSender,
+        UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel,
     };
 }
 

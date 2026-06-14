@@ -9,9 +9,9 @@ pub mod nar;
 pub mod object;
 
 use sea_orm::entity::Value;
-use sea_orm::sea_query::{table::StringLen, ArrayType, ColumnType, ValueType, ValueTypeErr};
+use sea_orm::sea_query::{ArrayType, ColumnType, ValueType, ValueTypeErr, table::StringLen};
 use sea_orm::{DbErr, QueryResult, TryGetError, TryGetable};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 // A more generic version of https://github.com/SeaQL/sea-orm/pull/783
 

@@ -28,24 +28,24 @@ mod storage;
 
 use std::future::IntoFuture;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
 use axum::{
-    extract::Extension,
-    http::{uri::Scheme, Uri},
     Router,
+    extract::Extension,
+    http::{Uri, uri::Scheme},
 };
-use sea_orm::{query::Statement, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, query::Statement};
 use tokio::net::TcpListener;
 use tokio::sync::OnceCell;
 use tokio::time;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
 
-use access::http::{apply_auth, AuthState};
+use access::http::{AuthState, apply_auth};
 use attic::cache::CacheName;
 use config::{Config, StorageConfig};
 use database::migration::{Migrator, MigratorTrait};

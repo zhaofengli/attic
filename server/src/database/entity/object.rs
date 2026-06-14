@@ -5,12 +5,12 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use sea_orm::Insert;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::Insert;
 
-use super::nar::NarModel;
 use super::Json;
+use super::nar::NarModel;
 use crate::error::{ServerError, ServerResult};
 use crate::narinfo::{Compression, NarInfo};
 use attic::hash::Hash;

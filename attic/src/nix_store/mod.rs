@@ -54,7 +54,7 @@ use std::path::{Path, PathBuf};
 
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 
 use crate::error::{AtticError, AtticResult};
 use crate::hash::Hash;

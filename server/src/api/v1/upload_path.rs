@@ -5,8 +5,8 @@ use std::marker::Unpin;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdEncoder};
 use async_compression::Level as CompressionLevel;
+use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdEncoder};
 use axum::{
     body::Body,
     extract::{Extension, Json},
@@ -14,11 +14,11 @@ use axum::{
 };
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
-use futures::future::join_all;
 use futures::StreamExt;
+use futures::future::join_all;
+use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
-use sea_orm::ActiveValue::Set;
 use sea_orm::{QuerySelect, TransactionTrait};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufRead, AsyncReadExt};
@@ -34,20 +34,20 @@ use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
 use crate::{RequestState, State};
 use attic::api::v1::upload_path::{
-    UploadPathNarInfo, UploadPathResult, UploadPathResultKind, ATTIC_NAR_INFO,
-    ATTIC_NAR_INFO_PREAMBLE_SIZE,
+    ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,
+    UploadPathResultKind,
 };
 use attic::chunking::chunk_stream;
 use attic::hash::Hash;
-use attic::io::{read_chunk_async, HashReader};
+use attic::io::{HashReader, read_chunk_async};
 use attic::util::Finally;
 
+use crate::database::entity::Json as DbJson;
 use crate::database::entity::cache;
 use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object, InsertExt};
-use crate::database::entity::Json as DbJson;
 use crate::database::{AtticDatabase, ChunkGuard, NarGuard};
 
 /// Number of chunks to upload to the storage backend at once.
