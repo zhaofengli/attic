@@ -1,7 +1,6 @@
 [book]
 authors = ["Zhaofeng Li"]
 language = "en"
-multilingual = false
 src = "src"
 title = "Attic"
 
