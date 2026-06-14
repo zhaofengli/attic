@@ -15,7 +15,7 @@ use std::str::FromStr;
 
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 use wildmatch::WildMatch;
 
 use crate::error::{AtticError, AtticResult};

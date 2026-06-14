@@ -10,8 +10,8 @@ use futures::{
     stream::{self, StreamExt, TryStream, TryStreamExt},
 };
 use reqwest::{
-    header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT},
     Body, Client as HttpClient, Response, StatusCode, Url,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::Deserialize;
 
@@ -20,7 +20,7 @@ use crate::version::ATTIC_DISTRIBUTOR;
 use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
 use attic::api::v1::upload_path::{
-    UploadPathNarInfo, UploadPathResult, ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE,
+    ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,
 };
 use attic::cache::CacheName;
 use attic::nix_store::StorePathHash;

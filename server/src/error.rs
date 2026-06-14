@@ -4,9 +4,9 @@ use std::error::Error as StdError;
 use std::fmt;
 
 use anyhow::Error as AnyError;
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use displaydoc::Display;
 use serde::Serialize;
 use tracing_error::SpanTrace;

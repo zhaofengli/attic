@@ -11,21 +11,21 @@ use std::sync::Arc;
 
 use axum::http;
 use axum::{
+    Router,
     body::Body,
     extract::{Extension, Path},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
     routing::get,
-    Router,
 };
-use futures::stream::BoxStream;
 use futures::TryStreamExt as _;
+use futures::stream::BoxStream;
 use serde::Serialize;
 use tokio_util::io::ReaderStream;
 use tracing::instrument;
 
-use crate::database::entity::chunk::ChunkModel;
 use crate::database::AtticDatabase;
+use crate::database::entity::chunk::ChunkModel;
 use crate::error::{ErrorKind, ServerResult};
 use crate::narinfo::NarInfo;
 use crate::nix_manifest;

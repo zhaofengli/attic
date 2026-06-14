@@ -86,7 +86,7 @@ mod tests;
 use std::collections::HashSet;
 use std::error::Error as StdError;
 
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use displaydoc::Display;
 use indexmap::IndexMap;
@@ -97,7 +97,7 @@ pub use jwt_simple::{
     prelude::UnixTimeStamp,
 };
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, BoolFromInt};
+use serde_with::{BoolFromInt, serde_as};
 
 use attic::cache::{CacheName, CacheNamePattern};
 

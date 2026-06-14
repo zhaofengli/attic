@@ -12,12 +12,12 @@
 //! - NARs: `~/.local/share/attic/storage`
 
 use anyhow::Result;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{Months, Utc};
 use rsa::pkcs1::EncodeRsaPrivateKey;
 use tokio::fs::{self, OpenOptions};
 
-use crate::access::{decode_token_rs256_secret_base64, SignatureType, Token};
+use crate::access::{SignatureType, Token, decode_token_rs256_secret_base64};
 use crate::config;
 use attic::cache::CacheNamePattern;
 

@@ -3,7 +3,7 @@
 //! A bulk of the serde data model is unsupported due to the restricted
 //! format.
 
-use serde::{ser, Serialize};
+use serde::{Serialize, ser};
 
 use super::{Error, Result};
 

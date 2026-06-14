@@ -4,7 +4,7 @@
 mod tests;
 
 use displaydoc::Display;
-use serde::{de, ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de, ser};
 use sha2::{Digest, Sha256};
 
 use crate::error::AtticResult;

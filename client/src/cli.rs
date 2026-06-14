@@ -2,7 +2,7 @@
 
 use std::env;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use enum_as_inner::EnumAsInner;

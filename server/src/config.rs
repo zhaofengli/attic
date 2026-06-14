@@ -9,13 +9,13 @@ use std::time::Duration;
 use anyhow::Result;
 use async_compression::Level as CompressionLevel;
 use attic_token::SignatureType;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-use serde::{de, Deserialize};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use serde::{Deserialize, de};
 use xdg::BaseDirectories;
 
 use crate::access::{
-    decode_token_hs256_secret_base64, decode_token_rs256_pubkey_base64,
-    decode_token_rs256_secret_base64, HS256Key, RS256KeyPair, RS256PublicKey,
+    HS256Key, RS256KeyPair, RS256PublicKey, decode_token_hs256_secret_base64,
+    decode_token_rs256_pubkey_base64, decode_token_rs256_secret_base64,
 };
 use crate::narinfo::Compression as NixCompression;
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
@@ -325,7 +325,7 @@ pub struct GarbageCollectionConfig {
 }
 
 fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
-    let config = if let Some(config) = load_token_rs256_pubkey_from_env() {
+    if let Some(config) = load_token_rs256_pubkey_from_env() {
         config
     } else if let Some(config) = load_token_rs256_secret_from_env() {
         config
@@ -366,9 +366,7 @@ fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
             used for both signing new JWTs and verifying received JWTs.\n\
             "
         )
-    };
-
-    config
+    }
 }
 
 fn read_non_empty_var(key: &str) -> Result<Option<String>> {

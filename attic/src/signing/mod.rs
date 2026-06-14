@@ -24,9 +24,9 @@
 use std::convert::TryInto;
 use std::str::FromStr;
 
-use serde::{de, ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de, ser};
 
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, DecodeError, Engine};
+use base64::{DecodeError, Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use displaydoc::Display;
 use ed25519_compact::{Error as SignatureError, KeyPair, PublicKey, Signature};
 
@@ -255,14 +255,14 @@ fn decode_string<'s>(
     validate_name(name)?;
 
     // don't bother decoding base64 if the name doesn't match
-    if let Some(expected_name) = expected_name {
-        if expected_name != name {
-            return Err(Error::WrongKeyName {
-                our_name: expected_name.to_string(),
-                string_name: name.to_string(),
-            }
-            .into());
+    if let Some(expected_name) = expected_name
+        && expected_name != name
+    {
+        return Err(Error::WrongKeyName {
+            our_name: expected_name.to_string(),
+            string_name: name.to_string(),
         }
+        .into());
     }
 
     let bytes = BASE64_STANDARD

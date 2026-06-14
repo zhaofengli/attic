@@ -1,6 +1,6 @@
 use std::str;
 
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use lazy_static::lazy_static;
 use regex::Regex;
 

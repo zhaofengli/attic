@@ -3,8 +3,8 @@ mod get_missing_paths;
 mod upload_path;
 
 use axum::{
-    routing::{delete, get, patch, post, put},
     Router,
+    routing::{delete, get, patch, post, put},
 };
 
 pub(crate) fn get_router() -> Router {

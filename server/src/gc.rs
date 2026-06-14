@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::future::join_all;
 use sea_orm::entity::prelude::*;

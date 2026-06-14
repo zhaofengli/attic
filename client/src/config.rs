@@ -5,13 +5,13 @@
 //! experience (e.g., `attic login`).
 
 use std::collections::HashMap;
-use std::fs::{self, read_to_string, OpenOptions, Permissions};
+use std::fs::{self, OpenOptions, Permissions, read_to_string};
 use std::io::Write;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
 
@@ -148,13 +148,13 @@ impl Deref for Config {
 
 impl ConfigData {
     fn load_from_path(path: Option<&PathBuf>) -> Result<Self> {
-        if let Some(path) = path {
-            if path.exists() {
-                let contents = fs::read(path)?;
-                let s = std::str::from_utf8(&contents)?;
-                let data = toml::from_str(s)?;
-                return Ok(data);
-            }
+        if let Some(path) = path
+            && path.exists()
+        {
+            let contents = fs::read(path)?;
+            let s = std::str::from_utf8(&contents)?;
+            let data = toml::from_str(s)?;
+            return Ok(data);
         }
 
         Ok(ConfigData::default())

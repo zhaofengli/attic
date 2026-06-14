@@ -12,7 +12,7 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use xdg::BaseDirectories;
@@ -155,14 +155,14 @@ fn parse_machines(netrc: &str) -> Result<HashMap<String, Machine>> {
                 let (m_password, m_remaining) = get_next_token(remaining);
                 remaining = m_remaining;
 
-                if let Some((_, ref mut machine)) = &mut cur_machine {
+                if let Some((_, machine)) = &mut cur_machine {
                     machine.password = Some(m_password.to_string());
                 } else {
                     return Err(anyhow!("Password field outside a machine block"));
                 }
             }
             tok => {
-                if let Some((_, ref mut machine)) = &mut cur_machine {
+                if let Some((_, machine)) = &mut cur_machine {
                     machine.other.push(tok.to_string());
                 } else {
                     return Err(anyhow!("Unknown token {} outside a machine block", tok));
