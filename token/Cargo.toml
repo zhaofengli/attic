@@ -19,3 +19,6 @@ serde = "1.0.219"
 serde_with = "3.14.0"
 tracing = "0.1.41"
 rsa = "0.9.8"
+
+[target.wasm32-unknown-unknown.dependencies]
+getrandom = { version = "0.2", features = ["js"] }

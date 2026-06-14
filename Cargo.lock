@@ -342,6 +342,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "displaydoc",
+ "getrandom 0.2.17",
  "indexmap 2.14.0",
  "jwt-simple",
  "lazy_static",
