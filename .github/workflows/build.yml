@@ -76,6 +76,7 @@ jobs:
           - "2.28"
           - "2.30"
           - "2.31"
+          - "2.34"
           - "default"
     runs-on: ${{ matrix.os }}
     steps:
