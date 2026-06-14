@@ -22,6 +22,7 @@
 //! from and to the canonical format.
 
 use std::convert::TryInto;
+use std::str::FromStr;
 
 use serde::{de, ser, Deserialize, Serialize};
 
@@ -106,18 +107,6 @@ impl NixKeypair {
         })
     }
 
-    /// Imports an existing keypair from its canonical representation.
-    pub fn from_str(keypair: &str) -> AtticResult<Self> {
-        let (name, bytes) = decode_string(keypair, "keypair", KeyPair::BYTES, None)?;
-
-        let keypair = KeyPair::from_slice(&bytes).map_err(Error::SignatureError)?;
-
-        Ok(Self {
-            name: name.to_string(),
-            keypair,
-        })
-    }
-
     /// Returns the canonical representation of the keypair.
     ///
     /// This results in a 64-byte base64 payload that contains both the private
@@ -165,6 +154,22 @@ impl NixKeypair {
     }
 }
 
+impl FromStr for NixKeypair {
+    type Err = crate::error::AtticError;
+
+    /// Imports an existing keypair from its canonical representation.
+    fn from_str(keypair: &str) -> AtticResult<Self> {
+        let (name, bytes) = decode_string(keypair, "keypair", KeyPair::BYTES, None)?;
+
+        let keypair = KeyPair::from_slice(&bytes).map_err(Error::SignatureError)?;
+
+        Ok(Self {
+            name: name.to_string(),
+            keypair,
+        })
+    }
+}
+
 impl<'de> Deserialize<'de> for NixKeypair {
     /// Deserializes a potentially-invalid Nix keypair from its canonical representation.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -173,7 +178,7 @@ impl<'de> Deserialize<'de> for NixKeypair {
     {
         use de::Error;
         String::deserialize(deserializer)
-            .and_then(|s| Self::from_str(&s).map_err(|e| Error::custom(e.to_string())))
+            .and_then(|s| s.parse::<Self>().map_err(|e| Error::custom(e.to_string())))
     }
 }
 
@@ -187,9 +192,11 @@ impl Serialize for NixKeypair {
     }
 }
 
-impl NixPublicKey {
+impl FromStr for NixPublicKey {
+    type Err = crate::error::AtticError;
+
     /// Imports an existing public key from its canonical representation.
-    pub fn from_str(public_key: &str) -> AtticResult<Self> {
+    fn from_str(public_key: &str) -> AtticResult<Self> {
         let (name, bytes) = decode_string(public_key, "public key", PublicKey::BYTES, None)?;
 
         let public = PublicKey::from_slice(&bytes).map_err(Error::SignatureError)?;
@@ -199,7 +206,9 @@ impl NixPublicKey {
             public,
         })
     }
+}
 
+impl NixPublicKey {
     /// Returns the Nix-compatible textual representation of the public key.
     ///
     /// For example, it can look like:

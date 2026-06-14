@@ -8,6 +8,8 @@ use pin_project::pin_project;
 use tokio::io::{self, AsyncBufRead, AsyncRead, ReadBuf};
 use tokio::sync::OnceCell;
 
+type HashReaderResult<D> = Arc<OnceCell<(DigestOutput<D>, usize)>>;
+
 /// AsyncRead filter that hashes the bytes that have been read.
 ///
 /// The hash is finalized when EOF is reached.
@@ -29,7 +31,7 @@ where
     digest: Option<D>,
     bytes_hashed: usize,
     bytes_consumed: usize,
-    finalized: Arc<OnceCell<(DigestOutput<D>, usize)>>,
+    finalized: HashReaderResult<D>,
 }
 
 impl<D> State<D>
@@ -66,7 +68,7 @@ where
     R: AsyncRead + Unpin,
     D: Digest + Unpin,
 {
-    pub fn new(inner: R, digest: D) -> (Self, Arc<OnceCell<(DigestOutput<D>, usize)>>) {
+    pub fn new(inner: R, digest: D) -> (Self, HashReaderResult<D>) {
         let finalized = Arc::new(OnceCell::new());
 
         (
@@ -101,7 +103,7 @@ where
 
         let filled = buf.filled();
         let unconsumed = &filled[old_filled..];
-        if unconsumed.len() == 0 {
+        if unconsumed.is_empty() {
             this.state.eof();
         } else {
             this.state.hash_unconsumed(unconsumed);
@@ -122,7 +124,7 @@ where
         let this = self.project();
         let unconsumed = ready!(this.inner.poll_fill_buf(cx))?;
 
-        if unconsumed.len() == 0 {
+        if unconsumed.is_empty() {
             this.state.eof();
         } else {
             this.state.hash_unconsumed(unconsumed);

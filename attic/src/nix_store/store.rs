@@ -26,7 +26,7 @@ impl NixStore {
     pub fn connect() -> AtticResult<Self> {
         #[allow(unsafe_code)]
         let inner = unsafe { open_nix_store()? };
-        let store_dir = PathBuf::from(inner.store().store_dir());
+        let store_dir = PathBuf::from(inner.with_store(|store| store.store_dir()));
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -95,7 +95,8 @@ impl NixStore {
         spawn_blocking(move || {
             // Send all exceptions through the channel, and ignore errors
             // during sending (the channel may have been closed).
-            if let Err(e) = inner.store().nar_from_path(base_name, sender.clone()) {
+            if let Err(e) = inner.with_store(|store| store.nar_from_path(base_name, sender.clone()))
+            {
                 let _ = sender.rust_error(e);
             }
         });
@@ -119,12 +120,14 @@ impl NixStore {
         spawn_blocking(move || {
             let base_name = store_path.as_base_name_bytes();
 
-            let cxx_vector = inner.store().compute_fs_closure(
-                base_name,
-                flip_directions,
-                include_outputs,
-                include_derivers,
-            )?;
+            let cxx_vector = inner.with_store(|store| {
+                store.compute_fs_closure(
+                    base_name,
+                    flip_directions,
+                    include_outputs,
+                    include_derivers,
+                )
+            })?;
 
             Ok(cxx_vector
                 .iter()
@@ -165,12 +168,14 @@ impl NixStore {
                 .map(|sp| sp.as_base_name_bytes())
                 .collect();
 
-            let cxx_vector = inner.store().compute_fs_closure_multi(
-                &plain_base_names,
-                flip_directions,
-                include_outputs,
-                include_derivers,
-            )?;
+            let cxx_vector = inner.with_store(|store| {
+                store.compute_fs_closure_multi(
+                    &plain_base_names,
+                    flip_directions,
+                    include_outputs,
+                    include_derivers,
+                )
+            })?;
 
             Ok(cxx_vector
                 .iter()
@@ -197,7 +202,7 @@ impl NixStore {
 
         spawn_blocking(move || {
             let base_name = store_path.as_base_name_bytes();
-            let mut c_path_info = inner.store().query_path_info(base_name)?;
+            let mut c_path_info = inner.with_store(|store| store.query_path_info(base_name))?;
 
             // FIXME: Make this more ergonomic and efficient
             let nar_size = c_path_info.pin_mut().nar_size();

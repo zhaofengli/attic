@@ -106,7 +106,7 @@ impl Config {
     }
 
     /// Returns a mutable reference to the configuration.
-    pub fn as_mut(&mut self) -> ConfigWriteGuard {
+    pub fn as_mut(&mut self) -> ConfigWriteGuard<'_> {
         ConfigWriteGuard(self)
     }
 

@@ -265,22 +265,19 @@ impl StorageBackend for S3Backend {
             part_number += 1;
         }
 
-        let completed_parts = join_all(parts)
-            .await
-            .into_iter()
-            .map(|join_result| join_result.unwrap())
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(ServerError::storage_error)?
-            .into_iter()
-            .enumerate()
-            .map(|(idx, part)| {
-                let part_number = idx + 1;
+        let uploaded_parts = join_all(parts).await;
+        let mut completed_parts = Vec::with_capacity(uploaded_parts.len());
+
+        for (idx, join_result) in uploaded_parts.into_iter().enumerate() {
+            let part = join_result.unwrap().map_err(ServerError::storage_error)?;
+            let part_number = idx + 1;
+            completed_parts.push(
                 CompletedPart::builder()
                     .set_e_tag(part.e_tag().map(str::to_string))
                     .set_part_number(Some(part_number as i32))
-                    .build()
-            })
-            .collect::<Vec<_>>();
+                    .build(),
+            );
+        }
 
         let completed_multipart_upload = CompletedMultipartUpload::builder()
             .set_parts(Some(completed_parts))
@@ -337,16 +334,6 @@ impl StorageBackend for S3Backend {
         tracing::debug!("delete_file -> {:#?}", deletion);
 
         Ok(())
-    }
-
-    async fn download_file(&self, name: String, prefer_stream: bool) -> ServerResult<Download> {
-        let req = self
-            .client
-            .get_object()
-            .bucket(&self.config.bucket)
-            .key(&name);
-
-        self.get_download(req, prefer_stream).await
     }
 
     async fn download_file_db(

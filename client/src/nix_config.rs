@@ -3,6 +3,7 @@
 //! We automatically edit the user's `nix.conf` to add new
 //! binary caches while trying to keep the formatting intact.
 
+use std::fmt;
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
@@ -81,15 +82,6 @@ impl NixConfig {
         }
     }
 
-    /// Reserialize the configuration back to a string.
-    pub fn to_string(&self) -> String {
-        self.lines
-            .iter()
-            .map(|l| l.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     /// Adds a new substituter.
     pub fn add_substituter(&mut self, substituter: &str) {
         self.prepend_to_list("substituters", substituter, CACHE_NIXOS_ORG_SUBSTITUTER);
@@ -142,6 +134,18 @@ impl NixConfig {
     }
 }
 
+impl fmt::Display for NixConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let serialized = self
+            .lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        f.write_str(&serialized)
+    }
+}
+
 impl Line {
     fn from_lines(s: &str) -> Result<Vec<Self>> {
         let mut lines: Vec<Line> = Vec::new();
@@ -172,9 +176,22 @@ impl Line {
         Err(anyhow!("Line \"{}\" isn't valid", line))
     }
 
-    fn to_string(&self) -> String {
+    fn kv(key: String, value: String) -> Self {
+        Self::KV {
+            key,
+            value,
+            whitespace_s: String::new(),
+            whitespace_l: " ".to_string(),
+            whitespace_r: " ".to_string(),
+            comment: None,
+        }
+    }
+}
+
+impl fmt::Display for Line {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Comment(l) => l.clone(),
+            Self::Comment(l) => f.write_str(l),
             Self::KV {
                 key,
                 value,
@@ -184,19 +201,11 @@ impl Line {
                 comment,
             } => {
                 let cmt = comment.as_deref().unwrap_or("");
-                format!("{whitespace_s}{key}{whitespace_l}={whitespace_r}{value}{cmt}")
+                write!(
+                    f,
+                    "{whitespace_s}{key}{whitespace_l}={whitespace_r}{value}{cmt}"
+                )
             }
-        }
-    }
-
-    fn kv(key: String, value: String) -> Self {
-        Self::KV {
-            key,
-            value,
-            whitespace_s: String::new(),
-            whitespace_l: " ".to_string(),
-            whitespace_r: " ".to_string(),
-            comment: None,
         }
     }
 }

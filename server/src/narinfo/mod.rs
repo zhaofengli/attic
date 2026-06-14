@@ -278,9 +278,9 @@ impl FromStr for Compression {
     }
 }
 
-impl ToString for Compression {
-    fn to_string(&self) -> String {
-        String::from(self.as_str())
+impl std::fmt::Display for Compression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

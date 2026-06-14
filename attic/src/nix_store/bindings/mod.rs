@@ -1,8 +1,8 @@
 //! `libnixstore` Bindings
 
-use std::cell::UnsafeCell;
 use std::io;
 use std::pin::Pin;
+use std::sync::Mutex;
 use std::task::{Context, Poll};
 
 use futures::stream::{Stream, StreamExt};
@@ -12,27 +12,22 @@ use crate::{AtticError, AtticResult};
 
 // The C++ implementation takes care of concurrency
 #[repr(transparent)]
-pub struct FfiNixStore(UnsafeCell<cxx::UniquePtr<ffi::CNixStore>>);
+pub struct FfiNixStore(Mutex<cxx::UniquePtr<ffi::CNixStore>>);
 
 unsafe impl Send for FfiNixStore {}
 unsafe impl Sync for FfiNixStore {}
 
 impl FfiNixStore {
-    pub fn store(&self) -> Pin<&mut ffi::CNixStore> {
-        unsafe {
-            let ptr = self.0.get().as_mut().unwrap();
-            ptr.pin_mut()
-        }
+    pub fn with_store<T>(&self, f: impl FnOnce(Pin<&mut ffi::CNixStore>) -> T) -> T {
+        let mut ptr = self.0.lock().unwrap();
+        f(ptr.pin_mut())
     }
 }
 
 /// Obtain a handle to the Nix store.
 pub unsafe fn open_nix_store() -> AtticResult<FfiNixStore> {
     match ffi::open_nix_store() {
-        Ok(ptr) => {
-            let cell = UnsafeCell::new(ptr);
-            Ok(FfiNixStore(cell))
-        }
+        Ok(ptr) => Ok(FfiNixStore(Mutex::new(ptr))),
         Err(e) => Err(e.into()),
     }
 }

@@ -48,7 +48,7 @@ impl<'de> Deserializer<'de> {
     }
 
     fn peek_until_eol(&mut self) -> Result<&'de str> {
-        match self.input.find(|c| c == '\r' || c == '\n') {
+        match self.input.find(['\r', '\n']) {
             Some(idx) => Ok(&self.input[..idx]),
             None => Ok(self.input),
         }
@@ -97,7 +97,7 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
+impl<'de> de::Deserializer<'de> for &mut Deserializer<'de> {
     type Error = Error;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
