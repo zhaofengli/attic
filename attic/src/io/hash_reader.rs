@@ -182,7 +182,7 @@ mod tests {
 
         let (hash, count) = finalized.get().expect("Hash wasn't finalized");
 
-        assert_eq!(expected_sha256.as_slice(), hash.as_slice());
+        assert_eq!(expected_sha256.as_slice(), &hash[..]);
         assert_eq!(expected.len(), *count);
         eprintln!("finalized = {:x?}", finalized);
     }
@@ -227,7 +227,7 @@ mod tests {
 
         let (hash, count) = finalized.get().expect("Hash wasn't finalized");
 
-        assert_eq!(expected_sha256.as_slice(), hash.as_slice());
+        assert_eq!(expected_sha256.as_slice(), &hash[..]);
         assert_eq!(expected.len(), *count);
         eprintln!("finalized = {:x?}", finalized);
     }

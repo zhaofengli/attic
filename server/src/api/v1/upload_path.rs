@@ -198,7 +198,7 @@ async fn upload_path_dedup(
 
         // FIXME: errors
         let (nar_hash, nar_size) = nar_compute.get().unwrap();
-        let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
+        let nar_hash = Hash::Sha256((&nar_hash[..]).try_into().unwrap());
 
         // Confirm that the NAR Hash and Size are correct
         if nar_hash.to_typed_base16() != existing_nar.nar_hash
@@ -396,7 +396,7 @@ async fn upload_path_new_chunked(
     // Confirm that the NAR Hash and Size are correct
     // FIXME: errors
     let (nar_hash, nar_size) = nar_compute.get().unwrap();
-    let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
+    let nar_hash = Hash::Sha256((&nar_hash[..]).try_into().unwrap());
 
     if nar_hash != upload_info.nar_hash || *nar_size != upload_info.nar_size {
         return Err(ErrorKind::RequestError(anyhow!("Bad NAR Hash or Size")).into());
@@ -596,7 +596,7 @@ async fn upload_chunk(
 
             // FIXME: errors
             let (nar_hash, nar_size) = nar_compute.get().unwrap();
-            let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
+            let nar_hash = Hash::Sha256((&nar_hash[..]).try_into().unwrap());
 
             // Confirm that the NAR Hash and Size are correct
             if nar_hash.to_typed_base16() != existing_chunk.chunk_hash
@@ -680,8 +680,8 @@ async fn upload_chunk(
     let (chunk_hash, chunk_size) = stream.nar_hash_and_size().unwrap();
     let (file_hash, file_size) = stream.file_hash_and_size().unwrap();
 
-    let chunk_hash = Hash::Sha256(chunk_hash.as_slice().try_into().unwrap());
-    let file_hash = Hash::Sha256(file_hash.as_slice().try_into().unwrap());
+    let chunk_hash = Hash::Sha256((&chunk_hash[..]).try_into().unwrap());
+    let file_hash = Hash::Sha256((&file_hash[..]).try_into().unwrap());
 
     if chunk_hash != given_chunk_hash || *chunk_size != given_chunk_size {
         return Err(ErrorKind::RequestError(anyhow!("Bad chunk hash or size")).into());
@@ -754,7 +754,7 @@ impl ChunkData {
                 let mut hasher = Sha256::new();
                 hasher.update(bytes);
                 let hash = hasher.finalize();
-                Hash::Sha256(hash.as_slice().try_into().unwrap())
+                Hash::Sha256((&hash[..]).try_into().unwrap())
             }
             Self::Stream(_, hash, _) => hash.clone(),
         }
