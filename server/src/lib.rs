@@ -26,7 +26,6 @@ pub mod nix_manifest;
 pub mod oobe;
 mod storage;
 
-use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -40,7 +39,8 @@ use axum::{
 };
 use sea_orm::{query::Statement, ConnectionTrait, Database, DatabaseConnection};
 use tokio::net::TcpListener;
-use tokio::sync::OnceCell;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::{OnceCell, broadcast};
 use tokio::time;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
@@ -218,6 +218,15 @@ async fn fallback(_: Uri) -> ServerResult<()> {
 
 /// Runs the API server.
 pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> Result<()> {
+    run_api_server_with_shutdown(cli_listen, config, None).await
+}
+
+/// Runs the API server with an optional external shutdown signal.
+pub async fn run_api_server_with_shutdown(
+    cli_listen: Option<SocketAddr>,
+    config: Config,
+    shutdown_tx: Option<broadcast::Sender<()>>,
+) -> Result<()> {
     eprintln!("Starting API server...");
 
     let state = StateInner::new(config).await;
@@ -244,13 +253,49 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let listener = TcpListener::bind(&listen).await?;
 
-    let (server_ret, _) = tokio::join!(axum::serve(listener, rest).into_future(), async {
-        if state.config.database.heartbeat {
-            let _ = state.run_db_heartbeat().await;
-        }
-    },);
+    let server = axum::serve(listener, rest);
 
-    server_ret?;
+    // Setup signal handlers
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sighup = signal(SignalKind::hangup())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+
+    // Spawn heartbeat task if enabled
+    let heartbeat_handle = if state.config.database.heartbeat {
+        let state_clone = state.clone();
+        Some(tokio::spawn(async move {
+            let _ = state_clone.run_db_heartbeat().await;
+        }))
+    } else {
+        None
+    };
+
+    // Run server with signal handling
+    let shutdown_signal = async move {
+        tokio::select! {
+            _ = sigterm.recv() => {
+                eprintln!("Received SIGTERM, shutting down gracefully...");
+            }
+            _ = sighup.recv() => {
+                eprintln!("Received SIGHUP, shutting down for restart...");
+            }
+            _ = sigint.recv() => {
+                eprintln!("Received SIGINT, shutting down gracefully...");
+            }
+        }
+
+        // Notify other tasks if we have a shutdown sender
+        if let Some(tx) = shutdown_tx {
+            let _ = tx.send(());
+        }
+
+        // Abort heartbeat task if it's running
+        if let Some(handle) = heartbeat_handle {
+            handle.abort();
+        }
+    };
+
+    server.with_graceful_shutdown(shutdown_signal).await?;
 
     Ok(())
 }

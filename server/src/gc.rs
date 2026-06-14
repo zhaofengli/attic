@@ -10,7 +10,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::query::QuerySelect;
 use sea_orm::sea_query::{LockBehavior, LockType, Query};
 use sea_orm::{ConnectionTrait, FromQueryResult};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, broadcast};
 use tokio::time;
 use tracing::instrument;
 
@@ -45,6 +45,34 @@ pub async fn run_garbage_collection(config: Config) {
         }
 
         time::sleep(interval).await;
+    }
+}
+
+/// Runs garbage collection periodically with shutdown signal support.
+pub async fn run_garbage_collection_with_shutdown(
+    config: Config,
+    mut shutdown_rx: broadcast::Receiver<()>,
+) {
+    let interval = config.garbage_collection.interval;
+
+    if interval == Duration::ZERO {
+        // disabled
+        return;
+    }
+
+    loop {
+        tokio::select! {
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Garbage collector received shutdown signal");
+                break;
+            }
+            _ = time::sleep(interval) => {
+                // We don't stop even if it errors
+                if let Err(e) = run_garbage_collection_once(config.clone()).await {
+                    tracing::warn!("Garbage collection failed: {}", e);
+                }
+            }
+        }
     }
 }
 
