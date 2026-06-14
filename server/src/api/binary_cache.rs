@@ -278,7 +278,7 @@ async fn get_nar(
 
 pub fn get_router() -> Router {
     Router::new()
-        .route("/:cache/nix-cache-info", get(get_nix_cache_info))
-        .route("/:cache/:path", get(get_store_path_info))
-        .route("/:cache/nar/:path", get(get_nar))
+        .route("/{cache}/nix-cache-info", get(get_nix_cache_info))
+        .route("/{cache}/{path}", get(get_store_path_info))
+        .route("/{cache}/nar/{path}", get(get_nar))
 }
