@@ -239,7 +239,7 @@ pub enum Error {
 /// The supported JWT signature types.
 pub enum SignatureType {
     HS256(HS256Key),
-    RS256(RS256KeyPair),
+    RS256(Box<RS256KeyPair>),
     RS256PubkeyOnly(RS256PublicKey),
 }
 
@@ -334,9 +334,7 @@ impl Token {
         match signature_type {
             SignatureType::HS256(key) => key.authenticate(token).map_err(Error::TokenError),
             SignatureType::RS256(key) => key.sign(token).map_err(Error::TokenError),
-            SignatureType::RS256PubkeyOnly(_) => {
-                return Err(Error::PubkeyOnlyCannotCreateToken);
-            }
+            SignatureType::RS256PubkeyOnly(_) => Err(Error::PubkeyOnlyCannotCreateToken),
         }
     }
 

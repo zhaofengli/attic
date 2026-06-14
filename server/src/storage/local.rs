@@ -182,14 +182,6 @@ impl StorageBackend for LocalBackend {
         Ok(())
     }
 
-    async fn download_file(&self, name: String, _prefer_stream: bool) -> ServerResult<Download> {
-        let file = File::open(self.get_path(&name))
-            .await
-            .map_err(ServerError::storage_error)?;
-
-        Ok(Download::AsyncRead(Box::new(file)))
-    }
-
     async fn download_file_db(
         &self,
         file: &RemoteFile,

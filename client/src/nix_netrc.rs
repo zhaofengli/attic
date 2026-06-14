@@ -80,6 +80,7 @@ impl NixNetrc {
 
             let mut file = OpenOptions::new()
                 .create(true)
+                .truncate(true)
                 .write(true)
                 .mode(FILE_MODE)
                 .open(path)
@@ -199,7 +200,7 @@ fn serialize_machines(w: &mut impl fmt::Write, machines: &HashMap<String, Machin
 
 fn get_next_token(s: &str) -> (&str, &str) {
     let s = strip_leading_whitespace(s);
-    if let Some(idx) = s.find(|c| c == '\n' || c == ' ' || c == '\t') {
+    if let Some(idx) = s.find(['\n', ' ', '\t']) {
         (&s[..idx], strip_leading_whitespace(&s[idx + 1..]))
     } else {
         (s, "")

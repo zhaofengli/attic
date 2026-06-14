@@ -11,20 +11,26 @@ fn test_generate_key() {
     eprintln!(" Public key: {}", export_pub);
 
     // re-import keypair
-    let import = NixKeypair::from_str(&export_priv).expect("Could not re-import generated key");
+    let import = export_priv
+        .parse::<NixKeypair>()
+        .expect("Could not re-import generated key");
 
     assert_eq!(keypair.name, import.name);
     assert_eq!(keypair.keypair, import.keypair);
 
     // re-import public key
-    let import_pub = NixPublicKey::from_str(&export_pub).expect("Could not re-import public key");
+    let import_pub = export_pub
+        .parse::<NixPublicKey>()
+        .expect("Could not re-import public key");
 
     assert_eq!(keypair.name, import_pub.name);
     assert_eq!(keypair.keypair.pk, import_pub.public);
 
     // test the export functionality of NixPublicKey as well
     let export_pub2 = import_pub.export();
-    let import_pub2 = NixPublicKey::from_str(&export_pub2).expect("Could not re-import public key");
+    let import_pub2 = export_pub2
+        .parse::<NixPublicKey>()
+        .expect("Could not re-import public key");
 
     assert_eq!(keypair.name, import_pub2.name);
     assert_eq!(keypair.keypair.pk, import_pub2.public);
@@ -46,7 +52,9 @@ fn test_serde() {
 #[test]
 fn test_import_public_key() {
     let cache_nixos_org = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=";
-    let import = NixPublicKey::from_str(cache_nixos_org).expect("Could not import public key");
+    let import = cache_nixos_org
+        .parse::<NixPublicKey>()
+        .expect("Could not import public key");
 
     assert_eq!(cache_nixos_org, import.export());
 }

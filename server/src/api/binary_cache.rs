@@ -5,7 +5,7 @@
 //! The implementation is based on the specifications at <https://github.com/fzakaria/nix-http-binary-cache-api-spec>.
 
 use std::collections::VecDeque;
-use std::io::{Error as IoError, ErrorKind as IoErrorKind};
+use std::io::Error as IoError;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -237,7 +237,7 @@ async fn get_nar(
     } else {
         // reassemble NAR
         fn io_error<E: std::error::Error + Send + Sync + 'static>(e: E) -> IoError {
-            IoError::new(IoErrorKind::Other, e)
+            IoError::other(e)
         }
 
         let streamer = |chunk: ChunkModel, storage: Arc<Box<dyn StorageBackend + 'static>>| async move {
@@ -246,10 +246,7 @@ async fn get_nar(
                 .await
                 .map_err(io_error)?
             {
-                Download::Url(_) => Err(IoError::new(
-                    IoErrorKind::Other,
-                    "URLs not supported for NAR reassembly",
-                )),
+                Download::Url(_) => Err(IoError::other("URLs not supported for NAR reassembly")),
                 Download::AsyncRead(stream) => {
                     let stream: BoxStream<_> = Box::pin(ReaderStream::new(stream));
                     Ok(stream)

@@ -59,7 +59,7 @@ pub enum Relation {
 
 impl Model {
     pub fn keypair(&self) -> AtticResult<NixKeypair> {
-        NixKeypair::from_str(&self.keypair)
+        self.keypair.parse::<NixKeypair>()
     }
 }
 

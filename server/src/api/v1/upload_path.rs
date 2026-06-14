@@ -90,9 +90,8 @@ pub(crate) async fn upload_path(
     body: Body,
 ) -> ServerResult<Json<UploadPathResult>> {
     let stream = body.into_data_stream();
-    let mut stream = StreamReader::new(
-        stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
-    );
+    let mut stream =
+        StreamReader::new(stream.map(|r| r.map_err(|e| io::Error::other(e.to_string()))));
 
     let upload_info: UploadPathNarInfo = {
         if let Some(preamble_size_bytes) = headers.get(ATTIC_NAR_INFO_PREAMBLE_SIZE) {
