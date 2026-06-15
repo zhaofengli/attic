@@ -7,7 +7,6 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
     config::Builder as S3ConfigBuilder,
     config::{Credentials, Region},
-    operation::get_object::builders::GetObjectFluentBuilder,
     presigning::PresigningConfig,
     types::{CompletedMultipartUpload, CompletedPart},
     Client,
@@ -17,6 +16,7 @@ use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
+use super::s3_resume::{get_object_with_retry, ResumableS3Read};
 use super::{Download, RemoteFile, StorageBackend};
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use attic::io::read_chunk_async;
@@ -51,6 +51,68 @@ pub struct S3StorageConfig {
     /// If not specified, it's read from the `AWS_ACCESS_KEY_ID` and
     /// `AWS_SECRET_ACCESS_KEY` environment variables.
     credentials: Option<S3CredentialsConfig>,
+
+    /// Stream-resume retry configuration.
+    #[serde(rename = "stream-resume", default)]
+    pub(super) stream_resume: StreamResumeConfig,
+}
+
+/// Tunables for resuming an interrupted S3 download stream.
+///
+/// When the server is streaming a NAR (or NAR chunk) through itself
+/// and the upstream S3 connection drops mid-transfer, the response
+/// to the client has already started — we cannot fail the request,
+/// only continue feeding it. This config controls how aggressively
+/// to reconnect to S3 with a `Range` request when that happens.
+#[derive(Debug, Clone, Deserialize)]
+pub(super) struct StreamResumeConfig {
+    /// Maximum number of resume attempts per request.
+    ///
+    /// Set to 0 to disable stream resume entirely (errors propagate
+    /// as today, truncating the response body).
+    #[serde(
+        rename = "max-retries",
+        default = "StreamResumeConfig::default_max_retries"
+    )]
+    pub(super) max_retries: u8,
+
+    /// Initial backoff between retry attempts, in milliseconds.
+    ///
+    /// Doubles after each failed attempt, capped at `max-backoff-ms`.
+    #[serde(
+        rename = "initial-backoff-ms",
+        default = "StreamResumeConfig::default_initial_backoff_ms"
+    )]
+    pub(super) initial_backoff_ms: u64,
+
+    /// Maximum backoff between retry attempts, in milliseconds.
+    #[serde(
+        rename = "max-backoff-ms",
+        default = "StreamResumeConfig::default_max_backoff_ms"
+    )]
+    pub(super) max_backoff_ms: u64,
+}
+
+impl Default for StreamResumeConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: Self::default_max_retries(),
+            initial_backoff_ms: Self::default_initial_backoff_ms(),
+            max_backoff_ms: Self::default_max_backoff_ms(),
+        }
+    }
+}
+
+impl StreamResumeConfig {
+    fn default_max_retries() -> u8 {
+        3
+    }
+    fn default_initial_backoff_ms() -> u64 {
+        100
+    }
+    fn default_max_backoff_ms() -> u64 {
+        5_000
+    }
 }
 
 /// S3 credential configuration.
@@ -142,19 +204,34 @@ impl S3Backend {
 
     async fn get_download(
         &self,
-        req: GetObjectFluentBuilder,
+        client: Client,
+        bucket: String,
+        key: String,
         prefer_stream: bool,
     ) -> ServerResult<Download> {
         if prefer_stream {
-            let output = req.send().await.map_err(ServerError::storage_error)?;
+            let output = get_object_with_retry(&client, &bucket, &key, &self.config.stream_resume)
+                .await
+                .map_err(ServerError::storage_error)?;
 
-            Ok(Download::AsyncRead(Box::new(output.body.into_async_read())))
+            let resumable = ResumableS3Read::from_first_response(
+                client,
+                bucket,
+                key,
+                output,
+                self.config.stream_resume.clone(),
+            );
+
+            Ok(Download::AsyncRead(Box::new(resumable)))
         } else {
             // FIXME: Configurable expiration
             let presign_config = PresigningConfig::expires_in(Duration::from_secs(600))
                 .map_err(ServerError::storage_error)?;
 
-            let presigned = req
+            let presigned = client
+                .get_object()
+                .bucket(&bucket)
+                .key(&key)
                 .presigned(presign_config)
                 .await
                 .map_err(ServerError::storage_error)?;
@@ -340,13 +417,13 @@ impl StorageBackend for S3Backend {
     }
 
     async fn download_file(&self, name: String, prefer_stream: bool) -> ServerResult<Download> {
-        let req = self
-            .client
-            .get_object()
-            .bucket(&self.config.bucket)
-            .key(&name);
-
-        self.get_download(req, prefer_stream).await
+        self.get_download(
+            self.client.clone(),
+            self.config.bucket.clone(),
+            name,
+            prefer_stream,
+        )
+        .await
     }
 
     async fn download_file_db(
@@ -356,9 +433,8 @@ impl StorageBackend for S3Backend {
     ) -> ServerResult<Download> {
         let (client, file) = self.get_client_from_db_ref(file).await?;
 
-        let req = client.get_object().bucket(&file.bucket).key(&file.key);
-
-        self.get_download(req, prefer_stream).await
+        self.get_download(client, file.bucket.clone(), file.key.clone(), prefer_stream)
+            .await
     }
 
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile> {

@@ -2,6 +2,7 @@
 
 mod local;
 mod s3;
+mod s3_resume;
 
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
