@@ -47,7 +47,7 @@ jobs:
           path: public
 
       - name: Deploy book
-        uses: actions/deploy-pages@v4.0.5
+        uses: actions/deploy-pages@v5.0.0
 
       # TODO: Just take a diff of the list of store paths, also abstract all of this out
       - name: Push build artifacts
