@@ -50,4 +50,11 @@
 
     debug = true;
   };
+
+
+  nixConfig = {
+    extra-substituters = [ "https://attic.tam.ma/attic" ];
+    extra-trusted-public-keys = [ "attic:Dc088G5QEZnihlLq73D4RWw8PbQ+SIe0UHslzqXdULs=" ];
+  };
+  
 }
