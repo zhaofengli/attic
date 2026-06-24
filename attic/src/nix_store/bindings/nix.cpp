@@ -44,7 +44,7 @@ CPathInfo::CPathInfo(nix::ref<const nix::ValidPathInfo> pi) : pi(pi) {}
 RHashSlice CPathInfo::nar_sha256_hash() {
 	auto &hash = this->pi->narHash;
 
-	if (!hash_is_sha256(hash)) {
+	if (hash.algo != nix::HashAlgorithm::SHA256) {
 		throw nix::Error("Only SHA-256 hashes are supported at the moment");
 	}
 

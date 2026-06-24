@@ -9,13 +9,13 @@ use std::time::Duration;
 use anyhow::Result;
 use async_compression::Level as CompressionLevel;
 use attic_token::SignatureType;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-use serde::{de, Deserialize};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use serde::{Deserialize, de};
 use xdg::BaseDirectories;
 
 use crate::access::{
-    decode_token_hs256_secret_base64, decode_token_rs256_pubkey_base64,
-    decode_token_rs256_secret_base64, HS256Key, RS256KeyPair, RS256PublicKey,
+    HS256Key, RS256KeyPair, RS256PublicKey, decode_token_hs256_secret_base64,
+    decode_token_rs256_pubkey_base64, decode_token_rs256_secret_base64,
 };
 use crate::narinfo::Compression as NixCompression;
 use crate::storage::{LocalStorageConfig, S3StorageConfig};
@@ -182,7 +182,7 @@ pub enum JWTSigningConfig {
     /// JWTs.
     #[serde(rename = "token-rs256-secret-base64")]
     #[serde(deserialize_with = "deserialize_token_rs256_secret_base64")]
-    RS256SignAndVerify(RS256KeyPair),
+    RS256SignAndVerify(Box<RS256KeyPair>),
 
     /// JSON Web Token HMAC secret.
     ///
@@ -325,7 +325,7 @@ pub struct GarbageCollectionConfig {
 }
 
 fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
-    let config = if let Some(config) = load_token_rs256_pubkey_from_env() {
+    if let Some(config) = load_token_rs256_pubkey_from_env() {
         config
     } else if let Some(config) = load_token_rs256_secret_from_env() {
         config
@@ -366,9 +366,7 @@ fn load_jwt_signing_config_from_env() -> JWTSigningConfig {
             used for both signing new JWTs and verifying received JWTs.\n\
             "
         )
-    };
-
-    config
+    }
 }
 
 fn read_non_empty_var(key: &str) -> Result<Option<String>> {
@@ -401,7 +399,7 @@ fn load_token_rs256_secret_from_env() -> Option<JWTSigningConfig> {
 
     let secret = decode_token_rs256_secret_base64(&s).expect("RS256 cannot be decoded");
 
-    Some(JWTSigningConfig::RS256SignAndVerify(secret))
+    Some(JWTSigningConfig::RS256SignAndVerify(Box::new(secret)))
 }
 
 fn load_token_rs256_pubkey_from_env() -> Option<JWTSigningConfig> {
@@ -414,10 +412,12 @@ fn load_token_rs256_pubkey_from_env() -> Option<JWTSigningConfig> {
 }
 
 fn load_database_url_from_env() -> String {
-    env::var(ENV_DATABASE_URL).expect(&format!(
-        "Database URL must be specified in either database.url \
+    env::var(ENV_DATABASE_URL).unwrap_or_else(|_| {
+        panic!(
+            "Database URL must be specified in either database.url \
         or the {ENV_DATABASE_URL} environment."
-    ))
+        )
+    })
 }
 
 impl Default for JWTConfig {
@@ -510,7 +510,9 @@ where
     Ok(key)
 }
 
-fn deserialize_token_rs256_secret_base64<'de, D>(deserializer: D) -> Result<RS256KeyPair, D::Error>
+fn deserialize_token_rs256_secret_base64<'de, D>(
+    deserializer: D,
+) -> Result<Box<RS256KeyPair>, D::Error>
 where
     D: de::Deserializer<'de>,
 {
@@ -519,7 +521,7 @@ where
     let s = String::deserialize(deserializer)?;
     let key = decode_token_rs256_secret_base64(&s).map_err(Error::custom)?;
 
-    Ok(key)
+    Ok(Box::new(key))
 }
 
 fn deserialize_token_rs256_pubkey_base64<'de, D>(
@@ -561,7 +563,7 @@ fn default_default_retention_period() -> Duration {
 }
 
 fn default_max_nar_info_size() -> usize {
-    1 * 1024 * 1024 // 1 MiB
+    1024 * 1024 // 1 MiB
 }
 
 fn load_config_from_path(path: &Path) -> Result<Config> {

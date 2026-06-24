@@ -28,8 +28,8 @@ use std::fmt::Display;
 use std::result::Result as StdResult;
 
 use displaydoc::Display;
-use serde::{de, ser, Deserialize, Serialize};
-use serde_with::{formats::SpaceSeparator, StringWithSeparator};
+use serde::{Deserialize, Serialize, de, ser};
+use serde_with::{StringWithSeparator, formats::SpaceSeparator};
 
 use crate::error::{ErrorKind, ServerResult};
 use deserializer::Deserializer;

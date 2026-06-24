@@ -24,10 +24,6 @@ using RStr = rust::Str;
 using RBasePathSlice = RSlice<const unsigned char>;
 using RHashSlice = RSlice<const unsigned char>;
 
-static bool hash_is_sha256(const nix::Hash &hash) {
-	return hash.algo == nix::HashAlgorithm::SHA256;
-}
-
 struct AsyncWriteSender;
 
 struct RustSink : nix::Sink

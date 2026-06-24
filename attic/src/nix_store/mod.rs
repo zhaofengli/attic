@@ -44,22 +44,23 @@
 mod bindings;
 
 #[cfg(feature = "nix_store")]
-mod nix_store;
+mod store;
 
 use std::ffi::OsStr;
+use std::fmt;
 #[cfg(target_family = "unix")]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 
 use crate::error::{AtticError, AtticResult};
 use crate::hash::Hash;
 
 #[cfg(feature = "nix_store")]
-pub use nix_store::NixStore;
+pub use store::NixStore;
 
 #[cfg(test)]
 pub mod tests;
@@ -222,7 +223,7 @@ impl StorePath {
 impl StorePathHash {
     /// Creates a store path hash from a string.
     pub fn new(hash: String) -> AtticResult<Self> {
-        if hash.as_bytes().len() != STORE_PATH_HASH_LEN {
+        if hash.len() != STORE_PATH_HASH_LEN {
             return Err(AtticError::InvalidStorePathHash {
                 hash,
                 reason: "Hash is of invalid length",
@@ -252,9 +253,11 @@ impl StorePathHash {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.0.clone()
+impl fmt::Display for StorePathHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
     }
 }
 

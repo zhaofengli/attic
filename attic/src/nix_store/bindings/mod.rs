@@ -18,6 +18,8 @@ unsafe impl Send for FfiNixStore {}
 unsafe impl Sync for FfiNixStore {}
 
 impl FfiNixStore {
+    // The C++ implementation takes care of concurrency
+    #[allow(clippy::mut_from_ref)]
     pub fn store(&self) -> Pin<&mut ffi::CNixStore> {
         unsafe {
             let ptr = self.0.get().as_mut().unwrap();
@@ -42,7 +44,7 @@ pub unsafe fn open_nix_store() -> AtticResult<FfiNixStore> {
 mod mpsc {
     // Tokio
     pub use tokio::sync::mpsc::{
-        error::SendError, unbounded_channel, UnboundedReceiver, UnboundedSender,
+        UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel,
     };
 }
 

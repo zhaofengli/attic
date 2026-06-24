@@ -22,14 +22,14 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_channel as channel;
 use bytes::Bytes;
 use futures::future::join_all;
 use futures::stream::{Stream, TryStreamExt};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
-use tokio::sync::{mpsc, Mutex};
-use tokio::task::{spawn, JoinHandle};
+use tokio::sync::{Mutex, mpsc};
+use tokio::task::{JoinHandle, spawn};
 use tokio::time;
 
 use crate::api::ApiClient;
@@ -185,16 +185,14 @@ impl Pusher {
     pub async fn wait(self) -> HashMap<StorePath, Result<()>> {
         drop(self.sender);
 
-        let results = join_all(self.workers)
+        join_all(self.workers)
             .await
             .into_iter()
             .map(|joinresult| joinresult.unwrap())
             .fold(HashMap::new(), |mut acc, results| {
                 acc.extend(results);
                 acc
-            });
-
-        results
+            })
     }
 
     /// Creates a push plan.
@@ -456,10 +454,10 @@ impl PushPlan {
                 .map_or([].as_slice(), |v| v.as_slice());
             store_path_map.retain(|_, pi| {
                 for sig in &pi.sigs {
-                    if let Some((name, _)) = sig.split_once(':') {
-                        if upstream_cache_key_names.iter().any(|u| name == u) {
-                            return false;
-                        }
+                    if let Some((name, _)) = sig.split_once(':')
+                        && upstream_cache_key_names.iter().any(|u| name == u)
+                    {
+                        return false;
                     }
                 }
 
@@ -584,10 +582,10 @@ pub async fn upload_path(
 
                     let mut s = format!("{}/s", HumanBytes(speed));
 
-                    if let Some(frac_deduplicated) = r.frac_deduplicated {
-                        if frac_deduplicated > 0.01f64 {
-                            s += &format!(", {:.1}% deduplicated", frac_deduplicated * 100.0);
-                        }
+                    if let Some(frac_deduplicated) = r.frac_deduplicated
+                        && frac_deduplicated > 0.01f64
+                    {
+                        s += &format!(", {:.1}% deduplicated", frac_deduplicated * 100.0);
                     }
 
                     s

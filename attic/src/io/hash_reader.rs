@@ -1,12 +1,14 @@
 use std::marker::Unpin;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use digest::{Digest, Output as DigestOutput};
 use pin_project::pin_project;
 use tokio::io::{self, AsyncBufRead, AsyncRead, ReadBuf};
 use tokio::sync::OnceCell;
+
+type HashReaderResult<D> = Arc<OnceCell<(DigestOutput<D>, usize)>>;
 
 /// AsyncRead filter that hashes the bytes that have been read.
 ///
@@ -29,7 +31,7 @@ where
     digest: Option<D>,
     bytes_hashed: usize,
     bytes_consumed: usize,
-    finalized: Arc<OnceCell<(DigestOutput<D>, usize)>>,
+    finalized: HashReaderResult<D>,
 }
 
 impl<D> State<D>
@@ -53,7 +55,10 @@ where
 
     fn eof(&mut self) {
         if let Some(digest) = self.digest.take() {
-            assert!(self.bytes_hashed == self.bytes_consumed, "bytes_hashed != bytes_consumed but EOF - Unconsumed bytes disappeared from buffer??");
+            assert!(
+                self.bytes_hashed == self.bytes_consumed,
+                "bytes_hashed != bytes_consumed but EOF - Unconsumed bytes disappeared from buffer??"
+            );
             self.finalized
                 .set((digest.finalize(), self.bytes_hashed))
                 .expect("Hash has already been finalized");
@@ -66,7 +71,7 @@ where
     R: AsyncRead + Unpin,
     D: Digest + Unpin,
 {
-    pub fn new(inner: R, digest: D) -> (Self, Arc<OnceCell<(DigestOutput<D>, usize)>>) {
+    pub fn new(inner: R, digest: D) -> (Self, HashReaderResult<D>) {
         let finalized = Arc::new(OnceCell::new());
 
         (
@@ -101,7 +106,7 @@ where
 
         let filled = buf.filled();
         let unconsumed = &filled[old_filled..];
-        if unconsumed.len() == 0 {
+        if unconsumed.is_empty() {
             this.state.eof();
         } else {
             this.state.hash_unconsumed(unconsumed);
@@ -122,7 +127,7 @@ where
         let this = self.project();
         let unconsumed = ready!(this.inner.poll_fill_buf(cx))?;
 
-        if unconsumed.len() == 0 {
+        if unconsumed.is_empty() {
             this.state.eof();
         } else {
             this.state.hash_unconsumed(unconsumed);
@@ -182,7 +187,7 @@ mod tests {
 
         let (hash, count) = finalized.get().expect("Hash wasn't finalized");
 
-        assert_eq!(expected_sha256.as_slice(), hash.as_slice());
+        assert_eq!(expected_sha256.as_slice(), &hash[..]);
         assert_eq!(expected.len(), *count);
         eprintln!("finalized = {:x?}", finalized);
     }
@@ -227,7 +232,7 @@ mod tests {
 
         let (hash, count) = finalized.get().expect("Hash wasn't finalized");
 
-        assert_eq!(expected_sha256.as_slice(), hash.as_slice());
+        assert_eq!(expected_sha256.as_slice(), &hash[..]);
         assert_eq!(expected.len(), *count);
         eprintln!("finalized = {:x?}", finalized);
     }

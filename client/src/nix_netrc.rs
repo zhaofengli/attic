@@ -12,7 +12,7 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use xdg::BaseDirectories;
@@ -80,6 +80,7 @@ impl NixNetrc {
 
             let mut file = OpenOptions::new()
                 .create(true)
+                .truncate(true)
                 .write(true)
                 .mode(FILE_MODE)
                 .open(path)
@@ -154,14 +155,14 @@ fn parse_machines(netrc: &str) -> Result<HashMap<String, Machine>> {
                 let (m_password, m_remaining) = get_next_token(remaining);
                 remaining = m_remaining;
 
-                if let Some((_, ref mut machine)) = &mut cur_machine {
+                if let Some((_, machine)) = &mut cur_machine {
                     machine.password = Some(m_password.to_string());
                 } else {
                     return Err(anyhow!("Password field outside a machine block"));
                 }
             }
             tok => {
-                if let Some((_, ref mut machine)) = &mut cur_machine {
+                if let Some((_, machine)) = &mut cur_machine {
                     machine.other.push(tok.to_string());
                 } else {
                     return Err(anyhow!("Unknown token {} outside a machine block", tok));
@@ -199,7 +200,7 @@ fn serialize_machines(w: &mut impl fmt::Write, machines: &HashMap<String, Machin
 
 fn get_next_token(s: &str) -> (&str, &str) {
     let s = strip_leading_whitespace(s);
-    if let Some(idx) = s.find(|c| c == '\n' || c == ' ' || c == '\t') {
+    if let Some(idx) = s.find(['\n', ' ', '\t']) {
         (&s[..idx], strip_leading_whitespace(&s[idx + 1..]))
     } else {
         (s, "")

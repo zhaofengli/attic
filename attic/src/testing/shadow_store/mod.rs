@@ -44,6 +44,12 @@ pub struct ShadowStore {
     store_root: TempDir,
 }
 
+impl Default for ShadowStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShadowStore {
     pub fn new() -> Self {
         let store_root = TempfileBuilder::new()

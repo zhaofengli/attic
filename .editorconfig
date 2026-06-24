@@ -16,7 +16,7 @@ indent_style = space
 indent_size = 4
 
 # Misc
-[*.{yaml,yml,md,nix}]
+[*.{yaml,yml,toml,md,nix}]
 indent_style = space
 indent_size = 2
 

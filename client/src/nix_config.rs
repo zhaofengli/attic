@@ -3,9 +3,10 @@
 //! We automatically edit the user's `nix.conf` to add new
 //! binary caches while trying to keep the formatting intact.
 
+use std::fmt;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use lazy_static::lazy_static;
 use regex::Regex;
 use tokio::fs;
@@ -81,15 +82,6 @@ impl NixConfig {
         }
     }
 
-    /// Reserialize the configuration back to a string.
-    pub fn to_string(&self) -> String {
-        self.lines
-            .iter()
-            .map(|l| l.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     /// Adds a new substituter.
     pub fn add_substituter(&mut self, substituter: &str) {
         self.prepend_to_list("substituters", substituter, CACHE_NIXOS_ORG_SUBSTITUTER);
@@ -103,7 +95,7 @@ impl NixConfig {
     /// Sets the netrc-file config.
     pub fn set_netrc_file(&mut self, path: &str) {
         if let Some(kv) = self.find_key("netrc-file") {
-            if let Line::KV { ref mut value, .. } = kv {
+            if let Line::KV { value, .. } = kv {
                 *value = path.to_string();
             }
         } else {
@@ -114,11 +106,7 @@ impl NixConfig {
 
     fn prepend_to_list(&mut self, key: &str, value: &str, default_tail: &str) {
         if let Some(kv) = self.find_key(key) {
-            if let Line::KV {
-                value: ref mut list,
-                ..
-            } = kv
-            {
+            if let Line::KV { value: list, .. } = kv {
                 if !list.split(' ').any(|el| el == value) {
                     *list = format!("{value} {list}");
                 }
@@ -139,6 +127,18 @@ impl NixConfig {
                 false
             }
         })
+    }
+}
+
+impl fmt::Display for NixConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let serialized = self
+            .lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        f.write_str(&serialized)
     }
 }
 
@@ -172,9 +172,22 @@ impl Line {
         Err(anyhow!("Line \"{}\" isn't valid", line))
     }
 
-    fn to_string(&self) -> String {
+    fn kv(key: String, value: String) -> Self {
+        Self::KV {
+            key,
+            value,
+            whitespace_s: String::new(),
+            whitespace_l: " ".to_string(),
+            whitespace_r: " ".to_string(),
+            comment: None,
+        }
+    }
+}
+
+impl fmt::Display for Line {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Comment(l) => l.clone(),
+            Self::Comment(l) => f.write_str(l),
             Self::KV {
                 key,
                 value,
@@ -184,19 +197,11 @@ impl Line {
                 comment,
             } => {
                 let cmt = comment.as_deref().unwrap_or("");
-                format!("{whitespace_s}{key}{whitespace_l}={whitespace_r}{value}{cmt}")
+                write!(
+                    f,
+                    "{whitespace_s}{key}{whitespace_l}={whitespace_r}{value}{cmt}"
+                )
             }
-        }
-    }
-
-    fn kv(key: String, value: String) -> Self {
-        Self::KV {
-            key,
-            value,
-            whitespace_s: String::new(),
-            whitespace_l: " ".to_string(),
-            whitespace_r: " ".to_string(),
-            comment: None,
         }
     }
 }

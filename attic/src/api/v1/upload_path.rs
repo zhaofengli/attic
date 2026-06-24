@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DefaultOnError};
+use serde_with::{DefaultOnError, serde_as};
 
 use crate::cache::CacheName;
 use crate::hash::Hash;
@@ -78,13 +78,14 @@ pub struct UploadPathResult {
     pub frac_deduplicated: Option<f64>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum UploadPathResultKind {
     /// The path was uploaded.
     ///
     /// This is purely informational and servers may return
     /// this variant even when the NAR is deduplicated.
+    #[default]
     Uploaded,
 
     /// The path was globally deduplicated.
@@ -92,10 +93,4 @@ pub enum UploadPathResultKind {
     /// The exact semantics of what counts as deduplicated
     /// is opaque to the client.
     Deduplicated,
-}
-
-impl Default for UploadPathResultKind {
-    fn default() -> Self {
-        Self::Uploaded
-    }
 }

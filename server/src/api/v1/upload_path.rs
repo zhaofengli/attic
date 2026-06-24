@@ -5,8 +5,8 @@ use std::marker::Unpin;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdEncoder};
 use async_compression::Level as CompressionLevel;
+use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdEncoder};
 use axum::{
     body::Body,
     extract::{Extension, Json},
@@ -14,11 +14,11 @@ use axum::{
 };
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
-use futures::future::join_all;
 use futures::StreamExt;
+use futures::future::join_all;
+use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
-use sea_orm::ActiveValue::Set;
 use sea_orm::{QuerySelect, TransactionTrait};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufRead, AsyncReadExt};
@@ -34,20 +34,20 @@ use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
 use crate::{RequestState, State};
 use attic::api::v1::upload_path::{
-    UploadPathNarInfo, UploadPathResult, UploadPathResultKind, ATTIC_NAR_INFO,
-    ATTIC_NAR_INFO_PREAMBLE_SIZE,
+    ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,
+    UploadPathResultKind,
 };
 use attic::chunking::chunk_stream;
 use attic::hash::Hash;
-use attic::io::{read_chunk_async, HashReader};
+use attic::io::{HashReader, read_chunk_async};
 use attic::util::Finally;
 
+use crate::database::entity::Json as DbJson;
 use crate::database::entity::cache;
 use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object, InsertExt};
-use crate::database::entity::Json as DbJson;
 use crate::database::{AtticDatabase, ChunkGuard, NarGuard};
 
 /// Number of chunks to upload to the storage backend at once.
@@ -90,9 +90,8 @@ pub(crate) async fn upload_path(
     body: Body,
 ) -> ServerResult<Json<UploadPathResult>> {
     let stream = body.into_data_stream();
-    let mut stream = StreamReader::new(
-        stream.map(|r| r.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))),
-    );
+    let mut stream =
+        StreamReader::new(stream.map(|r| r.map_err(|e| io::Error::other(e.to_string()))));
 
     let upload_info: UploadPathNarInfo = {
         if let Some(preamble_size_bytes) = headers.get(ATTIC_NAR_INFO_PREAMBLE_SIZE) {
@@ -198,7 +197,7 @@ async fn upload_path_dedup(
 
         // FIXME: errors
         let (nar_hash, nar_size) = nar_compute.get().unwrap();
-        let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
+        let nar_hash = Hash::Sha256((&nar_hash[..]).try_into().unwrap());
 
         // Confirm that the NAR Hash and Size are correct
         if nar_hash.to_typed_base16() != existing_nar.nar_hash
@@ -396,7 +395,7 @@ async fn upload_path_new_chunked(
     // Confirm that the NAR Hash and Size are correct
     // FIXME: errors
     let (nar_hash, nar_size) = nar_compute.get().unwrap();
-    let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
+    let nar_hash = Hash::Sha256((&nar_hash[..]).try_into().unwrap());
 
     if nar_hash != upload_info.nar_hash || *nar_size != upload_info.nar_size {
         return Err(ErrorKind::RequestError(anyhow!("Bad NAR Hash or Size")).into());
@@ -596,7 +595,7 @@ async fn upload_chunk(
 
             // FIXME: errors
             let (nar_hash, nar_size) = nar_compute.get().unwrap();
-            let nar_hash = Hash::Sha256(nar_hash.as_slice().try_into().unwrap());
+            let nar_hash = Hash::Sha256((&nar_hash[..]).try_into().unwrap());
 
             // Confirm that the NAR Hash and Size are correct
             if nar_hash.to_typed_base16() != existing_chunk.chunk_hash
@@ -680,8 +679,8 @@ async fn upload_chunk(
     let (chunk_hash, chunk_size) = stream.nar_hash_and_size().unwrap();
     let (file_hash, file_size) = stream.file_hash_and_size().unwrap();
 
-    let chunk_hash = Hash::Sha256(chunk_hash.as_slice().try_into().unwrap());
-    let file_hash = Hash::Sha256(file_hash.as_slice().try_into().unwrap());
+    let chunk_hash = Hash::Sha256((&chunk_hash[..]).try_into().unwrap());
+    let file_hash = Hash::Sha256((&file_hash[..]).try_into().unwrap());
 
     if chunk_hash != given_chunk_hash || *chunk_size != given_chunk_size {
         return Err(ErrorKind::RequestError(anyhow!("Bad chunk hash or size")).into());
@@ -754,7 +753,7 @@ impl ChunkData {
                 let mut hasher = Sha256::new();
                 hasher.update(bytes);
                 let hash = hasher.finalize();
-                Hash::Sha256(hash.as_slice().try_into().unwrap())
+                Hash::Sha256((&hash[..]).try_into().unwrap())
             }
             Self::Stream(_, hash, _) => hash.clone(),
         }

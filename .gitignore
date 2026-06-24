@@ -1,6 +1,7 @@
 .direnv
 
 /target
-result
+result*
+untracked
 
 fly.toml

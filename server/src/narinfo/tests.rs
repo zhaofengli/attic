@@ -103,9 +103,9 @@ Sig: cache.nixos.org-1:lo9EfNIL4eGRuNh7DTbAAffWPpI2SlYC/8uP7JnhgmfRIUNGhSbFe8qEa
 
     let correct_fingerprint = b"1;/nix/store/xcp9cav49dmsjbwdjlmkjxj10gkpx553-hello-2.10;sha256:16mvl7v0ylzcg2n3xzjn41qhzbmgcn5iyarx16nn5l2r36n2kqci;206104;/nix/store/563528481rvhc5kxwipjmg6rqrl95mdx-glibc-2.33-56,/nix/store/xcp9cav49dmsjbwdjlmkjxj10gkpx553-hello-2.10";
 
-    let public_key =
-        NixPublicKey::from_str("cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=")
-            .expect("Could not import cache.nixos.org public key");
+    let public_key = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        .parse::<NixPublicKey>()
+        .expect("Could not import cache.nixos.org public key");
 
     let narinfo = NarInfo::from_str(s).expect("Could not parse narinfo");
 

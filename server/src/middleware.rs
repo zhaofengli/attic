@@ -1,10 +1,10 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::anyhow;
 use axum::{
-    extract::{Extension, Host, Request},
-    http::HeaderValue,
+    extract::{Extension, Request},
+    http::{HeaderValue, header::HOST},
     middleware::Next,
     response::Response,
 };
@@ -13,13 +13,23 @@ use super::{AuthState, RequestState, RequestStateInner, State};
 use crate::error::{ErrorKind, ServerResult};
 use attic::api::binary_cache::ATTIC_CACHE_VISIBILITY;
 
+fn host_header(req: &Request) -> ServerResult<String> {
+    Ok(req
+        .headers()
+        .get(HOST)
+        .ok_or_else(|| ErrorKind::RequestError(anyhow!("Missing Host header")))?
+        .to_str()
+        .map(str::to_owned)
+        .map_err(|_| ErrorKind::RequestError(anyhow!("Invalid Host header")))?)
+}
+
 /// Initializes per-request state.
 pub async fn init_request_state(
     Extension(state): Extension<State>,
-    Host(host): Host,
     mut req: Request,
     next: Next,
-) -> Response {
+) -> ServerResult<Response> {
+    let host = host_header(&req)?;
     // X-Forwarded-Proto is an untrusted header
     let client_claims_https =
         if let Some(x_forwarded_proto) = req.headers().get("x-forwarded-proto") {
@@ -38,7 +48,7 @@ pub async fn init_request_state(
     });
 
     req.extensions_mut().insert(req_state);
-    next.run(req).await
+    Ok(next.run(req).await)
 }
 
 /// Restricts valid Host headers.
@@ -47,10 +57,10 @@ pub async fn init_request_state(
 /// the first place.
 pub async fn restrict_host(
     Extension(state): Extension<State>,
-    Host(host): Host,
     req: Request,
     next: Next,
 ) -> ServerResult<Response> {
+    let host = host_header(&req)?;
     let allowed_hosts = &state.config.allowed_hosts;
 
     if !allowed_hosts.is_empty() && !allowed_hosts.iter().any(|h| h.as_str() == host) {
