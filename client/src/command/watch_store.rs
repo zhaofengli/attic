@@ -130,3 +130,93 @@ fn strip_lock_file(p: &Path) -> Option<PathBuf> {
         .filter(|t| !t.ends_with(".drv") && !t.ends_with("-source"))
         .map(PathBuf::from)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// Core watcher test: create 256 dirs, watch with Recursive mode
+    /// (kqueue opens 1 FD per entry), write+remove a .lock file, and
+    /// assert the Remove event arrives within 5 s.
+    fn watcher_with_many_entries() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let store = dir.path();
+
+        for i in 0..256 {
+            std::fs::create_dir(store.join(format!("{i:032x}-pkg-{i}"))).unwrap();
+        }
+
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            tx.send(res).ok();
+        })
+        .expect("create watcher");
+
+        // Recursive mode: kqueue opens 1 FD per entry via WalkDir.
+        // With 256 entries + base FDs this exceeds ulimit 256.
+        // FSEvents uses O(1) FDs regardless.
+        watcher
+            .watch(store, RecursiveMode::Recursive)
+            .expect("watch store dir");
+
+        let lock = store.join("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-hello-1.0.lock");
+        std::fs::write(&lock, "").unwrap();
+        std::fs::remove_file(&lock).unwrap();
+
+        let mut saw_remove = false;
+        while let Ok(Ok(event)) = rx.recv_timeout(Duration::from_secs(5)) {
+            if matches!(event.kind, EventKind::Remove(_)) {
+                if event
+                    .paths
+                    .iter()
+                    .any(|p| p.to_string_lossy().ends_with(".lock"))
+                {
+                    saw_remove = true;
+                    break;
+                }
+            }
+        }
+        assert!(
+            saw_remove,
+            "never received Remove event for .lock file — kqueue likely hit FD limit"
+        );
+    }
+
+    /// Regression: kqueue opens one FD per entry when using Recursive mode
+    /// via WalkDir.  Once the per-process FD limit is exceeded, new watches
+    /// silently fail and events are dropped.  FSEvents uses a single
+    /// descriptor regardless of directory size or recursion mode.
+    ///
+    /// Re-executes itself under `ulimit -Sn 256` so the test triggers
+    /// FD exhaustion deterministically regardless of the runner's default.
+    #[test]
+    fn test_watcher_survives_many_entries() {
+        if std::env::var_os("ATTIC_TEST_FD_LIMITED").is_some() {
+            watcher_with_many_entries();
+            return;
+        }
+
+        let exe = std::env::current_exe().expect("current exe");
+        let out = std::process::Command::new("bash")
+            .args([
+                "-c",
+                &format!(
+                    "ulimit -Sn 256 && ATTIC_TEST_FD_LIMITED=1 exec '{}' \
+                     command::watch_store::tests::test_watcher_survives_many_entries \
+                     --exact --test-threads=1 --nocapture 2>&1",
+                    exe.display()
+                ),
+            ])
+            .output()
+            .expect("spawn subprocess");
+
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "test failed under ulimit -Sn 256:\n{stdout}"
+        );
+    }
+}
