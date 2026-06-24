@@ -64,20 +64,20 @@ rsa = "0.9.8"
 [dependencies.async-compression]
 version = "0.4.25"
 features = [
-	"tokio",
-	"xz",
-	"zstd",
-	"brotli",
+  "tokio",
+  "xz",
+  "zstd",
+  "brotli",
 ]
 
 [dependencies.sea-orm]
 version = "1.1.13"
 features = [
-	"runtime-tokio-rustls",
-	"macros",
-	"sqlx-postgres",
-	"sqlx-sqlite",
-	"debug-print",
+  "runtime-tokio-rustls",
+  "macros",
+  "sqlx-postgres",
+  "sqlx-sqlite",
+  "debug-print",
 ]
 
 [dependencies.sea-orm-migration]
@@ -86,11 +86,11 @@ version = "1.1.13"
 [dependencies.tokio]
 version = "1.46.1"
 features = [
-	"fs",
-	"io-util",
-	"macros",
-	"process",
-	"rt",
-	"rt-multi-thread",
-	"sync",
+  "fs",
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "rt-multi-thread",
+  "sync",
 ]

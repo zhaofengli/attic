@@ -2,8 +2,8 @@
 resolver = "2"
 
 members = [
-	"attic",
-	"client",
-	"server",
-	"token",
+  "attic",
+  "client",
+  "server",
+  "token",
 ]

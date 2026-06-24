@@ -37,12 +37,12 @@ xdg = "3.0.0"
 [dependencies.tokio]
 version = "1.46.1"
 features = [
-	"fs",
-	"io-std",
-	"io-util",
-	"macros",
-	"process",
-	"rt",
-	"rt-multi-thread",
-	"sync",
+  "fs",
+  "io-std",
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "rt-multi-thread",
+  "sync",
 ]
