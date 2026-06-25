@@ -107,6 +107,36 @@ pub struct Config {
     #[serde(default = "default_max_nar_info_size")]
     pub max_nar_info_size: usize,
 
+    /// Number of chunks to prefetch per NAR stream during reassembly.
+    ///
+    /// The ideal value depends on the average chunk size and storage RTT;
+    /// see `get_nar` in `api/binary_cache.rs`. Raising it multiplies
+    /// concurrent storage requests per stream — raise only after re-chunking
+    /// to larger chunks.
+    #[serde(rename = "num-prefetch")]
+    #[serde(default = "default_num_prefetch")]
+    pub num_prefetch: usize,
+
+    /// Time-to-live (in seconds) for the in-memory object/chunk metadata cache.
+    ///
+    /// Caches `find_object_and_chunks` results so a wave of workers pulling the
+    /// same closure doesn't re-run the quintuple JOIN on Postgres for every
+    /// identical `.narinfo`/`.nar` lookup. `0` disables the cache.
+    ///
+    /// Keep this short: a re-chunk migration changes the object→chunks mapping,
+    /// and a stale entry would point at old chunk locations until it expires.
+    #[serde(rename = "metadata-cache-ttl-seconds")]
+    #[serde(default = "default_metadata_cache_ttl_seconds")]
+    pub metadata_cache_ttl_seconds: u64,
+
+    /// Maximum weighted capacity of the metadata cache (~1 unit per chunk).
+    ///
+    /// At ~200 bytes per cached chunk, the default ~1M units bounds the cache
+    /// to roughly 200 MiB — several times the hot closure's working set.
+    #[serde(rename = "metadata-cache-capacity")]
+    #[serde(default = "default_metadata_cache_capacity")]
+    pub metadata_cache_capacity: u64,
+
     /// Database connection.
     pub database: DatabaseConfig,
 
@@ -565,6 +595,18 @@ fn default_db_heartbeat() -> bool {
 
 fn default_db_max_connections() -> u32 {
     25
+}
+
+fn default_num_prefetch() -> usize {
+    16
+}
+
+fn default_metadata_cache_ttl_seconds() -> u64 {
+    60
+}
+
+fn default_metadata_cache_capacity() -> u64 {
+    1_000_000
 }
 
 fn default_db_min_connections() -> u32 {

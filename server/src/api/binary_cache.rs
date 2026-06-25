@@ -25,7 +25,7 @@ use tokio_util::io::ReaderStream;
 use tracing::instrument;
 
 use crate::database::entity::chunk::ChunkModel;
-use crate::database::AtticDatabase;
+use crate::database::ObjectAndChunks;
 use crate::error::{ErrorKind, ServerResult};
 use crate::narinfo::NarInfo;
 use crate::nix_manifest;
@@ -136,10 +136,10 @@ async fn get_store_path_info(
         cache_name
     );
 
-    let (object, cache, nar, _) = state
-        .database()
-        .await?
-        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash, false)
+    let ObjectAndChunks {
+        object, cache, nar, ..
+    } = state
+        .find_object_and_chunks_cached(&cache_name, &store_path_hash, false)
         .await?;
 
     let permission = req_state
@@ -190,10 +190,13 @@ async fn get_nar(
         cache_name
     );
 
-    let database = state.database().await?;
-
-    let (object, cache, _nar, chunks) = database
-        .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash, true)
+    let ObjectAndChunks {
+        object,
+        cache,
+        chunks,
+        ..
+    } = state
+        .find_object_and_chunks_cached(&cache_name, &store_path_hash, true)
         .await?;
 
     let permission = req_state
@@ -208,7 +211,9 @@ async fn get_nar(
         return Err(ErrorKind::IncompleteNar.into());
     }
 
-    database.bump_object_last_accessed(object.id).await?;
+    // Batched off the hot path: one UPDATE per flush interval instead of one
+    // per NAR download (was a third of all DB queries during a wave).
+    state.queue_bump_object_last_accessed(object.id);
 
     if chunks.len() == 1 {
         // single chunk
@@ -260,19 +265,21 @@ async fn get_nar(
         let chunks: VecDeque<_> = chunks.into_iter().map(Option::unwrap).collect();
         let storage = state.storage().await?.clone();
 
-        // TODO: Make num_prefetch configurable
-        // The ideal size depends on the average chunk size
+        // The ideal prefetch depends on the average chunk size and storage RTT.
         //
-        // Bumped from 2 to 16 to reduce per-NAR-stream latency.
-        // With OSS RTT ~33ms and chunks of ~64 KiB, prefetch=2 caps a single
-        // NAR-stream at ~3.8 MiB/s, causing 10-min nix-store timeouts on
-        // large (LLVM, GCC, etc.) derivations under concurrent worker pulls.
-        // At prefetch=16 the per-stream cap becomes ~30 MiB/s, comfortably
-        // covering all closures within the timeout.
-        let merged = merge_chunks(chunks, streamer, storage, 16).map_err(|e| {
-            tracing::error!(%e, "Stream error");
-            e
-        });
+        // Bumped from 2 to 16 (now `num-prefetch` in config) to reduce
+        // per-NAR-stream latency: with OSS RTT ~33ms and chunks of ~64 KiB,
+        // prefetch=2 caps a single NAR-stream at ~3.8 MiB/s, causing 10-min
+        // nix-store timeouts on large (LLVM, GCC, etc.) derivations under
+        // concurrent worker pulls. At prefetch=16 the per-stream cap becomes
+        // ~30 MiB/s. Raising it multiplies concurrent storage requests per
+        // stream — do that only after re-chunking to larger chunks.
+        let merged = merge_chunks(chunks, streamer, storage, state.config.num_prefetch).map_err(
+            |e| {
+                tracing::error!(%e, "Stream error");
+                e
+            },
+        );
         let body = Body::from_stream(merged);
 
         Ok((

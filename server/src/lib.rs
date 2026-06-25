@@ -26,10 +26,11 @@ pub mod nix_manifest;
 pub mod oobe;
 mod storage;
 
+use std::collections::HashSet;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -41,6 +42,7 @@ use axum::{
 };
 use axum_prometheus::metrics_exporter_prometheus::{Matcher, PrometheusBuilder};
 use axum_prometheus::PrometheusMetricLayerBuilder;
+use moka::future::Cache as MetadataCache;
 use sea_orm::{query::Statement, ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use tokio::net::TcpListener;
 use tokio::sync::OnceCell;
@@ -50,8 +52,10 @@ use tower_http::trace::TraceLayer;
 
 use access::http::{apply_auth, AuthState};
 use attic::cache::CacheName;
+use attic::nix_store::StorePathHash;
 use config::{Config, StorageConfig};
 use database::migration::{Migrator, MigratorTrait};
+use database::{AtticDatabase, ObjectAndChunks};
 use error::{ErrorKind, ServerError, ServerResult};
 use middleware::{init_request_state, restrict_host, set_visibility_header};
 use storage::{LocalBackend, S3Backend, StorageBackend};
@@ -59,8 +63,13 @@ use storage::{LocalBackend, S3Backend, StorageBackend};
 type State = Arc<StateInner>;
 type RequestState = Arc<RequestStateInner>;
 
+/// How often queued last-accessed bumps are flushed to the database.
+const BUMP_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Key for the metadata cache: `(cache name, store path hash, include_chunks)`.
+type MetadataCacheKey = (String, String, bool);
+
 /// Global server state.
-#[derive(Debug)]
 pub struct StateInner {
     /// The Attic Server configuration.
     config: Config,
@@ -70,6 +79,30 @@ pub struct StateInner {
 
     /// Handle to the storage backend.
     storage: OnceCell<Arc<Box<dyn StorageBackend>>>,
+
+    /// Object IDs whose last-accessed bump awaits the next batched flush.
+    ///
+    /// One UPDATE per NAR download was a third of all DB queries during a
+    /// 100-worker wave; the IDs are deduplicated here and flushed by
+    /// `run_bump_flush_loop` in a single batched UPDATE instead.
+    bump_queue: Mutex<HashSet<i64>>,
+
+    /// In-memory TTL cache of `find_object_and_chunks` results.
+    ///
+    /// During a wave ~100 workers pull the same closure, so without this each
+    /// identical `.narinfo`/`.nar` lookup re-runs the quintuple JOIN on
+    /// Postgres. `None` when `metadata-cache-ttl-seconds` is 0.
+    find_cache: Option<MetadataCache<MetadataCacheKey, ObjectAndChunks>>,
+}
+
+impl std::fmt::Debug for StateInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Hand-written (not derived) so the struct doesn't depend on `Debug`
+        // for the connection handle, storage backend, or metadata cache.
+        f.debug_struct("StateInner")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Request state.
@@ -99,11 +132,86 @@ struct RequestStateInner {
 
 impl StateInner {
     async fn new(config: Config) -> State {
+        let find_cache = if config.metadata_cache_ttl_seconds > 0 {
+            Some(
+                MetadataCache::builder()
+                    .time_to_live(Duration::from_secs(config.metadata_cache_ttl_seconds))
+                    .max_capacity(config.metadata_cache_capacity)
+                    // Weight by chunk count (~200 bytes each) so capacity bounds
+                    // memory rather than entry count; narinfo entries (no chunks)
+                    // weigh 1.
+                    .weigher(|_key, value: &ObjectAndChunks| {
+                        value.chunks.len().clamp(1, u32::MAX as usize) as u32
+                    })
+                    .build(),
+            )
+        } else {
+            None
+        };
+
         Arc::new(Self {
             config,
             database: OnceCell::new(),
             storage: OnceCell::new(),
+            bump_queue: Mutex::new(HashSet::new()),
+            find_cache,
         })
+    }
+
+    /// Like [`AtticDatabase::find_object_and_chunks_by_store_path_hash`], but
+    /// served from the in-memory TTL cache when possible.
+    ///
+    /// Only successful lookups are cached. Permission checks still run
+    /// per-request against the cached `cache.is_public`, so caching never
+    /// grants access.
+    async fn find_object_and_chunks_cached(
+        &self,
+        cache_name: &CacheName,
+        store_path_hash: &StorePathHash,
+        include_chunks: bool,
+    ) -> ServerResult<ObjectAndChunks> {
+        let key: MetadataCacheKey = (
+            cache_name.as_str().to_owned(),
+            store_path_hash.as_str().to_owned(),
+            include_chunks,
+        );
+
+        if let Some(find_cache) = &self.find_cache {
+            if let Some(hit) = find_cache.get(&key).await {
+                metrics::counter!("atticd_metadata_cache_total", "result" => "hit").increment(1);
+                return Ok(hit);
+            }
+        }
+
+        let db = self.database().await?;
+        let (object, cache, nar, chunks) = db
+            .find_object_and_chunks_by_store_path_hash(cache_name, store_path_hash, include_chunks)
+            .await?;
+        let value = ObjectAndChunks {
+            object,
+            cache,
+            nar,
+            chunks,
+        };
+
+        if let Some(find_cache) = &self.find_cache {
+            metrics::counter!("atticd_metadata_cache_total", "result" => "miss").increment(1);
+            find_cache.insert(key, value.clone()).await;
+        }
+
+        Ok(value)
+    }
+
+    /// Drops all cached object/chunk metadata.
+    ///
+    /// Called after cache-config mutations (visibility, keypair, retention,
+    /// deletion) so they take effect immediately instead of after the TTL —
+    /// otherwise a public→private flip would keep serving cached entries to
+    /// anonymous clients for up to `metadata-cache-ttl-seconds`.
+    fn invalidate_metadata_cache(&self) {
+        if let Some(find_cache) = &self.find_cache {
+            find_cache.invalidate_all();
+        }
     }
 
     /// Returns a handle to the database.
@@ -158,6 +266,37 @@ impl StateInner {
                 }
             })
             .await
+    }
+
+    /// Queues an object's last-accessed bump for the next batched flush.
+    fn queue_bump_object_last_accessed(&self, object_id: i64) {
+        self.bump_queue.lock().unwrap().insert(object_id);
+    }
+
+    /// Periodically flushes queued last-accessed bumps as batched UPDATEs.
+    async fn run_bump_flush_loop(&self) {
+        loop {
+            time::sleep(BUMP_FLUSH_INTERVAL).await;
+
+            let ids: Vec<i64> = {
+                let mut queue = self.bump_queue.lock().unwrap();
+                queue.drain().collect()
+            };
+            if ids.is_empty() {
+                continue;
+            }
+
+            let flush = async {
+                let db = self.database().await?;
+                db.bump_objects_last_accessed(&ids).await
+            };
+            if let Err(e) = flush.await {
+                tracing::warn!("Failed to flush {} last-accessed bumps: {}", ids.len(), e);
+                // Re-merge so a transient DB error doesn't lose them; the set is
+                // bounded by the number of distinct objects ever queued.
+                self.bump_queue.lock().unwrap().extend(ids);
+            }
+        }
     }
 
     /// Sends periodic heartbeat queries to the database.
@@ -289,11 +428,15 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let listener = TcpListener::bind(&listen).await?;
 
-    let (server_ret, _) = tokio::join!(axum::serve(listener, rest).into_future(), async {
-        if state.config.database.heartbeat {
-            let _ = state.run_db_heartbeat().await;
-        }
-    },);
+    let (server_ret, _, _) = tokio::join!(
+        axum::serve(listener, rest).into_future(),
+        async {
+            if state.config.database.heartbeat {
+                let _ = state.run_db_heartbeat().await;
+            }
+        },
+        state.run_bump_flush_loop(),
+    );
 
     server_ret?;
 

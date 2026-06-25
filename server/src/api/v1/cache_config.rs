@@ -130,6 +130,9 @@ pub(crate) async fn configure_cache(
             .await
             .map_err(ServerError::database_error)?;
 
+        // The cached CacheModel (is_public, keypair, retention) is now stale.
+        state.invalidate_metadata_cache();
+
         Ok(())
     } else {
         Err(ErrorKind::RequestError(anyhow!("No modifiable fields were set.")).into())
@@ -165,6 +168,7 @@ pub(crate) async fn destroy_cache(
             // Someone raced to (soft) delete the cache before us
             Err(ErrorKind::NoSuchCache.into())
         } else {
+            state.invalidate_metadata_cache();
             Ok(())
         }
     } else {
@@ -180,6 +184,7 @@ pub(crate) async fn destroy_cache(
             // Someone raced to (soft) delete the cache before us
             Err(ErrorKind::NoSuchCache.into())
         } else {
+            state.invalidate_metadata_cache();
             Ok(())
         }
     }

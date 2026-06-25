@@ -5,13 +5,21 @@ env-pull через attic. Обязателен для каждого wave — �
 запусками, отделяет реальные проблемы от шума.
 
 **Контекст:**
-- Ray Tune cluster (`ray-kuberay-medium-worker-*`), 100 подов, кaждый делает
+- Ray Tune cluster, 100 подов; worker group зависит от запуска
+  (`ray-kuberay-medium-worker-*`, `ray-kuberay-big-worker-*`, ...), кaждый делает
   `nix-store --realise` 7 store paths с substituter = `http://attic.attic.svc.cluster.local:9080/prefect`.
 - Attic server: 4 пода, OSS (S3-compatible) + PostgreSQL serverless.
 - Ray Tune `trial_init_timeout = 10 min` — env-pull, не успевший за 600 sec,
   получает `SIGTERM` (виден в логах nix_plugin как `cancelled, terminating pid=...`).
-- Метрики attic в VictoriaMetrics: `atticd_http_*`, `atticd_oss_*`, `atticd_db_*`
-  (добавлены нами через `metrics::histogram!`).
+- Метрики attic в VictoriaMetrics: `atticd_http_requests_total`,
+  `atticd_http_requests_duration_seconds_*`, `atticd_http_requests_pending`,
+  `atticd_oss_request_duration_seconds_*`, `atticd_db_query_duration_seconds_*`,
+  `atticd_metadata_cache_total{result="hit"|"miss"}` (добавлены нами через
+  `metrics::histogram!`/`counter!`).
+  **Важно:** oss/db duration оборачивают `req.send()` AWS SDK и `query_all` sea-orm,
+  т.е. ВКЛЮЧАЮТ ожидание слота во внутренних пулах (sqlx pool: `database.max-connections`,
+  default 25/под). Кратный рост этих латентностей при здоровых OSS/Postgres —
+  очереди на пулах, а не деградация бэкендов.
 - Логи в ClickHouse:
   - `analytics.ray_logs` — логи воркеров (включая `process='nix_plugin'`)
   - `analytics.kube_logs` — k8s pod logs всех неймспейсов, **включая `namespace_name='attic'`**
@@ -23,7 +31,15 @@ env-pull через attic. Обязателен для каждого wave — �
 
 **`wave_start` задаёт пользователь** — это момент запуска `ray_cluster/submit.py`
 (Prefect/CLI submit). НЕ "первый nix_plugin в логах" — между submit и первым
-env-pull проходит Ray scheduling + image-pull (в недавней волне ~14 минут).
+env-pull проходит Ray scheduling + image-pull (на холодной волне ~14 минут,
+на тёплых нодах ~2 минуты).
+
+**Таймзона:** ClickHouse и VictoriaMetrics — UTC, а таймстамп сабмита может быть
+в локальной зоне (волна 2026-06-09: сабмит "09:42:59" = 08:42:59 UTC). Если в окне
+пусто — не расширяй текстовые фильтры, а откалибруй зону: найди волну по объёму
+логов (`GROUP BY toStartOfInterval(timestamp, INTERVAL 10 MINUTE)` за сутки),
+затем сверь: `cancelled`-warning'и идут ровно через 600 sec после первого
+`nix_plugin` своего пода — это однозначно привязывает волну к сабмиту.
 
 **`wave_end` — авто**, последний таймстамп `nix_plugin` по всем подам:
 
@@ -116,7 +132,12 @@ FROM per_pod
 | `p50` | <7 min | >9 min = деградация |
 | `p95` | <9 min | >9:30 = почти cap |
 | `min` outlier (<60 sec) | информативно | показывает что node-level Nix store hot для части подов |
-| `avg_narpulls_per_pod` | ~700-800 | если сильно меньше — closure тоньше; если сильно больше — fragmentation в БД |
+| `avg_narpulls_per_pod` | ~700-800 (здоровые волны 2026-06-09: ~770) | сильно меньше — closure тоньше; сильно больше — closure вырос (волна 08:42 2026-06-09: ~1080; сверь с narpulls НЕотменённых подов — это фактический размер) или двойной счёт после ретраев |
+
+**Ловушка:** для cancelled-подов `duration_sec` и `narpulls` включают ретрай после
+SIGTERM — Ray перезапускает trial, nix_plugin продолжает логировать до конца волны,
+поэтому p50 длительности может быть >600 sec. Фактический размер closure смотри
+по выжившим (НЕотменённым) подам.
 
 ---
 
@@ -149,13 +170,33 @@ WHERE timestamp BETWEEN '<wave_start>' AND '<wave_end>'
 ## Шаг 5. Логи attic (server-side)
 
 Attic-логи живут в `analytics.kube_logs` (общая таблица), **НЕ в `kube_ray_logs`**
-(там только Ray-namespaces).
+(там только Ray-namespaces). Колонка пода здесь — `pod_name` (в `ray_logs` — `pod`).
+
+**Шаг 5.0 — сначала проверь, что логи вообще собираются:**
+
+```sql
+SELECT toStartOfHour(timestamp) AS h, count() AS cnt
+FROM analytics.kube_logs
+WHERE timestamp >= '<wave_start>' - INTERVAL 1 DAY
+  AND timestamp < '<wave_end>' + INTERVAL 2 MINUTE
+  AND namespace_name = 'attic'
+GROUP BY h ORDER BY h
+```
+
+Нет строки за час волны = **сбор логов не работал** (реальный случай: gap с
+~2026-06-08 13:41 до 2026-06-10/11, с единичным burst'ом 06-10 12:38), а не
+"ошибок нет". Тогда шаг 5 пропускаем, server-side смотрим только по метрикам
+(шаги 5b–6). Верхняя граница в запросе обязательна: `count()` за сутки без неё
+захватывает логи после восстановления сбора и маскирует gap.
 
 ```sql
 SELECT
   countIf(message ILIKE '%incompletemessage%'
           OR message ILIKE '%incomplete message%') AS oss_incomplete,
-  countIf(message ILIKE '%slowdown%' OR message ILIKE '%503 slow down%') AS oss_slowdown,
+  countIf(message ILIKE '%slowdown%' OR message ILIKE '%503 slow down%'
+          OR message ILIKE '%TotalQpsLimitExceeded%' OR message ILIKE '%QpsLimitExceeded%'
+          OR message ILIKE '%TrafficRateLimitExceeded%'
+          OR message ILIKE '%qos-delay%') AS oss_throttle,
   countIf(message ILIKE '%connection%closed%'
           OR message ILIKE '%broken pipe%') AS conn_closed,
   countIf(message ILIKE '%connection refused%'
@@ -172,7 +213,10 @@ WHERE timestamp BETWEEN '<wave_start>' AND '<wave_end> + 2min'
 
 **Ожидаемое (норма для здоровой волны):**
 - `oss_incomplete` — единицы (OSS изредка отдаёт partial). Тревога: десятки+.
-- `oss_slowdown` — **0**. Любое — OSS троттлит нас.
+- `oss_throttle` — **0**. Любое — OSS троттлит нас. Внимание: нативный Aliyun OSS
+  НЕ отдаёт код "SlowDown" — троттлинг это 503 `TotalQpsLimitExceeded` /
+  `*TrafficRateLimitExceeded`, 429 `QpsLimitExceeded` и заголовок
+  `x-oss-qos-delay-time` (замедление без ошибки).
 - `conn_closed` — единицы (idle timeout от RDS Proxy). Тревога: десятки за wave.
 - `conn_err`, `timeout_cnt`, `db_pool_timeout` — 0 в норме.
 
@@ -185,20 +229,22 @@ WHERE timestamp BETWEEN '<wave_start>' AND '<wave_end> + 2min'
 
 Превратить unix-таймштамп `wave_end + 3min` в число (Python: `int(datetime(...,
 tzinfo=timezone.utc).timestamp())`), подставить в `@`. Окно `[Xm]` подобрать так,
-чтобы накрыть весь env-pull (10-15 мин обычно).
+чтобы накрыть весь env-pull: `X >= (wave_end - wave_start) + 3 мин` якорного
+сдвига, обычно 15-20 мин. Для волны 2026-06-09 окно `[15m]` срезало бы первые
+~3 минуты env-pull — поэтому в примерах ниже `[20m]`.
 
 ```promql
 # OSS requests by op/status
 sum by (op, status) (
-  increase(atticd_oss_request_duration_seconds_count{namespace="attic"}[15m] @ <wave_end_unix+180>)
+  increase(atticd_oss_request_duration_seconds_count{namespace="attic"}[20m] @ <wave_end_unix+180>)
 )
 
 # HTTP requests total
-sum (increase(atticd_http_requests_total{namespace="attic"}[15m] @ <wave_end_unix+180>))
+sum (increase(atticd_http_requests_total{namespace="attic"}[20m] @ <wave_end_unix+180>))
 
 # DB queries by status
 sum by (status) (
-  increase(atticd_db_query_duration_seconds_count{namespace="attic"}[15m] @ <wave_end_unix+180>)
+  increase(atticd_db_query_duration_seconds_count{namespace="attic"}[20m] @ <wave_end_unix+180>)
 )
 ```
 
@@ -206,10 +252,10 @@ sum by (status) (
 
 | Ratio | Норма | Тревога | Что значит |
 |---|---|---|---|
-| `HTTP req / NAR_pull` | ~1.0 | >1.3 | retries или N+1 на `/get-missing-paths` |
-| `OSS GET / NAR_pull` (chunks/NAR) | 30-80 | >100 | stale chunking — старо-чанкнутые NAR'ы в closure |
-| `OSS GET err / OSS GET ok` | 0 | >0.001 | OSS instability, AWS SDK retries |
-| `DB queries / NAR_pull` | ~2.5 | >5 | N+1 в attic, нужно профайлинг |
+| `HTTP req / NAR_pull` | ~2.0 (narinfo + NAR на путь; здоровые волны 2026-06-09: 2.02-2.03) | >2.5 или <2.0 | >2.5 — retries или N+1 на `/get-missing-paths`; <2.0 — narpulls раздуты ретраями cancelled-подов (волна 08:42: 1.89) |
+| `OSS GET / NAR_pull` (chunks/NAR) | цель 30-80; **фактический baseline ~155** | рост над baseline (2026-06-09: 243 — ретраи раздули) | stale chunking — старо-чанкнутые NAR'ы в closure; хронически >100, пока не сделан re-chunk |
+| `OSS GET err / OSS GET ok` | 0 | >0.001 | OSS instability, AWS SDK retries; если err-серий нет вообще, запрос вернёт пусто — это 0 |
+| `DB queries / NAR_pull` | ~2.5-3.0; после батчинга bump (фикс 2026-06) — ~2.0 | >5 | N+1 в attic, нужно профайлинг; bump теперь батчится раз в 30s, его count = число флашей, не NAR'ов |
 | `OSS PUT` | первый wave: >0; следующие: 0 | внезапно >0 после первого | новые NAR'ы появляются — env изменился |
 
 ---
@@ -219,26 +265,39 @@ sum by (status) (
 PromQL запросы (`@ <wave_end_unix+180>` ко всем):
 
 ```promql
-# HTTP latency
-histogram_quantile(0.95, sum by (le) (rate(atticd_http_request_duration_seconds_bucket{namespace="attic"}[15m] @ T)))
-histogram_quantile(0.50, sum by (le) (rate(atticd_http_request_duration_seconds_bucket{namespace="attic"}[15m] @ T)))
+# HTTP latency (метрика requests_duration, НЕ request_duration)
+histogram_quantile(0.95, sum by (le) (rate(atticd_http_requests_duration_seconds_bucket{namespace="attic"}[20m] @ T)))
+histogram_quantile(0.50, sum by (le) (rate(atticd_http_requests_duration_seconds_bucket{namespace="attic"}[20m] @ T)))
 
 # OSS latency
-sum(rate(atticd_oss_request_duration_seconds_sum{namespace="attic", op="get_object"}[15m] @ T))
-  / sum(rate(atticd_oss_request_duration_seconds_count{namespace="attic", op="get_object", status="ok"}[15m] @ T))
-histogram_quantile(0.95, sum by (le) (rate(atticd_oss_request_duration_seconds_bucket{namespace="attic", op="get_object"}[15m] @ T)))
+sum(rate(atticd_oss_request_duration_seconds_sum{namespace="attic", op="get_object", status="ok"}[20m] @ T))
+  / sum(rate(atticd_oss_request_duration_seconds_count{namespace="attic", op="get_object", status="ok"}[20m] @ T))
+histogram_quantile(0.95, sum by (le) (rate(atticd_oss_request_duration_seconds_bucket{namespace="attic", op="get_object"}[20m] @ T)))
 
 # DB latency
-sum(rate(atticd_db_query_duration_seconds_sum{namespace="attic"}[15m] @ T))
-  / sum(rate(atticd_db_query_duration_seconds_count{namespace="attic"}[15m] @ T))
-histogram_quantile(0.95, sum by (le) (rate(atticd_db_query_duration_seconds_bucket{namespace="attic"}[15m] @ T)))
+sum(rate(atticd_db_query_duration_seconds_sum{namespace="attic"}[20m] @ T))
+  / sum(rate(atticd_db_query_duration_seconds_count{namespace="attic"}[20m] @ T))
+histogram_quantile(0.95, sum by (le) (rate(atticd_db_query_duration_seconds_bucket{namespace="attic"}[20m] @ T)))
 
 # RPS peak (мax по 30-сек окнам в течение волны)
-max_over_time(sum(rate(atticd_http_requests_total{namespace="attic"}[30s]))[15m:30s] @ T)
+max_over_time(sum(rate(atticd_http_requests_total{namespace="attic"}[30s]))[20m:30s] @ T)
 
-# In-flight peak
-max_over_time(sum(axum_http_requests_pending{namespace="attic"})[15m:30s] @ T)
+# In-flight peak (метрика atticd_*, НЕ axum_*)
+max_over_time(sum(atticd_http_requests_pending{namespace="attic"})[20m:30s] @ T)
+
+# CPU / throttling attic-подов (проверка "ресурсы ок")
+max_over_time(sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="attic", container!="", container!="POD"}[1m]))[20m:30s] @ T)
+sum by (pod) (increase(container_cpu_cfs_throttled_periods_total{namespace="attic"}[20m] @ T))
+  / sum by (pod) (increase(container_cpu_cfs_periods_total{namespace="attic"}[20m] @ T))
 ```
+
+**Интерпретация:**
+- OSS/DB латентности включают pool-wait (см. Контекст). Синхронный кратный рост
+  OSS и DB при CPU без throttling — насыщение по конкурентности, не деградация
+  бэкендов; лечится репликами/пулами/prefetch, а не CPU.
+- In-flight плато, почти не растущее с масштабом волны (~1450-1600 на 4 подах и
+  при 30, и при 100 ray-подов; peak проблемной волны 2026-06-09 — 1798, всего
+  +23%), — потолок ёмкости: спрос растёт, throughput стоит, латентность отдувается.
 
 Сравнительная таблица с предыдущей волной:
 
@@ -271,7 +330,17 @@ max_over_time(sum(axum_http_requests_pending{namespace="attic"})[15m:30s] @ T)
    - DB: `Δ DB p95` доминирует
    - OSS: `Δ OSS p95` доминирует и `OSS GET/NAR` растёт
    - attic CPU/HTTP: `HTTP p95` растёт при стабильных DB/OSS
-   - Closure mix: `OSS GET/NAR > 100` — старо-чанкнутые NAR'ы в env
+   - Пулы/конкурентность: OSS и DB растут синхронно в разы, CPU без throttling,
+     in-flight на плато — пайплайн насыщен (волна 2026-06-09: OSS ×9, DB ×13,
+     peak RPS всего +27% при ×4 спросе → 78/100 подов за cap)
+   - Closure mix: `OSS GET/NAR` сильно выше baseline — старо-чанкнутые NAR'ы в env
+
+   **Metadata cache (фикс 2026-06):** `find` теперь обслуживается из in-memory TTL-кэша
+   на каждом поде. Hit-rate = `sum(rate(atticd_metadata_cache_total{result="hit"}[5m]))
+   / sum(rate(atticd_metadata_cache_total[5m]))`. На волне с общим closure ожидается
+   высокий hit-rate (после прогрева 4 подов); низкий hit-rate при общем closure =
+   TTL короче волны или кэш выключен (`metadata-cache-ttl-seconds=0`). `find`-запросы
+   к БД ≈ misses, т.е. DB/NAR падает ниже исторических 2.5-3.0.
 4. **Что меняем в следующей итерации?** — конкретный эксперимент: параметр /
    код / SQL UPDATE.
 
@@ -288,6 +357,10 @@ max_over_time(sum(axum_http_requests_pending{namespace="attic"})[15m:30s] @ T)
 | Attic-логи **НЕ в `kube_ray_logs`** | step 5 (attic server-side errors) | использовать `analytics.kube_logs` с `namespace_name='attic'` |
 | Wave_start = первый nix_plugin (НЕВЕРНО) | подсчёт `pods_with_nix_plugin` | `wave_start` = момент `ray_cluster/submit.py`, задаёт пользователь |
 | Pods count = 100 (НЕВЕРНО для свежей волны) | step 2 | поды поднимаются с разбросом; считать `pods_with_nix_plugin` + `pods_missing` |
+| Таймстамп сабмита не в UTC | step 1: пустое окно | калибровка: волна по объёму логов за сутки + `cancelled = first_nix_plugin + 600s` |
+| В `kube_logs` колонка `pod_name`, в `ray_logs` — `pod` | копипаста запросов между таблицами | `Code: 47 UNKNOWN_IDENTIFIER` — проверь имя колонки |
+| Все счётчики шага 5 = 0 | step 5 | это может быть gap сбора логов, а не "нет ошибок" — сначала шаг 5.0 |
+| `duration_sec` > 600 у cancelled-подов | step 3 | ретрай trial'а после SIGTERM продолжает логировать; не ошибка подсчёта |
 
 ---
 
@@ -295,8 +368,25 @@ max_over_time(sum(axum_http_requests_pending{namespace="attic"})[15m:30s] @ T)
 
 - **Текущая конфигурация атика**: `deploy-cn-infra/deploy_pulumi/deploy_core/ali/attic/setup.py`
   (image tag, max-connections, num_prefetch указаны там и в коде attic).
-- **Патчи на attic**: ветка `pr311-defy-*` в `/Users/izolin/attic` (drain-fix в
-  `server/src/api/v1/upload_path.rs`, num_prefetch=16 в `merge_chunks`, метрики).
+- **Патчи на attic**: ветка `defy/deploy` (на базе upstream `origin/pr311`) в
+  `/Users/izolin/attic` (drain-fix в `server/src/api/v1/upload_path.rs`,
+  num_prefetch=16 в `merge_chunks` — захардкожен в `server/src/api/binary_cache.rs`
+  (TODO: сделать конфигурируемым), метрики).
+- **DB pool**: `server/src/config.rs`, `database.max-connections` (default 25/под);
+  фактически в setup.py — **400/под**. Метрики db/oss включают pool-wait.
+- **Лимиты бэкендов** (проверено по докам Aliyun, 2026-06): Postgres —
+  `pg.n2.serverless.1c` serverless_basic (single-node), RCU 0.5-8 (потолок серии
+  ~14, дальше только смена серии), `max_connections` **фиксирован 2400** и от RCU
+  не зависит — суммарный sqlx-пул (max-connections × поды) держать <= ~2000.
+  OSS — дефолтный лимит аккаунта 10k QPS (фактически тянет 30k+ GET/s на
+  хэш-ключах за счёт авто-партиционирования; гарантий нет, квота — через сапорт),
+  bandwidth SG: 100 Gbit/s total download, 2k QPS / 10 Gbit/s на один объект.
+- **Пример разбора**: волна 2026-06-09 08:42:59 UTC (сабмит "09:42:59" в логе) —
+  78/100 cancelled; диагноз: насыщение по конкурентности (in-flight плато ~1500,
+  OSS ×9, DB ×13 от pool-wait) + chunk-амплификация ~155 GET/NAR + closure +40%
+  (770→1080 путей/под).
 - **Метрики attic**: `attic-server` шкрапится через `VMServiceScrape` в namespace=attic;
   селектор `monitoring: attic-metrics`.
-- **Ray Tune trial timeout**: 600 sec, source — Ray cluster config (`KubeRay` chart).
+- **Ray Tune trial timeout**: 600 sec (`trial_init_timeout`) — application-level
+  настройка Ray Tune (конфиг волны в `ray_cluster/submit.py`), НЕ KubeRay chart
+  (тот конфигурирует кластер/поды, а не таймауты trial'ов).

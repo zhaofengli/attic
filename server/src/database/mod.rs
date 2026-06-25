@@ -11,7 +11,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::entity::Iterable as EnumIterable;
 use sea_orm::query::{JoinType, QueryOrder, QuerySelect, QueryTrait};
 use sea_orm::sea_query::{Expr, LockBehavior, LockType, Query, Value};
-use sea_orm::{ActiveValue::Set, ConnectionTrait, DatabaseConnection, FromQueryResult};
+use sea_orm::{ConnectionTrait, DatabaseConnection, FromQueryResult};
 use tokio::task;
 
 use crate::error::{ErrorKind, ServerError, ServerResult};
@@ -31,6 +31,18 @@ const SELECT_CACHE: &str = "C_";
 const SELECT_NAR: &str = "N_";
 const SELECT_CHUNK: &str = "CH_";
 const SELECT_CHUNKREF: &str = "CHR_";
+
+/// The result of `find_object_and_chunks_by_store_path_hash`.
+///
+/// Bundled into one owned, cloneable value so it can be served from the
+/// in-memory metadata cache (see `StateInner::find_object_and_chunks_cached`).
+#[derive(Clone)]
+pub struct ObjectAndChunks {
+    pub object: ObjectModel,
+    pub cache: CacheModel,
+    pub nar: NarModel,
+    pub chunks: Vec<Option<ChunkModel>>,
+}
 
 #[async_trait]
 pub trait AtticDatabase: Send + Sync {
@@ -56,8 +68,8 @@ pub trait AtticDatabase: Send + Sync {
         compression: Compression,
     ) -> ServerResult<Option<ChunkGuard>>;
 
-    /// Bumps the last accessed timestamp of an object.
-    async fn bump_object_last_accessed(&self, object_id: i64) -> ServerResult<()>;
+    /// Bumps the last accessed timestamps of a batch of objects.
+    async fn bump_objects_last_accessed(&self, object_ids: &[i64]) -> ServerResult<()>;
 }
 
 pub struct NarGuard {
@@ -312,25 +324,26 @@ impl AtticDatabase for DatabaseConnection {
         Ok(guard)
     }
 
-    async fn bump_object_last_accessed(&self, object_id: i64) -> ServerResult<()> {
+    async fn bump_objects_last_accessed(&self, object_ids: &[i64]) -> ServerResult<()> {
         let now = Utc::now();
 
-        let start = Instant::now();
-        let result = Object::update(object::ActiveModel {
-            id: Set(object_id),
-            last_accessed_at: Set(Some(now)),
-            ..Default::default()
-        })
-        .exec(self)
-        .await;
-        let status = if result.is_ok() { "ok" } else { "err" };
-        metrics::histogram!(
-            "atticd_db_query_duration_seconds",
-            "query" => "bump_object_last_accessed",
-            "status" => status,
-        )
-        .record(start.elapsed().as_secs_f64());
-        result.map_err(ServerError::database_error)?;
+        // Stay well below the Postgres bind-parameter limit (65535).
+        for ids in object_ids.chunks(10_000) {
+            let start = Instant::now();
+            let result = Object::update_many()
+                .col_expr(object::Column::LastAccessedAt, Expr::value(now))
+                .filter(object::Column::Id.is_in(ids.iter().copied()))
+                .exec(self)
+                .await;
+            let status = if result.is_ok() { "ok" } else { "err" };
+            metrics::histogram!(
+                "atticd_db_query_duration_seconds",
+                "query" => "bump_object_last_accessed",
+                "status" => status,
+            )
+            .record(start.elapsed().as_secs_f64());
+            result.map_err(ServerError::database_error)?;
+        }
 
         Ok(())
     }

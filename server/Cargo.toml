@@ -31,6 +31,7 @@ axum = "0.7.9"
 axum-macros = "0.4.2"
 axum-prometheus = "0.7"
 metrics = "0.23"
+moka = { version = "0.12", features = ["future"] }
 base64 = "0.22.1"
 bytes = "1.10.1"
 chrono = "0.4.41"
