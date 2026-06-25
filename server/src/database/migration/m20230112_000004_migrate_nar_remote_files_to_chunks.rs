@@ -97,8 +97,8 @@ impl MigrationTrait for Migration {
             .columns([
                 chunkref::Column::ChunkId.into_iden(),
                 chunkref::Column::NarId.into_iden(),
-                chunkref::Column::ChunkHash.into_iden(),
-                chunkref::Column::Compression.into_iden(),
+                Alias::new("chunk_hash").into_iden(),
+                Alias::new("compression").into_iden(),
                 chunkref::Column::Seq.into_iden(),
             ])
             .select_from(select_chunk)

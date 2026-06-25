@@ -116,42 +116,16 @@ impl MigrationTrait for Migration {
                 ))
                 .await?;
         } else {
-            // Just drop the columns
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(nar::Entity)
-                        .drop_column(Alias::new("file_hash"))
-                        .to_owned(),
-                )
-                .await?;
-
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(nar::Entity)
-                        .drop_column(Alias::new("file_size"))
-                        .to_owned(),
-                )
-                .await?;
-
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(nar::Entity)
-                        .drop_column(Alias::new("remote_file"))
-                        .to_owned(),
-                )
-                .await?;
-
-            manager
-                .alter_table(
-                    Table::alter()
-                        .table(nar::Entity)
-                        .drop_column(Alias::new("remote_file_id"))
-                        .to_owned(),
-                )
-                .await?;
+            for column in ["file_hash", "file_size", "remote_file", "remote_file_id"] {
+                manager
+                    .alter_table(
+                        Table::alter()
+                            .table(nar::Entity)
+                            .drop_column(Alias::new(column))
+                            .to_owned(),
+                    )
+                    .await?;
+            }
         }
 
         Ok(())

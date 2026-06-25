@@ -18,7 +18,6 @@ use futures::StreamExt;
 use futures::future::join_all;
 use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
-use sea_orm::sea_query::Expr;
 use sea_orm::{QuerySelect, TransactionTrait};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufRead, AsyncReadExt};
@@ -152,6 +151,7 @@ pub(crate) async fn upload_path(
     // Try to acquire a lock on an existing NAR
     if let Some(existing_nar) = database.find_and_lock_nar(&upload_info.nar_hash).await? {
         // Deduplicate?
+        // TODO: Fully kill chunk recovery (no more missing chunks)
         let missing_chunk = ChunkRef::find()
             .filter(chunkref::Column::NarId.eq(existing_nar.id))
             .filter(chunkref::Column::ChunkId.is_null())
@@ -175,7 +175,6 @@ pub(crate) async fn upload_path(
         }
     }
 
-    // New NAR or need to repair
     upload_path_new(username, cache, upload_info, stream, database, &state).await
 }
 
@@ -209,10 +208,6 @@ async fn upload_path_dedup(
     }
 
     // Finally...
-    let txn = database
-        .begin()
-        .await
-        .map_err(ServerError::database_error)?;
 
     // Create a mapping granting the local cache access to the NAR
     Object::insert({
@@ -224,26 +219,9 @@ async fn upload_path_dedup(
         new_object
     })
     .on_conflict_do_update()
-    .exec(&txn)
+    .exec(database)
     .await
     .map_err(ServerError::database_error)?;
-
-    // Also mark the NAR as complete again
-    //
-    // This is racy (a chunkref might have been broken in the
-    // meantime), but it's okay since it's just a hint to
-    // `get-missing-paths` so clients don't attempt to upload
-    // again. Also see the comments in `server/src/database/entity/nar.rs`.
-    Nar::update(nar::ActiveModel {
-        id: Set(existing_nar.id),
-        completeness_hint: Set(true),
-        ..Default::default()
-    })
-    .exec(&txn)
-    .await
-    .map_err(ServerError::database_error)?;
-
-    txn.commit().await.map_err(ServerError::database_error)?;
 
     // Ensure it's not unlocked earlier
     drop(existing_nar);
@@ -376,8 +354,6 @@ async fn upload_path_new_chunked(
                     nar_id: Set(nar_id),
                     seq: Set(chunk_idx),
                     chunk_id: Set(Some(chunk.guard.id)),
-                    chunk_hash: Set(chunk.guard.chunk_hash.clone()),
-                    compression: Set(chunk.guard.compression.clone()),
                     ..Default::default()
                 })
                 .exec(&database)
@@ -533,8 +509,6 @@ async fn upload_path_new_unchunked(
         nar_id: Set(nar_id),
         seq: Set(0),
         chunk_id: Set(Some(chunk.guard.id)),
-        chunk_hash: Set(upload_info.nar_hash.to_typed_base16()),
-        compression: Set(compression.to_string()),
         ..Default::default()
     })
     .exec(&txn)
@@ -687,10 +661,6 @@ async fn upload_chunk(
     }
 
     // Finally...
-    let txn = database
-        .begin()
-        .await
-        .map_err(ServerError::database_error)?;
 
     // Update the file hash and size, and set the chunk to valid
     let file_size_db = i64::try_from(*file_size).map_err(ServerError::request_error)?;
@@ -702,25 +672,11 @@ async fn upload_chunk(
         holders_count: Set(1),
         ..Default::default()
     })
-    .exec(&txn)
+    .exec(&database)
     .await
     .map_err(ServerError::database_error)?;
 
-    // Also repair broken chunk references pointing at the same chunk
-    let repaired = ChunkRef::update_many()
-        .col_expr(chunkref::Column::ChunkId, Expr::value(chunk_id))
-        .filter(chunkref::Column::ChunkId.is_null())
-        .filter(chunkref::Column::ChunkHash.eq(chunk_hash.to_typed_base16()))
-        .filter(chunkref::Column::Compression.eq(compression.to_string()))
-        .exec(&txn)
-        .await
-        .map_err(ServerError::database_error)?;
-
-    txn.commit().await.map_err(ServerError::database_error)?;
-
     cleanup.cancel();
-
-    tracing::debug!("Repaired {} chunkrefs", repaired.rows_affected);
 
     let guard = ChunkGuard::from_locked(database.clone(), chunk);
 

@@ -1,15 +1,6 @@
 //! A reference binding a NAR and a chunk.
 //!
 //! A NAR is backed by a sequence of chunks.
-//!
-//! A chunk may become unavailable (e.g., disk corruption) and
-//! removed from the database, in which case all dependent NARs
-//! will become unavailable.
-//!
-//! Such scenario can be recovered from by reuploading any object
-//! that has the missing chunk. `atticadm` will have the functionality
-//! to kill/delete a corrupted chunk from the database and to find
-//! objects with missing chunks so they can be repaired.
 
 use sea_orm::entity::prelude::*;
 
@@ -34,22 +25,10 @@ pub struct Model {
     ///
     /// This may be NULL when the chunk is missing from the
     /// database.
+    ///
+    /// TODO: NOT NULL
     #[sea_orm(indexed)]
     pub chunk_id: Option<i64>,
-
-    /// The hash of the uncompressed chunk.
-    ///
-    /// This always begins with "sha256:" with the hash in the
-    /// hexadecimal format.
-    ///
-    /// This is used for recovering from a missing chunk.
-    #[sea_orm(indexed)]
-    pub chunk_hash: String,
-
-    /// The compression of the compressed chunk.
-    ///
-    /// This is used for recovering from a missing chunk.
-    pub compression: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

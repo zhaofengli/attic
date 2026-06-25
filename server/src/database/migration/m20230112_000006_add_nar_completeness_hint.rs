@@ -18,7 +18,7 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Entity)
                     .add_column(
-                        ColumnDef::new(Column::CompletenessHint)
+                        ColumnDef::new(Alias::new("completeness_hint"))
                             .boolean()
                             .not_null()
                             .default(true),

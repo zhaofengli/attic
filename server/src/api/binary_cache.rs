@@ -203,6 +203,7 @@ async fn get_nar(
 
     req_state.set_public_cache(cache.is_public);
 
+    // TODO: Fully kill chunk recovery
     if chunks.iter().any(Option::is_none) {
         // at least one of the chunks is missing :(
         return Err(ErrorKind::IncompleteNar.into());

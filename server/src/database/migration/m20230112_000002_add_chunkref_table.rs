@@ -29,8 +29,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Column::NarId).big_integer().not_null())
                     .col(ColumnDef::new(Column::Seq).integer().not_null())
                     .col(ColumnDef::new(Column::ChunkId).big_integer().null())
-                    .col(ColumnDef::new(Column::ChunkHash).string().not_null())
-                    .col(ColumnDef::new(Column::Compression).string().not_null())
+                    .col(ColumnDef::new(Alias::new("chunk_hash")).string().not_null())
+                    .col(
+                        ColumnDef::new(Alias::new("compression"))
+                            .string()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKeyCreateStatement::new()
                             .name("fk_chunkref_chunk")
@@ -38,6 +42,7 @@ impl MigrationTrait for Migration {
                             .from_col(Column::ChunkId)
                             .to_tbl(chunk::Entity)
                             .to_col(chunk::Column::Id)
+                            // TODO: CASCADE
                             .on_delete(ForeignKeyAction::SetNull),
                     )
                     .foreign_key(
