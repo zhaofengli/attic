@@ -37,6 +37,7 @@ derive_more = { version = "2.0.1", features = ["debug"] }
 digest = "0.11.3"
 displaydoc = "0.2.5"
 enum-as-inner = "0.7.0"
+enum_dispatch = "0.3.13"
 futures = "0.3.31"
 hex = "0.4.3"
 http-body-util = "0.1.3"

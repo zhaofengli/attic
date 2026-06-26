@@ -5,7 +5,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::path::PathBuf;
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncRead};
@@ -125,7 +124,6 @@ impl LocalBackend {
     }
 }
 
-#[async_trait]
 impl StorageBackend for LocalBackend {
     async fn upload_file(
         &self,

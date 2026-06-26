@@ -31,6 +31,7 @@ use crate::compression::{CompressionStream, CompressorFn};
 use crate::config::CompressionType;
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::narinfo::Compression;
+use crate::storage::StorageBackend;
 use crate::{RequestState, State};
 use attic::api::v1::upload_path::{
     ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,

@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use async_trait::async_trait;
 use aws_config::{BehaviorVersion, retry::RetryConfig};
 use aws_sdk_s3::{
     Client,
@@ -165,7 +164,6 @@ impl S3Backend {
     }
 }
 
-#[async_trait]
 impl StorageBackend for S3Backend {
     async fn upload_file(
         &self,
