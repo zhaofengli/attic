@@ -92,5 +92,6 @@ features = [
   "process",
   "rt",
   "rt-multi-thread",
+  "signal",
   "sync",
 ]

@@ -12,6 +12,7 @@ use sea_orm::sea_query::{LockBehavior, LockType, Query};
 use sea_orm::{ConnectionTrait, FromQueryResult};
 use tokio::sync::Semaphore;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::{State, StateInner};
@@ -29,8 +30,8 @@ struct CacheIdAndRetentionPeriod {
     retention_period: i32,
 }
 
-/// Runs garbage collection periodically.
-pub async fn run_garbage_collection(config: Config) {
+/// Runs garbage collection periodically until shutdown is requested.
+pub async fn run_garbage_collection(config: Config, shutdown: CancellationToken) {
     let interval = config.garbage_collection.interval;
 
     if interval == Duration::ZERO {
@@ -38,13 +39,27 @@ pub async fn run_garbage_collection(config: Config) {
         return;
     }
 
-    loop {
-        // We don't stop even if it errors
-        if let Err(e) = run_garbage_collection_once(config.clone()).await {
-            tracing::warn!("Garbage collection failed: {}", e);
+    while !shutdown.is_cancelled() {
+        tokio::select! {
+            _ = shutdown.cancelled() => {
+                tracing::info!("Garbage collector received shutdown signal");
+                break;
+            }
+            result = run_garbage_collection_once(config.clone()) => {
+                // We don't stop even if it errors
+                if let Err(e) = result {
+                    tracing::warn!("Garbage collection failed: {}", e);
+                }
+            }
         }
 
-        time::sleep(interval).await;
+        tokio::select! {
+            _ = shutdown.cancelled() => {
+                tracing::info!("Garbage collector received shutdown signal");
+                break;
+            }
+            _ = time::sleep(interval) => {}
+        }
     }
 }
 

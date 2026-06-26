@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use tokio::join;
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::task::spawn;
+use tokio_util::sync::CancellationToken;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
@@ -73,18 +74,27 @@ async fn main() -> Result<()> {
         ServerMode::Monolithic => {
             attic_server::run_migrations(config.clone()).await?;
 
-            let (api_server, _) = join!(
-                attic_server::run_api_server(opts.listen, config.clone()),
-                attic_server::gc::run_garbage_collection(config.clone()),
-            );
+            let shutdown = run_shutdown_handler();
+            let gc_handle = spawn(attic_server::gc::run_garbage_collection(
+                config.clone(),
+                shutdown.clone(),
+            ));
+
+            let api_server =
+                attic_server::run_api_server(opts.listen, config.clone(), shutdown.clone()).await;
+
+            shutdown.cancel();
+            let _ = gc_handle.await;
 
             api_server?;
         }
         ServerMode::ApiServer => {
-            attic_server::run_api_server(opts.listen, config).await?;
+            let shutdown = run_shutdown_handler();
+            attic_server::run_api_server(opts.listen, config, shutdown).await?;
         }
         ServerMode::GarbageCollector => {
-            attic_server::gc::run_garbage_collection(config.clone()).await;
+            let shutdown = run_shutdown_handler();
+            attic_server::gc::run_garbage_collection(config.clone(), shutdown).await;
         }
         ServerMode::DbMigrations => {
             attic_server::run_migrations(config).await?;
@@ -98,6 +108,38 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_shutdown_handler() -> CancellationToken {
+    async fn wait_for_signal(shutdown: CancellationToken) {
+        let mut sigterm = signal(SignalKind::terminate()).expect("Could not listen for SIGTERM");
+        let mut sigint = signal(SignalKind::interrupt()).expect("Could not listen for SIGINT");
+
+        tokio::select! {
+            _ = sigterm.recv() => {
+                eprintln!("Received SIGTERM, exiting gracefully...");
+            }
+            _ = sigint.recv() => {
+                eprintln!("Received SIGINT, exiting gracefully...");
+            }
+            _ = shutdown.cancelled() => {
+                return;
+            }
+        }
+
+        shutdown.cancel();
+    }
+
+    let shutdown = CancellationToken::new();
+
+    spawn({
+        let shutdown = shutdown.clone();
+        async move {
+            wait_for_signal(shutdown).await;
+        }
+    });
+
+    shutdown
 }
 
 fn init_logging(tokio_console: bool) {

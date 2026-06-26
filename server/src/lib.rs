@@ -26,7 +26,6 @@ pub mod nix_manifest;
 pub mod oobe;
 mod storage;
 
-use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -42,6 +41,7 @@ use sea_orm::{ConnectionTrait, Database, DatabaseConnection, query::Statement};
 use tokio::net::TcpListener;
 use tokio::sync::OnceCell;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
 
@@ -216,8 +216,12 @@ async fn fallback(_: Uri) -> ServerResult<()> {
     Err(ErrorKind::NotFound.into())
 }
 
-/// Runs the API server.
-pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> Result<()> {
+/// Runs the API server until shutdown is requested.
+pub async fn run_api_server(
+    cli_listen: Option<SocketAddr>,
+    config: Config,
+    shutdown: CancellationToken,
+) -> Result<()> {
     eprintln!("Starting API server...");
 
     let state = StateInner::new(config).await;
@@ -244,13 +248,27 @@ pub async fn run_api_server(cli_listen: Option<SocketAddr>, config: Config) -> R
 
     let listener = TcpListener::bind(&listen).await?;
 
-    let (server_ret, _) = tokio::join!(axum::serve(listener, rest).into_future(), async {
-        if state.config.database.heartbeat {
-            let _ = state.run_db_heartbeat().await;
-        }
-    },);
+    let server = axum::serve(listener, rest);
 
-    server_ret?;
+    let heartbeat_handle = if state.config.database.heartbeat {
+        let state_clone = state.clone();
+        Some(tokio::spawn(async move {
+            let _ = state_clone.run_db_heartbeat().await;
+        }))
+    } else {
+        None
+    };
+
+    let server_result = server
+        .with_graceful_shutdown(shutdown.cancelled_owned())
+        .await;
+
+    if let Some(handle) = heartbeat_handle {
+        handle.abort();
+        let _ = handle.await;
+    }
+
+    server_result?;
 
     Ok(())
 }
