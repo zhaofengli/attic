@@ -51,7 +51,7 @@ use config::{Config, StorageConfig};
 use database::migration::{Migrator, MigratorTrait};
 use error::{ErrorKind, ServerError, ServerResult};
 use middleware::{init_request_state, restrict_host, set_visibility_header};
-use storage::{LocalBackend, S3Backend, StorageBackend};
+use storage::{LocalBackend, S3Backend, StorageBackendImpl};
 
 type State = Arc<StateInner>;
 type RequestState = Arc<RequestStateInner>;
@@ -66,7 +66,7 @@ pub struct StateInner {
     database: OnceCell<DatabaseConnection>,
 
     /// Handle to the storage backend.
-    storage: OnceCell<Arc<Box<dyn StorageBackend>>>,
+    storage: OnceCell<Arc<StorageBackendImpl>>,
 }
 
 /// Request state.
@@ -134,19 +134,17 @@ impl StateInner {
     }
 
     /// Returns a handle to the storage backend.
-    async fn storage(&self) -> ServerResult<&Arc<Box<dyn StorageBackend>>> {
+    async fn storage(&self) -> ServerResult<&Arc<StorageBackendImpl>> {
         self.storage
             .get_or_try_init(|| async {
                 match &self.config.storage {
                     StorageConfig::Local(local_config) => {
                         let local = LocalBackend::new(local_config.clone()).await?;
-                        let boxed: Box<dyn StorageBackend> = Box::new(local);
-                        Ok(Arc::new(boxed))
+                        Ok(Arc::new(local.into()))
                     }
                     StorageConfig::S3(s3_config) => {
                         let s3 = S3Backend::new(s3_config.clone()).await?;
-                        let boxed: Box<dyn StorageBackend> = Box::new(s3);
-                        Ok(Arc::new(boxed))
+                        Ok(Arc::new(s3.into()))
                     }
                 }
             })

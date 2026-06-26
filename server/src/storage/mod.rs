@@ -3,6 +3,7 @@
 mod local;
 mod s3;
 
+use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
@@ -40,10 +41,17 @@ pub enum Download {
     AsyncRead(Box<dyn AsyncRead + Unpin + Send>),
 }
 
+#[enum_dispatch(StorageBackend)]
+#[derive(Debug)]
+pub(crate) enum StorageBackendImpl {
+    LocalBackend,
+    S3Backend,
+}
+
 // TODO: Maybe make RemoteFile the one true reference instead of having two sets of APIs?
 /// A storage backend.
-#[async_trait::async_trait]
-pub trait StorageBackend: Send + Sync + std::fmt::Debug {
+#[enum_dispatch]
+pub(crate) trait StorageBackend: Send + Sync + std::fmt::Debug {
     /// Uploads a file.
     async fn upload_file(
         &self,

@@ -46,7 +46,7 @@ pub async fn run_oobe() -> Result<()> {
     fs::create_dir_all(&storage_path).await?;
 
     let rs256_secret_base64 = {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let private_key = rsa::RsaPrivateKey::new(&mut rng, 4096)?;
         let pkcs1_pem = private_key.to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)?;
 

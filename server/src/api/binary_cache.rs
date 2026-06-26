@@ -29,7 +29,7 @@ use crate::database::entity::chunk::ChunkModel;
 use crate::error::{ErrorKind, ServerResult};
 use crate::narinfo::NarInfo;
 use crate::nix_manifest;
-use crate::storage::{Download, StorageBackend};
+use crate::storage::{Download, StorageBackend, StorageBackendImpl};
 use crate::{RequestState, State};
 use attic::cache::CacheName;
 use attic::io::merge_chunks;
@@ -241,7 +241,7 @@ async fn get_nar(
             IoError::other(e)
         }
 
-        let streamer = |chunk: ChunkModel, storage: Arc<Box<dyn StorageBackend + 'static>>| async move {
+        let streamer = |chunk: ChunkModel, storage: Arc<StorageBackendImpl>| async move {
             match storage
                 .download_file_db(&chunk.remote_file.0, true)
                 .await

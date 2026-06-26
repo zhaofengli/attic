@@ -22,6 +22,7 @@ use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object};
+use crate::storage::StorageBackend;
 
 #[derive(Debug, FromQueryResult)]
 struct CacheIdAndRetentionPeriod {

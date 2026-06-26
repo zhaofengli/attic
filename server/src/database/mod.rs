@@ -1,10 +1,10 @@
 pub mod entity;
 pub mod migration;
 
+use std::future::Future;
 use std::ops::Deref;
 
 use anyhow::anyhow;
-use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::entity::Iterable as EnumIterable;
 use sea_orm::entity::prelude::*;
@@ -31,32 +31,42 @@ const SELECT_NAR: &str = "N_";
 const SELECT_CHUNK: &str = "CH_";
 const SELECT_CHUNKREF: &str = "CHR_";
 
-#[async_trait]
 pub trait AtticDatabase: Send + Sync {
     /// Retrieves an object in a binary cache by its store path hash, returning all its
     /// chunks.
-    async fn find_object_and_chunks_by_store_path_hash(
+    fn find_object_and_chunks_by_store_path_hash(
         &self,
         cache: &CacheName,
         store_path_hash: &StorePathHash,
         include_chunks: bool,
-    ) -> ServerResult<(ObjectModel, CacheModel, NarModel, Vec<Option<ChunkModel>>)>;
+    ) -> impl Future<
+        Output = ServerResult<(ObjectModel, CacheModel, NarModel, Vec<Option<ChunkModel>>)>,
+    > + Send;
 
     /// Retrieves a binary cache.
-    async fn find_cache(&self, cache: &CacheName) -> ServerResult<CacheModel>;
+    fn find_cache(
+        &self,
+        cache: &CacheName,
+    ) -> impl Future<Output = ServerResult<CacheModel>> + Send;
 
     /// Retrieves and locks a valid NAR matching a NAR Hash.
-    async fn find_and_lock_nar(&self, nar_hash: &Hash) -> ServerResult<Option<NarGuard>>;
+    fn find_and_lock_nar(
+        &self,
+        nar_hash: &Hash,
+    ) -> impl Future<Output = ServerResult<Option<NarGuard>>> + Send;
 
     /// Retrieves and locks a valid chunk matching a chunk Hash.
-    async fn find_and_lock_chunk(
+    fn find_and_lock_chunk(
         &self,
         chunk_hash: &Hash,
         compression: Compression,
-    ) -> ServerResult<Option<ChunkGuard>>;
+    ) -> impl Future<Output = ServerResult<Option<ChunkGuard>>> + Send;
 
     /// Bumps the last accessed timestamp of an object.
-    async fn bump_object_last_accessed(&self, object_id: i64) -> ServerResult<()>;
+    fn bump_object_last_accessed(
+        &self,
+        object_id: i64,
+    ) -> impl Future<Output = ServerResult<()>> + Send;
 }
 
 pub struct NarGuard {
@@ -130,7 +140,6 @@ pub fn build_cache_object_nar_query(include_chunks: bool) -> Select<Object> {
     query
 }
 
-#[async_trait]
 impl AtticDatabase for DatabaseConnection {
     async fn find_object_and_chunks_by_store_path_hash(
         &self,
