@@ -12,7 +12,7 @@ base64 = "0.22.1"
 chrono = "0.4.41"
 displaydoc = "0.2.5"
 indexmap = { version = "2.10.0", features = ["serde"] }
-jwt-simple = "0.11.9"
+jwt-simple = "0.12.0"
 lazy_static = "1.5.0"
 regex = "1.11.1"
 serde = "1.0.219"
@@ -21,4 +21,4 @@ tracing = "0.1.41"
 rsa = "0.10.0-rc.18"
 
 [target.wasm32-unknown-unknown.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.4", features = ["js"] }
