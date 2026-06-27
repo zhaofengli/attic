@@ -48,6 +48,9 @@ pub enum ErrorKind {
     /// The cache already exists.
     CacheAlreadyExists,
 
+    /// Caches can only be managed via config file
+    DeclarativeCaches,
+
     /// The requested object does not exist.
     NoSuchObject,
 
@@ -176,6 +179,7 @@ impl ErrorKind {
             Self::NoSuchObject => "NoSuchObject",
             Self::NoSuchCache => "NoSuchCache",
             Self::CacheAlreadyExists => "CacheAlreadyExists",
+            Self::DeclarativeCaches => "DeclarativeCaches",
             Self::InvalidCompressionType { .. } => "InvalidCompressionType",
             Self::IncompleteNar => "IncompleteNar",
             Self::AtticError(e) => e.name(),
