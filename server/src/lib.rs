@@ -37,7 +37,9 @@ use axum::{
     extract::Extension,
     http::{Uri, uri::Scheme},
 };
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, query::Statement};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DatabaseConnectionType, query::Statement,
+};
 use tokio::net::TcpListener;
 use tokio::sync::OnceCell;
 use tokio::time;
@@ -110,7 +112,9 @@ impl StateInner {
                 let db = Database::connect(&self.config.database.url)
                     .await
                     .map_err(ServerError::database_error);
-                if let Ok(DatabaseConnection::SqlxSqlitePoolConnection(ref conn)) = db {
+                if let Ok(db_conn) = &db
+                    && let DatabaseConnectionType::SqlxSqlitePoolConnection(conn) = &db_conn.inner
+                {
                     // execute some sqlite-specific performance optimizations
                     // see https://phiresky.github.io/blog/2020/sqlite-performance-tuning/ for
                     // more details
@@ -158,7 +162,7 @@ impl StateInner {
             Statement::from_string(db.get_database_backend(), "SELECT 'heartbeat';".to_string());
 
         loop {
-            let _ = db.execute(stmt.clone()).await;
+            let _ = db.execute_raw(stmt.clone()).await;
             time::sleep(Duration::from_secs(60)).await;
         }
     }

@@ -22,7 +22,7 @@ pub struct Json<T>(pub T);
 
 impl<T: Serialize + DeserializeOwned> From<Json<T>> for Value {
     fn from(value: Json<T>) -> Self {
-        let opt = serde_json::to_string(&value).ok().map(Box::new);
+        let opt = serde_json::to_string(&value).ok();
 
         Value::String(opt)
     }

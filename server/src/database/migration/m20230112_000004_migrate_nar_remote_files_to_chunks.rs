@@ -110,8 +110,8 @@ impl MigrationTrait for Migration {
 
         // Actually run the migration
         let txn = manager.get_connection().begin().await?;
-        txn.execute(insert_chunk_stmt).await?;
-        txn.execute(insert_chunkref_stmt).await?;
+        txn.execute_raw(insert_chunk_stmt).await?;
+        txn.execute_raw(insert_chunkref_stmt).await?;
         txn.commit().await?;
 
         // Finally, drop the temporary column
@@ -130,14 +130,9 @@ impl MigrationTrait for Migration {
 }
 
 impl Iden for TempChunkCols {
-    fn unquoted(&self, s: &mut dyn std::fmt::Write) {
-        write!(
-            s,
-            "{}",
-            match self {
-                Self::NarId => "temp_nar_id",
-            }
-        )
-        .unwrap();
+    fn unquoted(&self) -> &str {
+        match self {
+            Self::NarId => "temp_nar_id",
+        }
     }
 }
