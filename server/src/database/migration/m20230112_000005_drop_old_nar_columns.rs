@@ -22,7 +22,7 @@ impl MigrationTrait for Migration {
             // Just copy all data to a new table
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     "PRAGMA foreign_keys = OFF".to_owned(),
                 ))
@@ -94,7 +94,7 @@ impl MigrationTrait for Migration {
                 .to_owned();
 
             let insertion_stmt = manager.get_database_backend().build(&insertion);
-            manager.get_connection().execute(insertion_stmt).await?;
+            manager.get_connection().execute_raw(insertion_stmt).await?;
 
             manager
                 .drop_table(Table::drop().table(nar::Entity).to_owned())
@@ -110,7 +110,7 @@ impl MigrationTrait for Migration {
 
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     "PRAGMA foreign_keys = ON".to_owned(),
                 ))

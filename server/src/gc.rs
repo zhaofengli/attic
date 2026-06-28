@@ -9,7 +9,7 @@ use futures::future::join_all;
 use sea_orm::entity::prelude::*;
 use sea_orm::query::QuerySelect;
 use sea_orm::sea_query::{LockBehavior, LockType, Query};
-use sea_orm::{ConnectionTrait, FromQueryResult};
+use sea_orm::{ConnectionTrait, ExprTrait, FromQueryResult};
 use tokio::sync::Semaphore;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
@@ -174,13 +174,19 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
     let db = state.database().await?;
     let storage = state.storage().await?;
 
-    let orphan_chunk_limit = match db.get_database_backend() {
+    let database_backend = db.get_database_backend();
+    let orphan_chunk_limit = match database_backend {
         // Arbitrarily chosen sensible value since there's no good default to choose from for MySQL
         sea_orm::DatabaseBackend::MySql => 1000,
         // Panic limit set by sqlx for postgresql: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
         sea_orm::DatabaseBackend::Postgres => u64::from(u16::MAX),
         // Default statement limit imposed by sqlite: https://www.sqlite.org/limits.html#max_variable_number
         sea_orm::DatabaseBackend::Sqlite => 500,
+        _ => {
+            return Err(anyhow!(
+                "Unsupported database backend: {database_backend:?}"
+            ));
+        }
     };
 
     // find all orphan chunks...
@@ -211,7 +217,7 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
         db.get_database_backend().build(&change_state)
     };
 
-    db.execute(transition_statement).await?;
+    db.execute_raw(transition_statement).await?;
 
     let orphan_chunks: Vec<chunk::Model> = Chunk::find()
         .filter(chunk::Column::State.eq(ChunkState::Deleted))
