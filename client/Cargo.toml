@@ -12,6 +12,7 @@ path = "src/main.rs"
 attic = { path = "../attic" }
 
 anyhow = "1.0.98"
+async-stream = "0.3.6"
 async-channel = "2.5.0"
 bytes = "1.10.1"
 clap = { version = "4.5", features = ["derive"] }
@@ -32,6 +33,7 @@ serde_json = "1.0.140"
 toml = "1.1.2"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
+uuid = "1.17.0"
 xdg = "3.0.0"
 
 [dependencies.tokio]
