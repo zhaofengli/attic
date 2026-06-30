@@ -250,6 +250,7 @@ impl Token {
         signature_type: &SignatureType,
         maybe_bound_issuer: &Option<String>,
         maybe_bound_audiences: &Option<HashSet<String>>,
+        time_tolerance: Option<std::time::Duration>,
     ) -> Result<Self> {
         let opts = VerificationOptions {
             reject_before: None,
@@ -263,7 +264,7 @@ impl Token {
                 .map(|s| [s.to_owned()].into())
                 .to_owned(),
             allowed_audiences: maybe_bound_audiences.to_owned(),
-            time_tolerance: None,
+            time_tolerance: time_tolerance.map(|d| Duration::from_secs(d.as_secs())),
             max_validity: None,
             max_token_length: None,
             max_header_length: None,

@@ -164,6 +164,20 @@ pub struct JWTConfig {
     #[serde(default = "load_jwt_signing_config_from_env")]
     #[debug(skip)]
     pub signing_config: JWTSigningConfig,
+
+    /// Clock-skew tolerance for JWT nbf/exp validation.
+    ///
+    /// Useful when the token issuer and atticd run with unsynchronised clocks,
+    /// e.g. microVM or container guests that boot without NTP. The tolerance
+    /// widens the acceptance window symmetrically -- it does not bypass exp.
+    ///
+    /// Example: time-tolerance = "30s"  (accepts "30s", "2m", "1h", ...)
+    ///
+    /// Default: no tolerance (existing behaviour preserved).
+    #[serde(rename = "time-tolerance")]
+    #[serde(default)]
+    #[serde(with = "humantime_serde::option")]
+    pub time_tolerance: Option<std::time::Duration>,
 }
 
 /// JSON Web Token signing configuration.
