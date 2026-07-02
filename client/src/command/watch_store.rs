@@ -27,6 +27,14 @@ pub struct WatchStore {
     #[clap(long, hide = true)]
     no_closure: bool,
 
+    /// For derivations, include their outputs.
+    #[clap(long)]
+    include_outputs: bool,
+
+    /// For outputs, include their derivers.
+    #[clap(long)]
+    include_derivers: bool,
+
     /// Ignore the upstream cache filter.
     #[clap(long)]
     ignore_upstream_cache_filter: bool,
@@ -69,6 +77,8 @@ pub async fn run(opts: Opts) -> Result<()> {
 
     let push_session_config = PushSessionConfig {
         no_closure: sub.no_closure,
+        include_outputs: sub.include_outputs,
+        include_derivers: sub.include_derivers,
         ignore_upstream_cache_filter: sub.ignore_upstream_cache_filter,
     };
 

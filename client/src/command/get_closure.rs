@@ -16,6 +16,10 @@ pub struct GetClosure {
     /// For derivations, include their outputs.
     #[clap(long)]
     include_outputs: bool,
+
+    /// For outputs, include their derivers.
+    #[clap(long)]
+    include_derivers: bool,
 }
 
 pub async fn run(opts: Opts) -> Result<()> {
@@ -24,7 +28,7 @@ pub async fn run(opts: Opts) -> Result<()> {
     let store = NixStore::connect()?;
     let store_path = store.follow_store_path(&sub.store_path)?;
     let closure = store
-        .compute_fs_closure(store_path, false, sub.include_outputs, false)
+        .compute_fs_closure(store_path, false, sub.include_outputs, sub.include_derivers)
         .await?;
 
     for path in &closure {
