@@ -288,6 +288,12 @@ in {
           client.fail("attic cache info test")
           client.fail("curl -sL --fail-with-body http://server:8080/test/nix-cache-info")
 
+      with subtest("Basic stateless auth check"):
+          access_envs = f"ATTIC_LOGIN_ENDPOINT=http://server:8080 ATTIC_LOGIN_NAME=env ATTIC_LOGIN_TOKEN={root_token}"
+          client.succeed(f"{access_envs} attic login")
+          client.succeed(f"{access_envs} attic cache create env:test")
+          client.succeed(f"{access_envs} attic cache destroy --no-confirm env:test")
+
       ${databaseModules.${config.database}.testScriptPost or ""}
       ${storageModules.${config.storage}.testScriptPost or ""}
     '';
