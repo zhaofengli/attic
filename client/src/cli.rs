@@ -9,6 +9,7 @@ use enum_as_inner::EnumAsInner;
 
 use crate::command::cache::{self, Cache};
 use crate::command::get_closure::{self, GetClosure};
+use crate::command::key::{self, Key};
 use crate::command::login::{self, Login};
 use crate::command::push::{self, Push};
 use crate::command::r#use::{self, Use};
@@ -30,6 +31,7 @@ pub enum Command {
     Push(Push),
     Cache(Cache),
     WatchStore(WatchStore),
+    Key(Key),
 
     #[clap(hide = true)]
     GetClosure(GetClosure),
@@ -57,6 +59,7 @@ pub async fn run() -> Result<()> {
         Command::Cache(_) => cache::run(opts).await,
         Command::WatchStore(_) => watch_store::run(opts).await,
         Command::GetClosure(_) => get_closure::run(opts).await,
+        Command::Key(_) => key::run(opts).await,
     }
 }
 

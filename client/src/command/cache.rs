@@ -7,8 +7,11 @@ use crate::api::ApiClient;
 use crate::cache::CacheRef;
 use crate::cli::Opts;
 use crate::config::Config;
-use attic::api::v1::cache_config::{
-    CacheConfig, CreateCacheRequest, KeypairConfig, RetentionPeriodConfig,
+use attic::{
+    api::v1::cache_config::{
+        CacheConfig, CreateCacheRequest, KeypairConfig, RetentionPeriodConfig,
+    },
+    signing::NixKeypair,
 };
 
 /// Manage caches on an Attic server.
@@ -72,6 +75,12 @@ struct Create {
         default_value = "cache.nixos.org-1"
     )]
     upstream_cache_key_names: Vec<String>,
+
+    /// The signing keypair to use for the cache.
+    ///
+    /// If not specified, a new keypair will be generated.
+    #[clap(long)]
+    keypair_path: Option<String>,
 }
 
 /// Configure a cache.
@@ -90,6 +99,14 @@ struct Configure {
     /// in `nix.conf`.
     #[clap(long)]
     regenerate_keypair: bool,
+
+    /// Set a keypair for the cache.
+    ///
+    /// The server-side signing key will be set to the
+    /// specified keypair. This is useful for setting up
+    /// a cache with a pre-existing keypair.
+    #[clap(long, conflicts_with = "regenerate_keypair")]
+    keypair_path: Option<String>,
 
     /// Make the cache public.
     ///
@@ -179,9 +196,15 @@ async fn create_cache(sub: Create) -> Result<()> {
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
     let api = ApiClient::from_server_config(server.clone())?;
 
+    let keypair = if let Some(keypair_path) = &sub.keypair_path {
+        let contents = std::fs::read_to_string(keypair_path)?;
+        KeypairConfig::Keypair(NixKeypair::from_str(&contents)?)
+    } else {
+        KeypairConfig::Generate
+    };
+
     let request = CreateCacheRequest {
-        // TODO: Make this configurable?
-        keypair: KeypairConfig::Generate,
+        keypair,
         is_public: sub.public,
         priority: sub.priority,
         store_dir: sub.store_dir,
@@ -230,6 +253,10 @@ async fn configure_cache(sub: Configure) -> Result<()> {
 
     if sub.regenerate_keypair {
         patch.keypair = Some(KeypairConfig::Generate);
+    } else if let Some(keypair_path) = &sub.keypair_path {
+        let contents = std::fs::read_to_string(keypair_path)?;
+        let keypair = KeypairConfig::Keypair(NixKeypair::from_str(&contents)?);
+        patch.keypair = Some(keypair);
     }
 
     patch.store_dir = sub.store_dir;
