@@ -18,6 +18,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::get,
 };
+use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use futures::stream::BoxStream;
 use serde::Serialize;
@@ -29,7 +30,7 @@ use crate::database::entity::chunk::ChunkModel;
 use crate::error::{ErrorKind, ServerResult};
 use crate::narinfo::NarInfo;
 use crate::nix_manifest;
-use crate::storage::{Download, StorageBackend, StorageBackendImpl};
+use crate::storage::{Download, RemoteFile, StorageBackend, StorageBackendImpl};
 use crate::{RequestState, State};
 use attic::cache::CacheName;
 use attic::io::merge_chunks;
@@ -159,6 +160,69 @@ async fn get_store_path_info(
     Ok(narinfo)
 }
 
+/// Upper bound on how many chunks a NAR may have before we stop probing all of
+/// them. Large chunked NARs (a multi-GiB image can be tens of thousands of
+/// chunks) would otherwise fan out one HEAD per chunk on every GET, which -- at
+/// the substituter parallelism a fleet reaches during a rebuild -- becomes a
+/// self-inflicted load spike on the object store and a tail-latency floor on
+/// healthy pulls. Above this we probe only the first chunk (the observed
+/// corruption is all-or-nothing) and rely on the hard mid-stream abort for the
+/// rest.
+const PROBE_ALL_MAX_CHUNKS: usize = 64;
+
+/// Maximum concurrent presence probes for a single NAR, so a many-chunk NAR
+/// does not open a burst of connections to the backend at once.
+const PROBE_CONCURRENCY: usize = 32;
+
+/// Probes one chunk. Returns its storage key if the object is definitively
+/// missing, or `None` if it is present *or* the probe failed transiently.
+///
+/// A transient probe error (anything but a definitive "not found") is treated
+/// as present: a busy-but-healthy backend must stay available, and the
+/// mid-stream abort remains the safety net for a chunk that turns out to be
+/// gone. Takes an owned `RemoteFile` and an `Arc` to the backend so the future
+/// borrows nothing, which keeps the enclosing handler future `Send` under
+/// `buffer_unordered` (borrowed captures there trip a higher-ranked-lifetime
+/// `Send` bound, rust-lang/rust#102211).
+async fn probe_chunk(storage: Arc<StorageBackendImpl>, remote_file: RemoteFile) -> Option<String> {
+    match storage.file_exists_db(&remote_file).await {
+        Ok(true) => None,
+        Ok(false) => Some(remote_file.remote_file_id()),
+        Err(e) => {
+            tracing::warn!(%e, chunk = %remote_file.remote_file_id(), "chunk presence probe failed; assuming present");
+            None
+        }
+    }
+}
+
+/// Returns the storage key of the first chunk found missing from the backing
+/// store, or `None` if the probed chunks are all present (or failed transiently).
+///
+/// Always probes the first chunk; probes the rest only when the NAR is small
+/// enough (see [`PROBE_ALL_MAX_CHUNKS`]). `chunks` must contain no `None`
+/// (checked by the caller).
+async fn find_missing_chunk(
+    storage: Arc<StorageBackendImpl>,
+    chunks: &[Option<ChunkModel>],
+) -> Option<String> {
+    let remote_file = |i: usize| chunks[i].as_ref().unwrap().remote_file.0.clone();
+
+    if let Some(missing) = probe_chunk(storage.clone(), remote_file(0)).await {
+        return Some(missing);
+    }
+
+    if chunks.len() > PROBE_ALL_MAX_CHUNKS {
+        return None;
+    }
+
+    futures::stream::iter(1..chunks.len())
+        .map(|i| probe_chunk(storage.clone(), remote_file(i)))
+        .buffer_unordered(PROBE_CONCURRENCY)
+        .filter_map(std::future::ready)
+        .next()
+        .await
+}
+
 /// Gets a NAR.
 ///
 /// - GET `:cache/nar/{storePathHash}.nar`
@@ -209,18 +273,37 @@ async fn get_nar(
         return Err(ErrorKind::IncompleteNar.into());
     }
 
+    // Fail closed on chunks whose object is gone from the backing store.
+    //
+    // The chunk rows all exist (checked above), but the object each row points
+    // at can still be absent from storage (e.g. lost to backend corruption).
+    // Because the response below streams chunks lazily, such a miss would
+    // otherwise surface only after the `200 OK` headers are committed, and the
+    // client would receive a truncated body it reads as a successful-but-short
+    // transfer. Probe chunk presence up front so a miss returns a clean error
+    // before a single body byte is sent, rather than a poisoned 200.
+    let storage = state.storage().await?;
+    if let Some(missing) = find_missing_chunk(storage.clone(), &chunks).await {
+        tracing::error!(
+            store_path_hash = %store_path_hash.as_str(),
+            chunk = %missing,
+            "NAR references a chunk missing from storage; refusing to serve a truncated response"
+        );
+        return Err(ErrorKind::IncompleteNar.into());
+    }
+
     database.bump_object_last_accessed(object.id).await?;
 
     if chunks.len() == 1 {
         // single chunk
         let chunk = chunks[0].as_ref().unwrap();
         let remote_file = &chunk.remote_file.0;
-        let storage = state.storage().await?;
         match storage.download_file_db(remote_file, false).await? {
             Download::Url(url) => Ok(Redirect::temporary(&url).into_response()),
             Download::AsyncRead(stream) => {
-                let stream = ReaderStream::new(stream).map_err(|e| {
-                    tracing::error!(%e, "Stream error");
+                let store_path_hash = store_path_hash.as_str().to_owned();
+                let stream = ReaderStream::new(stream).map_err(move |e| {
+                    tracing::error!(%e, %store_path_hash, "Stream error");
                     e
                 });
                 let body = Body::from_stream(stream);
@@ -256,12 +339,13 @@ async fn get_nar(
         };
 
         let chunks: VecDeque<_> = chunks.into_iter().map(Option::unwrap).collect();
-        let storage = state.storage().await?.clone();
+        let storage = storage.clone();
 
         // TODO: Make num_prefetch configurable
         // The ideal size depends on the average chunk size
-        let merged = merge_chunks(chunks, streamer, storage, 2).map_err(|e| {
-            tracing::error!(%e, "Stream error");
+        let store_path_hash = store_path_hash.as_str().to_owned();
+        let merged = merge_chunks(chunks, streamer, storage, 2).map_err(move |e| {
+            tracing::error!(%e, %store_path_hash, "Stream error");
             e
         });
         let body = Body::from_stream(merged);

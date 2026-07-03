@@ -347,6 +347,31 @@ impl StorageBackend for S3Backend {
         self.get_download(req, prefer_stream).await
     }
 
+    async fn file_exists_db(&self, file: &RemoteFile) -> ServerResult<bool> {
+        let (client, file) = self.get_client_from_db_ref(file).await?;
+
+        match client
+            .head_object()
+            .bucket(&file.bucket)
+            .key(&file.key)
+            .send()
+            .await
+        {
+            Ok(_) => Ok(true),
+            // A missing object is an expected, non-error outcome: report it as
+            // absent so the caller can fail closed cleanly. Any other error
+            // (transport, permissions, throttling) must propagate rather than
+            // be misread as "gone", which would wrongly poison a healthy NAR.
+            Err(e) => {
+                if e.as_service_error().map(|e| e.is_not_found()) == Some(true) {
+                    Ok(false)
+                } else {
+                    Err(ServerError::storage_error(e))
+                }
+            }
+        }
+    }
+
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile> {
         Ok(RemoteFile::S3(S3RemoteFile {
             region: self.config.region.clone(),

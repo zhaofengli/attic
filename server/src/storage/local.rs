@@ -201,7 +201,74 @@ impl StorageBackend for LocalBackend {
         Ok(Download::AsyncRead(Box::new(file)))
     }
 
+    async fn file_exists_db(&self, file: &RemoteFile) -> ServerResult<bool> {
+        let file = if let RemoteFile::Local(file) = file {
+            file
+        } else {
+            return Err(ErrorKind::StorageError(anyhow::anyhow!(
+                "Does not understand the remote file reference"
+            ))
+            .into());
+        };
+
+        fs::try_exists(self.get_path(&file.name))
+            .await
+            .map_err(ServerError::storage_error)
+    }
+
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile> {
         Ok(RemoteFile::Local(LocalRemoteFile { name }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::process;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use tokio::io::AsyncReadExt as _;
+
+    /// `file_exists_db` reports presence truthfully: `true` once a file is
+    /// uploaded, `false` for a reference to an object that was never stored.
+    /// This underpins the NAR endpoint's fail-closed probe.
+    #[tokio::test]
+    async fn file_exists_db_reflects_presence() {
+        // Unique per-run scratch dir (no external tempfile dependency); the
+        // backend creates it and we remove it at the end.
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("attic-local-test-{}-{}", process::id(), nonce));
+
+        let backend = LocalBackend::new(LocalStorageConfig { path: dir.clone() })
+            .await
+            .unwrap();
+
+        let present = backend
+            .upload_file("present".to_string(), &mut b"hello".as_slice())
+            .await
+            .unwrap();
+        assert!(backend.file_exists_db(&present).await.unwrap());
+
+        let missing = RemoteFile::Local(LocalRemoteFile {
+            name: "missing".to_string(),
+        });
+        assert!(!backend.file_exists_db(&missing).await.unwrap());
+
+        // Sanity: the "present" object still downloads (probe did not disturb it).
+        let mut buf = Vec::new();
+        match backend.download_file_db(&present, true).await.unwrap() {
+            Download::AsyncRead(mut r) => {
+                r.read_to_end(&mut buf).await.unwrap();
+            }
+            Download::Url(_) => panic!("local backend never returns a URL"),
+        }
+        assert_eq!(buf, b"hello");
+
+        fs::remove_dir_all(&dir).await.ok();
     }
 }
