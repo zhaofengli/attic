@@ -115,6 +115,19 @@ eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsImV4cCI6MTY4MDI5MzQyNSw
 Now Alice can use this token to _create_ any cache beginning with `alice-` and push to them.
 Try passing `--dump-claims` to show the JWT claims without encoding the token to see what's going on.
 
+## Token Revocation
+
+Sometimes you need to revoke access for specific users without regenerating all tokens.
+Attic supports blacklisting JWT subjects through server configuration:
+
+```toml
+# In server.toml
+[jwt.blacklist]
+subjects = ["alice"]
+```
+
+After adding subjects to the blacklist and restarting the server, any tokens with those subjects will be rejected.
+
 ## Going Public
 
 Let's make the cache public. Making it public gives unauthenticated users pull access:

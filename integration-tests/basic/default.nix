@@ -171,7 +171,7 @@ in {
           settings = {
             listen = "[::]:8080";
 
-            jwt = { };
+            jwt.blacklist.subjects = [ "alice" ];
 
             chunking = {
               nar-size-threshold = 1;
@@ -205,10 +205,12 @@ in {
 
       root_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --push '*' --pull '*' --delete '*' --create-cache '*' --destroy-cache '*' --configure-cache '*' --configure-cache-retention '*' </dev/null").strip()
       readonly_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --pull 'test' </dev/null").strip()
+      blacklisted_token = server.succeed("${cmd.atticadm} make-token --sub 'alice' --validity '1 month' --push '*' --pull '*' --create-cache '*' </dev/null").strip()
 
       client.succeed(f"attic login --set-default root http://server:8080 {root_token}")
       client.succeed(f"attic login readonly http://server:8080 {readonly_token}")
       client.succeed("attic login anon http://server:8080")
+      client.succeed(f"attic login blacklisted http://server:8080 {blacklisted_token}")
 
       # TODO: Make sure the correct status codes are returned
       # (i.e., 500s shouldn't pass the "should fail" tests)
@@ -287,6 +289,11 @@ in {
           client.succeed("attic cache destroy --no-confirm test")
           client.fail("attic cache info test")
           client.fail("curl -sL --fail-with-body http://server:8080/test/nix-cache-info")
+
+      with subtest("Check that token with blacklisted subject is rejected"):
+          client.fail("attic cache create blacklisted:test-blacklist")
+          client.fail(f"attic push blacklisted:test {test_file}")
+          client.fail("attic use blacklisted:test")
 
       ${databaseModules.${config.database}.testScriptPost or ""}
       ${storageModules.${config.storage}.testScriptPost or ""}

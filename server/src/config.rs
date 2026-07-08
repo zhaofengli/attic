@@ -159,11 +159,30 @@ pub struct JWTConfig {
     #[serde(default = "Default::default")]
     pub token_bound_audiences: Option<HashSet<String>>,
 
+    /// JWT token blacklist configuration.
+    #[serde(default)]
+    pub blacklist: Option<JWTBlacklistConfig>,
+
     /// JSON Web Token signing.
     #[serde(rename = "signing")]
     #[serde(default = "load_jwt_signing_config_from_env")]
     #[debug(skip)]
     pub signing_config: JWTSigningConfig,
+}
+
+/// JWT token blacklist configuration.
+#[derive(Clone, Debug, Deserialize)]
+pub struct JWTBlacklistConfig {
+    /// Blacklisted JWT subjects.
+    ///
+    /// List of JWT `sub` claims that should be rejected.
+    /// Tokens with these subjects will be denied access regardless
+    /// of signature validity.
+    ///
+    /// Note: Configured as TOML array, stored as HashSet for O(1) lookup
+    /// on every authenticated request.
+    #[serde(default)]
+    pub subjects: HashSet<String>,
 }
 
 /// JSON Web Token signing configuration.
@@ -425,6 +444,7 @@ impl Default for JWTConfig {
         Self {
             token_bound_issuer: None,
             token_bound_audiences: None,
+            blacklist: None,
             signing_config: load_jwt_signing_config_from_env(),
         }
     }
