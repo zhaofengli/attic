@@ -72,6 +72,12 @@ struct Create {
         default_value = "cache.nixos.org-1"
     )]
     upstream_cache_key_names: Vec<String>,
+
+    /// Create a cache with no upstream cache signing keys.
+    ///
+    /// This option takes precedence over upstream-cache-key-name
+    #[clap(long)]
+    no_upstream_cache_keys: bool,
 }
 
 /// Configure a cache.
@@ -124,6 +130,12 @@ struct Configure {
     /// times to add multiple key names.
     #[clap(value_name = "NAME", long = "upstream-cache-key-name")]
     upstream_cache_key_names: Option<Vec<String>>,
+
+    /// Remove all upstream cache signing keys.
+    ///
+    /// This option takes precedence over upstream-cache-key-name
+    #[clap(long)]
+    no_upstream_cache_keys: bool,
 
     /// Set the retention period of the cache.
     ///
@@ -179,13 +191,19 @@ async fn create_cache(sub: Create) -> Result<()> {
     let (server_name, server, cache) = config.resolve_cache(&sub.cache)?;
     let api = ApiClient::from_server_config(server.clone())?;
 
+    let upstream_cache_key_names = if sub.no_upstream_cache_keys {
+        vec![]
+    } else {
+        sub.upstream_cache_key_names
+    };
+
     let request = CreateCacheRequest {
         // TODO: Make this configurable?
         keypair: KeypairConfig::Generate,
         is_public: sub.public,
         priority: sub.priority,
         store_dir: sub.store_dir,
-        upstream_cache_key_names: sub.upstream_cache_key_names,
+        upstream_cache_key_names,
     };
 
     api.create_cache(cache, request).await?;
@@ -232,9 +250,14 @@ async fn configure_cache(sub: Configure) -> Result<()> {
         patch.keypair = Some(KeypairConfig::Generate);
     }
 
+    if sub.no_upstream_cache_keys {
+        patch.upstream_cache_key_names = Some(vec![]);
+    } else {
+        patch.upstream_cache_key_names = sub.upstream_cache_key_names;
+    };
+
     patch.store_dir = sub.store_dir;
     patch.priority = sub.priority;
-    patch.upstream_cache_key_names = sub.upstream_cache_key_names;
 
     let api = ApiClient::from_server_config(server.clone())?;
     api.configure_cache(cache, &patch).await?;
