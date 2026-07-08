@@ -72,6 +72,16 @@ pub(crate) trait StorageBackend: Send + Sync + std::fmt::Debug {
         prefer_stream: bool,
     ) -> ServerResult<Download>;
 
+    /// Checks whether the object behind a database reference still exists.
+    ///
+    /// This is a cheap existence probe (e.g. an S3 `HeadObject`) used to
+    /// validate that every chunk backing a NAR is present *before* the
+    /// server commits response headers and starts streaming. Without it a
+    /// chunk lost from the backing store surfaces only mid-stream, after a
+    /// `200 OK` has already been sent, and the client sees a truncated body
+    /// instead of a clean error.
+    async fn file_exists_db(&self, file: &RemoteFile) -> ServerResult<bool>;
+
     /// Creates a database reference for a file.
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile>;
 }
