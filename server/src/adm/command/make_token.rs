@@ -32,6 +32,13 @@ pub struct MakeToken {
     #[clap(long)]
     dump_claims: bool,
 
+    /// Apply the same pattern to all permissions.
+    ///
+    /// The value may contain wildcards. Specify this flag multiple
+    /// times to allow multiple patterns.
+    #[clap(long = "all", value_name = "PATTERN")]
+    all_pattern: Vec<CacheNamePattern>,
+
     /// A cache that the token may pull from.
     ///
     /// The value may contain wildcards. Specify this flag multiple
@@ -82,6 +89,23 @@ pub struct MakeToken {
     destroy_cache_patterns: Vec<CacheNamePattern>,
 }
 
+impl MakeToken {
+    pub fn normalize(mut self) -> Self {
+        for pattern in &self.all_pattern {
+            self.pull_patterns.push(pattern.clone());
+            self.push_patterns.push(pattern.clone());
+            self.delete_patterns.push(pattern.clone());
+            self.create_cache_patterns.push(pattern.clone());
+            self.configure_cache_patterns.push(pattern.clone());
+            self.configure_cache_retention_patterns
+                .push(pattern.clone());
+            self.destroy_cache_patterns.push(pattern.clone());
+        }
+
+        self
+    }
+}
+
 macro_rules! grant_permissions {
     ($token:ident, $list:expr, $perm:ident) => {
         for pattern in $list {
@@ -92,7 +116,8 @@ macro_rules! grant_permissions {
 }
 
 pub async fn run(config: Config, opts: Opts) -> Result<()> {
-    let sub = opts.command.as_make_token().unwrap();
+    let sub = opts.command.into_make_token().unwrap().normalize();
+
     let duration = ChronoDuration::from_std(sub.validity.into())?;
     let exp = Utc::now()
         .checked_add_signed(duration)
