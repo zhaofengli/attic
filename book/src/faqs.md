@@ -11,6 +11,12 @@ Numerous open-source projects in the Nix community (including mine!) use Cachix 
 
 Attic can be thought to provide a similar user experience at a much smaller scale (personal or team use).
 
+## What happens if a user uploads a path that is already in the user's cache?
+
+The upload is a no‑op: no bytes are written to the backing store and no re‑upload is streamed.
+The server immediately records/returns the mapping (and any metadata/timestamps) and reports success
+to the client. The deduplication is transparent to the client.
+
 ## What happens if a user uploads a path that is already in the global cache?
 
 The user will still fully upload the path to the server because they have to prove possession of the file.
@@ -20,6 +26,7 @@ The global deduplication behavior is transparent to the client.
 
 This requirement may be disabled by setting `require-proof-of-possession` to false in the configuration.
 When disabled, uploads of NARs that already exist in the Global NAR Store will immediately succeed.
+
 
 ## What happens if a user uploads a path with incorrect/malicious metadata?
 
