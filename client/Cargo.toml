@@ -46,3 +46,6 @@ features = [
   "rt-multi-thread",
   "sync",
 ]
+
+[dev-dependencies]
+tempfile = "3"
