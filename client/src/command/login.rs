@@ -9,16 +9,19 @@ use crate::config::{Config, ServerConfig, ServerTokenConfig};
 #[derive(Debug, Parser)]
 pub struct Login {
     /// Name of the server.
+    #[arg(env = "ATTIC_LOGIN_NAME")]
     name: ServerName,
 
     /// Endpoint of the server.
+    #[arg(env = "ATTIC_LOGIN_ENDPOINT")]
     endpoint: String,
 
     /// Access token.
+    #[arg(env = "ATTIC_LOGIN_TOKEN")]
     token: Option<String>,
 
     /// Set the server as the default.
-    #[clap(long)]
+    #[clap(long, env = "ATTIC_LOGIN_FORCE_DEFAULT")]
     set_default: bool,
 }
 

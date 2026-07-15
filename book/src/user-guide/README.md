@@ -16,6 +16,29 @@ To select the `foo` cache from server `central`, use one of the following:
 
 To configure the default server, set `default-server` in `~/.config/attic/config.toml`.
 
+## Environment Variables Login
+
+`attic login` normally takes arguments.
+In cases where you want/need to run commands unattended, such as CI, you can use environment variables instead.
+
+Supported ENVs:
+
+- `ATTIC_LOGIN_ENDPOINT`: Server URL. When set, requires `ATTIC_LOGIN_NAME`.
+- `ATTIC_LOGIN_NAME`: Name for the `ATTIC_LOGIN_ENDPOINT`.
+- `ATTIC_LOGIN_TOKEN`: Inline token value.
+- `ATTIC_LOGIN_FORCE_DEFAULT`: If set to any value, forces the server specified by `ATTIC_LOGIN_NAME` to be the default server.
+
+Example:
+
+```bash
+ATTIC_LOGIN_NAME=test \
+ATTIC_LOGIN_ENDPOINT=https://attic.example.com \
+ATTIC_LOGIN_TOKEN=eyJ... \
+attic login
+# Now that you have been logged in you can now use any other command.
+attic push test:foo paths
+```
+
 ## Enabling a cache
 
 To configure Nix to automatically use cache `foo`:
