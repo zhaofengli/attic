@@ -82,6 +82,13 @@ path = "%storage_path%"
 #  access_key_id = ""
 #  secret_access_key = ""
 
+# Upload configuration
+[upload]
+# The maximum size of each chunked transport upload part, in bytes.
+#
+# If unset, clients will use the non-chunked upload path by default.
+#max-chunk-size = 33554432 # 32 MiB
+
 # Data chunking
 #
 # Warning: If you change any of the values here, it will be

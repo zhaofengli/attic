@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::upload_path::UploadChunkingConfig;
 use crate::signing::NixKeypair;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,6 +96,12 @@ pub struct CacheConfig {
     /// The retention period of the cache.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retention_period: Option<RetentionPeriodConfig>,
+
+    /// Server-advertised chunked transport upload configuration.
+    ///
+    /// This is read-only and may not be available on older servers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload_chunking: Option<UploadChunkingConfig>,
 }
 
 /// Configuaration of a keypair.
@@ -131,6 +138,7 @@ impl CacheConfig {
             priority: None,
             upstream_cache_key_names: None,
             retention_period: None,
+            upload_chunking: None,
         }
     }
 }

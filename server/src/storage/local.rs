@@ -122,6 +122,36 @@ impl LocalBackend {
         let level2 = &p[0..2];
         self.config.path.join(level1).join(level2).join(p)
     }
+
+    async fn remove_empty_parent_dirs(&self, path: &Path) {
+        let mut current = path.parent();
+
+        while let Some(dir) = current {
+            if dir == self.config.path {
+                break;
+            }
+
+            match fs::remove_dir(dir).await {
+                Ok(()) => {
+                    current = dir.parent();
+                }
+                Err(e)
+                    if e.kind() == io::ErrorKind::NotFound
+                        || e.kind() == io::ErrorKind::DirectoryNotEmpty =>
+                {
+                    break;
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Failed to remove empty storage directory {}: {}",
+                        dir.display(),
+                        e
+                    );
+                    break;
+                }
+            }
+        }
+    }
 }
 
 impl StorageBackend for LocalBackend {
@@ -156,9 +186,11 @@ impl StorageBackend for LocalBackend {
     }
 
     async fn delete_file(&self, name: String) -> ServerResult<()> {
-        fs::remove_file(self.get_path(&name))
+        let path = self.get_path(&name);
+        fs::remove_file(&path)
             .await
             .map_err(ServerError::storage_error)?;
+        self.remove_empty_parent_dirs(&path).await;
 
         Ok(())
     }
@@ -173,9 +205,11 @@ impl StorageBackend for LocalBackend {
             .into());
         };
 
-        fs::remove_file(self.get_path(&file.name))
+        let path = self.get_path(&file.name);
+        fs::remove_file(&path)
             .await
             .map_err(ServerError::storage_error)?;
+        self.remove_empty_parent_dirs(&path).await;
 
         Ok(())
     }
