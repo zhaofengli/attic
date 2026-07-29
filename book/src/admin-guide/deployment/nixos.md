@@ -79,6 +79,34 @@ You can import the module in one of two ways:
 After the new configuration is deployed, the Attic Server will be accessible on port 8080.
 It's highly recommended to place it behind a reverse proxy like [NGINX](https://nixos.wiki/wiki/Nginx) to provide HTTPS.
 
+### Using S3 Storage
+
+To use S3 (or an S3-compatible service), configure `services.atticd.settings.storage`:
+
+```nix
+{
+  services.atticd.settings.storage = {
+    type = "s3";
+    region = "us-east-1";
+    bucket = "attic";
+
+    # Internal endpoint used by atticd for uploads/reads/deletes.
+    endpoint = "http://s3.storage.svc.cluster.local:9000";
+
+    # Optional public endpoint used only for generated presigned
+    # download URLs returned to clients.
+    public-endpoint = "https://s3.example.com";
+
+    credentials = {
+      access_key_id = "...";
+      secret_access_key = "...";
+    };
+  };
+}
+```
+
+If `public-endpoint` is unset, Attic uses `endpoint` for presigned URLs too.
+
 ## Operations
 
 The NixOS module installs the `atticd-atticadm` wrapper which runs the `atticadm` command as the `atticd` user.
