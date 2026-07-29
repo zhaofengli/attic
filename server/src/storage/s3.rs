@@ -28,6 +28,7 @@ const CHUNK_SIZE: usize = 8 * 1024 * 1024;
 #[derive(Debug)]
 pub struct S3Backend {
     client: Client,
+    public_download_client: Option<Client>,
     config: S3StorageConfig,
 }
 
@@ -44,6 +45,13 @@ pub struct S3StorageConfig {
     ///
     /// Set this if you are using an S3-compatible object storage (e.g., Minio).
     endpoint: Option<String>,
+
+    /// Public S3 endpoint for client-facing presigned download URLs.
+    ///
+    /// If set, this is only used for generating presigned download URLs.
+    /// Internal reads/writes still use `endpoint`.
+    #[serde(rename = "public-endpoint")]
+    public_endpoint: Option<String>,
 
     /// S3 credentials.
     ///
@@ -79,19 +87,35 @@ pub struct S3RemoteFile {
 
 impl S3Backend {
     pub async fn new(config: S3StorageConfig) -> ServerResult<Self> {
-        let s3_config = Self::config_builder(&config)
+        let s3_config = Self::config_builder(&config, None)
             .await?
             .region(Region::new(config.region.to_owned()))
             .retry_config(RetryConfig::adaptive())
             .build();
 
+        let public_download_client = if let Some(public_endpoint) = &config.public_endpoint {
+            let public_s3_config = Self::config_builder(&config, Some(public_endpoint.as_str()))
+                .await?
+                .region(Region::new(config.region.to_owned()))
+                .retry_config(RetryConfig::adaptive())
+                .build();
+
+            Some(Client::from_conf(public_s3_config))
+        } else {
+            None
+        };
+
         Ok(Self {
             client: Client::from_conf(s3_config),
+            public_download_client,
             config,
         })
     }
 
-    async fn config_builder(config: &S3StorageConfig) -> ServerResult<S3ConfigBuilder> {
+    async fn config_builder(
+        config: &S3StorageConfig,
+        endpoint_override: Option<&str>,
+    ) -> ServerResult<S3ConfigBuilder> {
         let shared_config = aws_config::load_defaults(BehaviorVersion::v2026_01_12()).await;
         let mut builder = S3ConfigBuilder::from(&shared_config);
 
@@ -105,7 +129,7 @@ impl S3Backend {
             ));
         }
 
-        if let Some(endpoint) = &config.endpoint {
+        if let Some(endpoint) = endpoint_override.or(config.endpoint.as_deref()) {
             builder = builder.endpoint_url(endpoint).force_path_style(true);
         }
 
@@ -115,6 +139,7 @@ impl S3Backend {
     async fn get_client_from_db_ref<'a>(
         &self,
         file: &'a RemoteFile,
+        for_presigned_url: bool,
     ) -> ServerResult<(Client, &'a S3RemoteFile)> {
         let file = if let RemoteFile::S3(file) = file {
             file
@@ -125,12 +150,24 @@ impl S3Backend {
             .into());
         };
 
+        let base_client = if for_presigned_url {
+            self.public_download_client.as_ref().unwrap_or(&self.client)
+        } else {
+            &self.client
+        };
+
         // FIXME: Ugly
-        let client = if self.client.config().region().unwrap().as_ref() == file.region {
-            self.client.clone()
+        let client = if base_client.config().region().unwrap().as_ref() == file.region {
+            base_client.clone()
         } else {
             // FIXME: Cache the client instance
-            let s3_conf = Self::config_builder(&self.config)
+            let endpoint_override = if for_presigned_url {
+                self.config.public_endpoint.as_deref()
+            } else {
+                None
+            };
+
+            let s3_conf = Self::config_builder(&self.config, endpoint_override)
                 .await?
                 .region(Region::new(file.region.to_owned()))
                 .build();
@@ -320,7 +357,7 @@ impl StorageBackend for S3Backend {
     }
 
     async fn delete_file_db(&self, file: &RemoteFile) -> ServerResult<()> {
-        let (client, file) = self.get_client_from_db_ref(file).await?;
+        let (client, file) = self.get_client_from_db_ref(file, false).await?;
 
         let deletion = client
             .delete_object()
@@ -340,7 +377,7 @@ impl StorageBackend for S3Backend {
         file: &RemoteFile,
         prefer_stream: bool,
     ) -> ServerResult<Download> {
-        let (client, file) = self.get_client_from_db_ref(file).await?;
+        let (client, file) = self.get_client_from_db_ref(file, !prefer_stream).await?;
 
         let req = client.get_object().bucket(&file.bucket).key(&file.key);
 

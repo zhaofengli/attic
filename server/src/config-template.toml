@@ -74,6 +74,12 @@ path = "%storage_path%"
 # Set this if you are using an S3-compatible object storage (e.g., Minio).
 #endpoint = "https://xxx.r2.cloudflarestorage.com"
 
+# Public S3 endpoint for presigned download URLs
+#
+# If set, this is only used when generating presigned download URLs returned
+# to clients. Internal reads/writes/uploads/deletes still use `endpoint`.
+#public-endpoint = "https://s3.example.com"
+
 # Credentials
 #
 # If unset, the credentials are read from the `AWS_ACCESS_KEY_ID` and
