@@ -64,6 +64,17 @@ pub trait StorageBackend: Send + Sync + std::fmt::Debug {
         prefer_stream: bool,
     ) -> ServerResult<Download>;
 
+    /// Streams a file using a database reference, starting at a byte offset.
+    ///
+    /// Always streams, never redirects: this is used to resume a chunk whose
+    /// body died mid-transfer, so the bytes already sent to the client must not
+    /// be sent again.
+    async fn stream_file_db_from(
+        &self,
+        file: &RemoteFile,
+        offset: u64,
+    ) -> ServerResult<Box<dyn AsyncRead + Unpin + Send>>;
+
     /// Creates a database reference for a file.
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile>;
 }

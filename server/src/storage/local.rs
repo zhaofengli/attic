@@ -1,6 +1,7 @@
 //! Local file storage.
 
 use std::ffi::OsStr;
+use std::io::SeekFrom;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -8,7 +9,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::fs::{self, File};
-use tokio::io::{self, AsyncRead};
+use tokio::io::{self, AsyncRead, AsyncSeekExt};
 
 use super::{Download, RemoteFile, StorageBackend};
 use crate::error::{ErrorKind, ServerError, ServerResult};
@@ -201,6 +202,33 @@ impl StorageBackend for LocalBackend {
             .map_err(ServerError::storage_error)?;
 
         Ok(Download::AsyncRead(Box::new(file)))
+    }
+
+    async fn stream_file_db_from(
+        &self,
+        file: &RemoteFile,
+        offset: u64,
+    ) -> ServerResult<Box<dyn AsyncRead + Unpin + Send>> {
+        let file = if let RemoteFile::Local(file) = file {
+            file
+        } else {
+            return Err(ErrorKind::StorageError(anyhow::anyhow!(
+                "Does not understand the remote file reference"
+            ))
+            .into());
+        };
+
+        let mut file = File::open(self.get_path(&file.name))
+            .await
+            .map_err(ServerError::storage_error)?;
+
+        if offset > 0 {
+            file.seek(SeekFrom::Start(offset))
+                .await
+                .map_err(ServerError::storage_error)?;
+        }
+
+        Ok(Box::new(file))
     }
 
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile> {

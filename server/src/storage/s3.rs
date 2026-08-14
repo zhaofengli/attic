@@ -409,6 +409,32 @@ impl StorageBackend for S3Backend {
         self.get_download(req, prefer_stream).await
     }
 
+    async fn stream_file_db_from(
+        &self,
+        file: &RemoteFile,
+        offset: u64,
+    ) -> ServerResult<Box<dyn AsyncRead + Unpin + Send>> {
+        let (client, file) = self.get_client_from_db_ref(file).await?;
+
+        let mut req = client.get_object().bucket(&file.bucket).key(&file.key);
+        if offset > 0 {
+            req = req.range(format!("bytes={}-", offset));
+        }
+
+        let start = Instant::now();
+        let result = req.send().await;
+        let status = if result.is_ok() { "ok" } else { "err" };
+        metrics::histogram!(
+            "atticd_oss_request_duration_seconds",
+            "op" => "get_object",
+            "status" => status,
+        )
+        .record(start.elapsed().as_secs_f64());
+        let output = result.map_err(ServerError::storage_error)?;
+
+        Ok(Box::new(output.body.into_async_read()))
+    }
+
     async fn make_db_reference(&self, name: String) -> ServerResult<RemoteFile> {
         Ok(RemoteFile::S3(S3RemoteFile {
             region: self.config.region.clone(),
