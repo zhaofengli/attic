@@ -43,10 +43,18 @@ pub unsafe fn open_nix_store() -> AtticResult<FfiNixStore> {
 // (tokio, crossbeam, flume)
 mod mpsc {
     // Tokio
-    pub use tokio::sync::mpsc::{
-        UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel,
-    };
+    pub use tokio::sync::mpsc::{Receiver, Sender, channel, error::SendError};
 }
+
+/// Number of buffered NAR blocks between the C++ serializer and the consumer.
+///
+/// The channel must be bounded: `nar_from_path` runs the synchronous C++
+/// serializer on a blocking thread, which produces data as fast as the store
+/// can be read, while the consumer (typically an HTTP upload) drains it at
+/// network speed. With an unbounded channel the difference accumulates in
+/// memory, so pushing a large store path grows RSS linearly with its size —
+/// a multi-gigabyte path is enough to get the client OOM-killed.
+const NAR_CHANNEL_CAPACITY: usize = 64;
 
 /// Async write request.
 #[derive(Debug)]
@@ -57,20 +65,26 @@ enum AsyncWriteMessage {
 }
 
 /// Async write request sender.
+///
+/// Every method here is called from the synchronous C++ serializer running on a
+/// blocking thread (see `NixStore::nar_from_path`), never from async context,
+/// so `blocking_send` is the correct way to wait for capacity: it applies
+/// backpressure to the serializer instead of letting the queue grow without
+/// bound.
 #[derive(Clone)]
 pub struct AsyncWriteSender {
-    sender: mpsc::UnboundedSender<AsyncWriteMessage>,
+    sender: mpsc::Sender<AsyncWriteMessage>,
 }
 
 impl AsyncWriteSender {
     fn send(&mut self, data: &[u8]) -> Result<(), mpsc::SendError<AsyncWriteMessage>> {
         let message = AsyncWriteMessage::Data(Vec::from(data));
-        self.sender.send(message)
+        self.sender.blocking_send(message)
     }
 
     fn eof(&mut self) -> Result<(), mpsc::SendError<AsyncWriteMessage>> {
         let message = AsyncWriteMessage::Eof;
-        self.sender.send(message)
+        self.sender.blocking_send(message)
     }
 
     pub(crate) fn rust_error(
@@ -78,19 +92,19 @@ impl AsyncWriteSender {
         error: impl std::error::Error,
     ) -> Result<(), impl std::error::Error> {
         let message = AsyncWriteMessage::Error(error.to_string());
-        self.sender.send(message)
+        self.sender.blocking_send(message)
     }
 }
 
 /// A wrapper of the `AsyncWrite` trait for the synchronous Nix C++ land.
 pub struct AsyncWriteAdapter {
-    receiver: mpsc::UnboundedReceiver<AsyncWriteMessage>,
+    receiver: mpsc::Receiver<AsyncWriteMessage>,
     eof: bool,
 }
 
 impl AsyncWriteAdapter {
     pub fn new() -> (Self, Box<AsyncWriteSender>) {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::channel(NAR_CHANNEL_CAPACITY);
 
         let r = Self {
             receiver,
