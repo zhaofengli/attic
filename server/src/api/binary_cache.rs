@@ -36,6 +36,16 @@ use attic::io::merge_chunks;
 use attic::mime;
 use attic::nix_store::StorePathHash;
 
+/// Matches a derivation output id, e.g. `sha256:<64 hex chars>!out`.
+///
+/// This is the same shape Nix uses for realisation ids (see
+/// api/v1/upload_realisation.rs for where it's produced/consumed). We only
+/// need to validate it well enough to reject obviously malformed requests
+/// before hitting the database.
+static DRV_OUTPUT_ID_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"^[a-z0-9]+:[0-9a-f]+![a-zA-Z0-9_+.-]+$").unwrap()
+});
+
 /// Nix cache information.
 ///
 /// An example of a correct response is as follows:
@@ -277,9 +287,80 @@ async fn get_nar(
     }
 }
 
+/// Gets a realisation for a resolved ca-derivation output.
+///
+/// - GET `/:cache/realisations/{drvOutputId}.doi`
+///
+/// This is how Nix discovers cached outputs of content-addressed
+/// derivations: the derivation output id alone doesn't determine the
+/// output path, so before substituting, Nix asks the cache for the
+/// realisation mapping it produced (see upstream nix-http-binary-cache-api-spec
+/// and attic issue #188). Without this route CA derivations could never be
+/// substituted from Attic even though the NAR itself was cached.
+#[instrument(skip_all, fields(cache_name, path))]
+#[axum_macros::debug_handler]
+async fn get_realisation(
+    Extension(state): Extension<State>,
+    Extension(req_state): Extension<RequestState>,
+    Path((cache_name, path)): Path<(CacheName, String)>,
+) -> ServerResult<Response> {
+    let drv_output_id = path
+        .strip_suffix(".doi")
+        .ok_or(ErrorKind::NotFound)?
+        .to_string();
+
+    if !DRV_OUTPUT_ID_RE.is_match(&drv_output_id) {
+        return Err(ErrorKind::NotFound.into());
+    }
+
+    tracing::debug!(
+        "Received request for realisation {} in {:?}",
+        drv_output_id,
+        cache_name
+    );
+
+    let database = state.database().await?;
+
+    // Same discovery/read gating as narinfo: public caches must be
+    // servable without authentication, and the "cache exists at all"
+    // signal must not leak to callers without discovery permission
+    // (find_realisation folds a missing cache and a missing realisation
+    // into the same NoSuchObject error for that reason).
+    let cache = database.find_cache(&cache_name).await?;
+
+    let permission = req_state
+        .auth
+        .get_permission_for_cache(&cache_name, cache.is_public);
+    permission.require_pull()?;
+
+    req_state.set_public_cache(cache.is_public);
+
+    let realisation = database
+        .find_realisation(&cache_name, &drv_output_id)
+        .await?;
+
+    Ok((
+        [(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static(mime::REALISATION),
+        )],
+        realisation.data,
+    )
+        .into_response())
+}
+
+// TODO(2.35): Nix 2.35 moves realisations under
+// `/{cache}/build-trace-v2/{drv}/{output}` (no `.doi` suffix; the id is
+// reassembled as `sha256:{drv}!{output}`). We didn't have a vendored copy
+// of the 2.35 protocol docs/headers to confirm the exact path shape and
+// content type offline, so this is left for a follow-up rather than guessed
+// at. The 2.34 `/realisations/{id}.doi` route above is unaffected either
+// way — Nix falls back to it for older caches.
+
 pub fn get_router() -> Router {
     Router::new()
         .route("/{cache}/nix-cache-info", get(get_nix_cache_info))
+        .route("/{cache}/realisations/{path}", get(get_realisation))
         .route("/{cache}/{path}", get(get_store_path_info))
         .route("/{cache}/nar/{path}", get(get_nar))
 }

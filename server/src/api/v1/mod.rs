@@ -1,6 +1,7 @@
 mod cache_config;
 mod get_missing_paths;
 mod upload_path;
+mod upload_realisation;
 
 use axum::{
     Router,
@@ -14,6 +15,10 @@ pub(crate) fn get_router() -> Router {
             post(get_missing_paths::get_missing_paths),
         )
         .route("/_api/v1/upload-path", put(upload_path::upload_path))
+        .route(
+            "/_api/v1/upload-realisation/{cache}/{id}",
+            put(upload_realisation::upload_realisation),
+        )
         .route(
             "/{cache}/attic-cache-info",
             get(cache_config::get_cache_config),
