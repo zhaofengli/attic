@@ -23,6 +23,7 @@ use entity::chunk::{self, ChunkModel, ChunkState, Entity as Chunk};
 use entity::chunkref;
 use entity::nar::{self, Entity as Nar, NarModel, NarState};
 use entity::object::{self, Entity as Object, ObjectModel};
+use entity::realisation::{self, Entity as Realisation, RealisationModel};
 
 // quintuple join time
 const SELECT_OBJECT: &str = "O_";
@@ -67,6 +68,17 @@ pub trait AtticDatabase: Send + Sync {
         &self,
         object_id: i64,
     ) -> impl Future<Output = ServerResult<()>> + Send;
+
+    /// Retrieves a realisation by cache and derivation output id.
+    ///
+    /// Returns `NoSuchObject` if absent, matching the narinfo 404 behavior,
+    /// since from the substituter's point of view a missing realisation is
+    /// just another kind of missing object.
+    fn find_realisation(
+        &self,
+        cache: &CacheName,
+        drv_output_id: &str,
+    ) -> impl Future<Output = ServerResult<RealisationModel>> + Send;
 }
 
 pub struct NarGuard {
@@ -324,6 +336,22 @@ impl AtticDatabase for DatabaseConnection {
         .map_err(ServerError::database_error)?;
 
         Ok(())
+    }
+
+    async fn find_realisation(
+        &self,
+        cache: &CacheName,
+        drv_output_id: &str,
+    ) -> ServerResult<RealisationModel> {
+        Realisation::find()
+            .join(JoinType::InnerJoin, realisation::Relation::Cache.def())
+            .filter(cache::Column::Name.eq(cache.as_str()))
+            .filter(cache::Column::DeletedAt.is_null())
+            .filter(realisation::Column::DrvOutputId.eq(drv_output_id))
+            .one(self)
+            .await
+            .map_err(ServerError::database_error)?
+            .ok_or_else(|| ErrorKind::NoSuchObject.into())
     }
 }
 
