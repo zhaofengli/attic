@@ -198,6 +198,22 @@ async fn create_cache(sub: Create) -> Result<()> {
     Ok(())
 }
 
+/// Determines the `retention_period` patch value from the `--retention-period`
+/// and `--reset-retention-period` flags.
+///
+/// The two flags are mutually exclusive (enforced by the caller), so at most
+/// one of `period` and `reset` is set. When neither is set, no patch is
+/// produced, leaving the cache's existing retention period untouched.
+fn retention_period_patch(period: Option<Duration>, reset: bool) -> Option<RetentionPeriodConfig> {
+    if let Some(period) = period {
+        Some(RetentionPeriodConfig::Period(period.as_secs() as u32))
+    } else if reset {
+        Some(RetentionPeriodConfig::Global)
+    } else {
+        None
+    }
+}
+
 async fn configure_cache(sub: Configure) -> Result<()> {
     let config = Config::load()?;
 
@@ -222,11 +238,8 @@ async fn configure_cache(sub: Configure) -> Result<()> {
         patch.is_public = Some(false);
     }
 
-    if let Some(period) = sub.retention_period {
-        patch.retention_period = Some(RetentionPeriodConfig::Period(period.as_secs() as u32));
-    } else {
-        patch.retention_period = Some(RetentionPeriodConfig::Global);
-    }
+    patch.retention_period =
+        retention_period_patch(sub.retention_period, sub.reset_retention_period);
 
     if sub.regenerate_keypair {
         patch.keypair = Some(KeypairConfig::Generate);
@@ -330,4 +343,32 @@ async fn show_cache_config(sub: Info) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration as StdDuration;
+
+    #[test]
+    fn retention_period_patch_leaves_config_untouched_by_default() {
+        assert!(retention_period_patch(None, false).is_none());
+    }
+
+    #[test]
+    fn retention_period_patch_sets_explicit_period() {
+        let period: Duration = StdDuration::from_secs(3600).into();
+        assert!(matches!(
+            retention_period_patch(Some(period), false),
+            Some(RetentionPeriodConfig::Period(3600))
+        ));
+    }
+
+    #[test]
+    fn retention_period_patch_resets_to_global() {
+        assert!(matches!(
+            retention_period_patch(None, true),
+            Some(RetentionPeriodConfig::Global)
+        ));
+    }
 }
