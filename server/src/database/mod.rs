@@ -49,6 +49,9 @@ pub trait AtticDatabase: Send + Sync {
         cache: &CacheName,
     ) -> impl Future<Output = ServerResult<CacheModel>> + Send;
 
+    /// Retrieves all active binary caches ordered by name.
+    fn list_caches(&self) -> impl Future<Output = ServerResult<Vec<CacheModel>>> + Send;
+
     /// Retrieves and locks a valid NAR matching a NAR Hash.
     fn find_and_lock_nar(
         &self,
@@ -237,6 +240,15 @@ impl AtticDatabase for DatabaseConnection {
             .await
             .map_err(ServerError::database_error)?
             .ok_or_else(|| ErrorKind::NoSuchCache.into())
+    }
+
+    async fn list_caches(&self) -> ServerResult<Vec<CacheModel>> {
+        Cache::find()
+            .filter(cache::Column::DeletedAt.is_null())
+            .order_by_asc(cache::Column::Name)
+            .all(self)
+            .await
+            .map_err(ServerError::database_error)
     }
 
     async fn find_and_lock_nar(&self, nar_hash: &Hash) -> ServerResult<Option<NarGuard>> {

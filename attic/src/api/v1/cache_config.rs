@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::signing::NixKeypair;
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListCachesResponse {
+    pub caches: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateCacheRequest {
     /// The keypair of the cache.

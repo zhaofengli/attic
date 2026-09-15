@@ -8,15 +8,43 @@ use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use tracing::instrument;
 
+use crate::database::AtticDatabase;
 use crate::database::entity::Json as DbJson;
 use crate::database::entity::cache::{self, Entity as Cache};
 use crate::error::{ErrorKind, ServerError, ServerResult};
 use crate::{RequestState, State};
 use attic::api::v1::cache_config::{
-    CacheConfig, CreateCacheRequest, KeypairConfig, RetentionPeriodConfig,
+    CacheConfig, CreateCacheRequest, KeypairConfig, ListCachesResponse, RetentionPeriodConfig,
 };
 use attic::cache::CacheName;
 use attic::signing::NixKeypair;
+
+#[instrument(skip_all)]
+pub(crate) async fn list_caches(
+    Extension(state): Extension<State>,
+    Extension(req_state): Extension<RequestState>,
+) -> ServerResult<Json<ListCachesResponse>> {
+    let database = state.database().await?;
+    let caches = database.list_caches().await?;
+    let mut visible_names = Vec::new();
+
+    for cache in caches {
+        let cache_name = CacheName::new(cache.name).map_err(|error| {
+            ErrorKind::DatabaseError(anyhow!("Database contains an invalid cache name: {error}"))
+        })?;
+        let permission = req_state
+            .auth
+            .get_permission_for_cache(&cache_name, cache.is_public);
+
+        if permission.can_discover() {
+            visible_names.push(cache_name.to_string());
+        }
+    }
+
+    Ok(Json(ListCachesResponse {
+        caches: visible_names,
+    }))
+}
 
 #[instrument(skip_all, fields(cache_name))]
 pub(crate) async fn get_cache_config(

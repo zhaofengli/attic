@@ -4,7 +4,7 @@ use dialoguer::Input;
 use humantime::Duration;
 
 use crate::api::ApiClient;
-use crate::cache::CacheRef;
+use crate::cache::{CacheRef, ServerName};
 use crate::cli::Opts;
 use crate::config::Config;
 use attic::api::v1::cache_config::{
@@ -24,6 +24,8 @@ enum Command {
     Configure(Configure),
     Destroy(Destroy),
     Info(Info),
+    #[command(alias = "ls")]
+    List(List),
 }
 
 /// Create a cache.
@@ -163,6 +165,13 @@ struct Info {
     cache: CacheRef,
 }
 
+/// List caches visible on an Attic server.
+#[derive(Debug, Clone, Parser)]
+struct List {
+    /// Server to query. Uses the default server when omitted.
+    server: Option<ServerName>,
+}
+
 pub async fn run(opts: Opts) -> Result<()> {
     let sub = opts.command.as_cache().unwrap();
     match &sub.command {
@@ -170,7 +179,28 @@ pub async fn run(opts: Opts) -> Result<()> {
         Command::Configure(sub) => configure_cache(sub.to_owned()).await,
         Command::Destroy(sub) => destroy_cache(sub.to_owned()).await,
         Command::Info(sub) => show_cache_config(sub.to_owned()).await,
+        Command::List(sub) => list_caches(sub.to_owned()).await,
     }
+}
+
+async fn list_caches(sub: List) -> Result<()> {
+    let config = Config::load()?;
+    let server = if let Some(server_name) = &sub.server {
+        config
+            .servers
+            .get(server_name)
+            .ok_or_else(|| anyhow!("Server \"{}\" does not exist", server_name.as_str()))?
+    } else {
+        config.default_server()?.1
+    };
+    let api = ApiClient::from_server_config(server.clone())?;
+    let response = api.list_caches().await?;
+
+    for cache in response.caches {
+        println!("{cache}");
+    }
+
+    Ok(())
 }
 
 async fn create_cache(sub: Create) -> Result<()> {

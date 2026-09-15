@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::config::ServerConfig;
 use crate::version::ATTIC_DISTRIBUTOR;
-use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
+use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest, ListCachesResponse};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
 use attic::api::v1::upload_path::{
     ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,
@@ -74,6 +74,20 @@ impl ApiClient {
     pub fn set_endpoint(&mut self, endpoint: &str) -> Result<()> {
         self.endpoint = Url::parse(endpoint)?;
         Ok(())
+    }
+
+    /// Returns the caches visible to the caller.
+    pub async fn list_caches(&self) -> Result<ListCachesResponse> {
+        let endpoint = self.endpoint.join("_api/v1/cache-config")?;
+        let res = self.client.get(endpoint).send().await?;
+
+        if res.status().is_success() {
+            let response = res.json().await?;
+            Ok(response)
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
     }
 
     /// Returns the configuration of a cache.

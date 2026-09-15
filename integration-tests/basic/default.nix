@@ -204,7 +204,7 @@ in {
       client.wait_until_succeeds("curl -sL http://server:8080", timeout=40)
 
       root_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --push '*' --pull '*' --delete '*' --create-cache '*' --destroy-cache '*' --configure-cache '*' --configure-cache-retention '*' </dev/null").strip()
-      readonly_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --pull 'test' </dev/null").strip()
+      readonly_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-readonly' --validity '1 month' --pull 'test' --pull 'private-cache' </dev/null").strip()
 
       client.succeed(f"attic login --set-default root http://server:8080 {root_token}")
       client.succeed(f"attic login readonly http://server:8080 {readonly_token}")
@@ -213,8 +213,24 @@ in {
       # TODO: Make sure the correct status codes are returned
       # (i.e., 500s shouldn't pass the "should fail" tests)
 
-      with subtest("Check that we can create a cache"):
+      with subtest("Check that we can create caches"):
           client.succeed("attic cache create test")
+          client.succeed("attic cache create public-cache --public")
+          client.succeed("attic cache create private-cache")
+          client.succeed("attic cache create hidden-cache")
+
+      with subtest("Check that we can list visible caches"):
+          root_caches = "hidden-cache\nprivate-cache\npublic-cache\ntest\n"
+          assert client.succeed("attic cache list") == root_caches
+          assert client.succeed("attic cache list root") == root_caches
+          assert client.succeed("attic cache ls root") == root_caches
+          assert client.succeed("attic cache list readonly") == "private-cache\npublic-cache\ntest\n"
+          assert client.succeed("attic cache list anon") == "public-cache\n"
+
+      with subtest("Check that destroyed caches are not listed"):
+          client.succeed("attic cache destroy --no-confirm public-cache")
+          assert client.succeed("attic cache list root") == "hidden-cache\nprivate-cache\ntest\n"
+          assert client.succeed("attic cache list anon") == ""
 
       with subtest("Check that we can push a path"):
           client.succeed("${makeTestDerivation} test.nix")
