@@ -210,6 +210,11 @@ in {
       client.succeed(f"attic login readonly http://server:8080 {readonly_token}")
       client.succeed("attic login anon http://server:8080")
 
+      with subtest("Check that we can list configured servers"):
+          servers = "anon\nreadonly\nroot\n"
+          assert client.succeed("attic server list") == servers
+          assert client.succeed("attic server ls") == servers
+
       # TODO: Make sure the correct status codes are returned
       # (i.e., 500s shouldn't pass the "should fail" tests)
 

@@ -11,6 +11,7 @@ use crate::command::cache::{self, Cache};
 use crate::command::get_closure::{self, GetClosure};
 use crate::command::login::{self, Login};
 use crate::command::push::{self, Push};
+use crate::command::server::{self, Server};
 use crate::command::r#use::{self, Use};
 use crate::command::watch_store::{self, WatchStore};
 
@@ -29,6 +30,7 @@ pub enum Command {
     Use(Use),
     Push(Push),
     Cache(Cache),
+    Server(Server),
     WatchStore(WatchStore),
 
     #[clap(hide = true)]
@@ -55,6 +57,7 @@ pub async fn run() -> Result<()> {
         Command::Use(_) => r#use::run(opts).await,
         Command::Push(_) => push::run(opts).await,
         Command::Cache(_) => cache::run(opts).await,
+        Command::Server(_) => server::run(opts).await,
         Command::WatchStore(_) => watch_store::run(opts).await,
         Command::GetClosure(_) => get_closure::run(opts).await,
     }
