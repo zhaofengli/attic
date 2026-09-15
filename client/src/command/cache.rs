@@ -1,7 +1,12 @@
-use anyhow::{Result, anyhow};
+use std::process::Stdio;
+
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use dialoguer::Input;
 use humantime::Duration;
+use reqwest::Url;
+use serde::Serialize;
+use tokio::process::Command as ProcessCommand;
 
 use crate::api::ApiClient;
 use crate::cache::CacheRef;
@@ -24,6 +29,7 @@ enum Command {
     Configure(Configure),
     Destroy(Destroy),
     Info(Info),
+    ListEnabled(ListEnabled),
 }
 
 /// Create a cache.
@@ -163,6 +169,22 @@ struct Info {
     cache: CacheRef,
 }
 
+/// List caches enabled in the current user's effective Nix configuration.
+#[derive(Debug, Clone, Parser)]
+struct ListEnabled {
+    /// Print a JSON array of enabled cache objects.
+    #[clap(long)]
+    json: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct EnabledCache {
+    url: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alias: Option<String>,
+}
+
 pub async fn run(opts: Opts) -> Result<()> {
     let sub = opts.command.as_cache().unwrap();
     match &sub.command {
@@ -170,6 +192,96 @@ pub async fn run(opts: Opts) -> Result<()> {
         Command::Configure(sub) => configure_cache(sub.to_owned()).await,
         Command::Destroy(sub) => destroy_cache(sub.to_owned()).await,
         Command::Info(sub) => show_cache_config(sub.to_owned()).await,
+        Command::ListEnabled(sub) => list_enabled_caches(sub.to_owned()).await,
+    }
+}
+
+async fn list_enabled_caches(sub: ListEnabled) -> Result<()> {
+    let config = Config::load()?;
+    let output = ProcessCommand::new("nix")
+        .args([
+            "--extra-experimental-features",
+            "nix-command",
+            "config",
+            "show",
+            "substituters",
+        ])
+        .stdin(Stdio::null())
+        .stderr(Stdio::inherit())
+        .output()
+        .await
+        .context("Failed to query the effective Nix substituters")?;
+
+    if !output.status.success() {
+        return Err(anyhow!(
+            "Failed to query the effective Nix substituters: nix exited with {}",
+            output.status
+        ));
+    }
+
+    let substituters = String::from_utf8(output.stdout)?;
+    let mut caches: Vec<_> = substituters
+        .split_whitespace()
+        .map(|url| EnabledCache {
+            url: url.to_owned(),
+            alias: find_cache_alias(url, &config),
+        })
+        .collect();
+    caches.sort_by_key(enabled_cache_display);
+
+    if sub.json {
+        println!("{}", serde_json::to_string(&caches)?);
+    } else {
+        for cache in caches {
+            println!("{}", enabled_cache_display(&cache));
+        }
+    }
+
+    Ok(())
+}
+
+fn find_cache_alias(url: &str, config: &Config) -> Option<String> {
+    let substituter = Url::parse(url).ok()?;
+    let mut aliases = config.servers.iter().filter_map(|(server_name, server)| {
+        let endpoint = Url::parse(&server.endpoint).ok()?;
+        let cache_name = cache_name_from_url(&substituter, &endpoint)?;
+        Some(format!("{}:{cache_name}", server_name.as_str()))
+    });
+    let alias = aliases.next()?;
+
+    if aliases.next().is_some() {
+        None
+    } else {
+        Some(alias)
+    }
+}
+
+fn cache_name_from_url(substituter: &Url, endpoint: &Url) -> Option<attic::cache::CacheName> {
+    if substituter.scheme() != endpoint.scheme()
+        || substituter.host_str() != endpoint.host_str()
+        || substituter.port_or_known_default() != endpoint.port_or_known_default()
+        || substituter.username() != endpoint.username()
+        || substituter.password() != endpoint.password()
+        || substituter.fragment().is_some()
+    {
+        return None;
+    }
+
+    let endpoint_path = endpoint.path().trim_end_matches('/');
+    let cache_path = substituter.path().strip_prefix(endpoint_path)?;
+    let cache_name = cache_path.strip_prefix('/')?;
+
+    if cache_name.contains('/') {
+        return None;
+    }
+
+    attic::cache::CacheName::new(cache_name.to_owned()).ok()
+}
+
+fn enabled_cache_display(cache: &EnabledCache) -> String {
+    match &cache.alias {
+        Some(alias) => format!("{alias} ({})", cache.url),
+        None => cache.url.clone(),
     }
 }
 

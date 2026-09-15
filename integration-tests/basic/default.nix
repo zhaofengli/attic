@@ -193,6 +193,7 @@ in {
     };
 
     testScript = ''
+      import json
       import time
 
       start_all()
@@ -229,6 +230,25 @@ in {
           client.succeed("attic use readonly:test")
           client.succeed(f"nix-store -r {test_file}")
           client.succeed(f"grep hello {test_file}")
+
+      with subtest("Check that we can list enabled caches"):
+          enabled = "http://server:8080/test\nhttps://cache.nixos.org\n"
+          assert client.succeed("attic cache list-enabled") == enabled
+
+          enabled_json = client.succeed("attic cache list-enabled --json")
+          assert json.loads(enabled_json) == [
+              {"url": "http://server:8080/test"},
+              {"url": "https://cache.nixos.org"},
+          ]
+
+          client.succeed("mkdir -p /tmp/list-enabled/attic")
+          client.succeed("printf '%s\\n' '[servers.local]' 'endpoint = \"http://server:8080/\"' >/tmp/list-enabled/attic/config.toml")
+          env = "XDG_CONFIG_HOME=/tmp/list-enabled NIX_CONFIG='substituters = http://server:8080/test?priority=1 https://cache.nixos.org/'"
+          assert client.succeed(f"{env} attic cache list-enabled") == "https://cache.nixos.org/\nlocal:test (http://server:8080/test?priority=1)\n"
+          assert json.loads(client.succeed(f"{env} attic cache list-enabled --json")) == [
+              {"url": "https://cache.nixos.org/"},
+              {"url": "http://server:8080/test?priority=1", "alias": "local:test"},
+          ]
 
       with subtest("Check that we cannot push without required permissions"):
           client.fail(f"attic push readonly:test {test_file}")
