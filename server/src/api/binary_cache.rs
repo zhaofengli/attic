@@ -209,7 +209,7 @@ async fn get_nar(
         return Err(ErrorKind::IncompleteNar.into());
     }
 
-    database.bump_object_last_accessed(object.id).await?;
+    state.record_object_access(object.id).await?;
 
     if chunks.len() == 1 {
         // single chunk

@@ -44,4 +44,5 @@ let
     };
   }) (lib.cartesianProduct matrix));
 in {
+  access-update-performance = runTest ./access-update-performance;
 } // basicTests

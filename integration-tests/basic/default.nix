@@ -66,7 +66,7 @@ let
         '';
 
         services.atticd.settings = {
-          database.url = "postgresql:///attic?host=/run/postgresql";
+          database.url = "postgresql://atticd@localhost/attic?host=/run/postgresql";
         };
       };
       testScriptPost = ''

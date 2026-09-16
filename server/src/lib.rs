@@ -14,6 +14,7 @@
 )]
 
 pub mod access;
+mod access_tracking;
 mod api;
 mod compression;
 pub mod config;
@@ -48,6 +49,7 @@ use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
 
 use access::http::{AuthState, apply_auth};
+use access_tracking::AccessTracker;
 use attic::cache::CacheName;
 use config::{Config, StorageConfig};
 use database::migration::{Migrator, MigratorTrait};
@@ -69,6 +71,9 @@ pub struct StateInner {
 
     /// Handle to the storage backend.
     storage: OnceCell<Arc<StorageBackendImpl>>,
+
+    /// Coalesces object access timestamp updates.
+    access_tracker: OnceCell<AccessTracker>,
 }
 
 /// Request state.
@@ -102,6 +107,7 @@ impl StateInner {
             config,
             database: OnceCell::new(),
             storage: OnceCell::new(),
+            access_tracker: OnceCell::new(),
         })
     }
 
@@ -135,6 +141,19 @@ impl StateInner {
                 db
             })
             .await
+    }
+
+    /// Records an object access without delaying the response.
+    async fn record_object_access(&self, object_id: i64) -> ServerResult<()> {
+        let tracker = self
+            .access_tracker
+            .get_or_try_init(|| async {
+                let database = self.database().await?.clone();
+                Ok::<_, ServerError>(AccessTracker::new(database))
+            })
+            .await?;
+        tracker.record(object_id);
+        Ok(())
     }
 
     /// Returns a handle to the storage backend.

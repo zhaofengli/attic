@@ -10,7 +10,7 @@ use sea_orm::entity::Iterable as EnumIterable;
 use sea_orm::entity::prelude::*;
 use sea_orm::query::{JoinType, QueryOrder, QuerySelect, QueryTrait};
 use sea_orm::sea_query::{Expr, LockBehavior, LockType, Query, Value};
-use sea_orm::{ActiveValue::Set, ConnectionTrait, DatabaseConnection, ExprTrait, FromQueryResult};
+use sea_orm::{ConnectionTrait, DatabaseConnection, ExprTrait, FromQueryResult};
 use tokio::task;
 
 use crate::error::{ErrorKind, ServerError, ServerResult};
@@ -62,10 +62,10 @@ pub trait AtticDatabase: Send + Sync {
         compression: Compression,
     ) -> impl Future<Output = ServerResult<Option<ChunkGuard>>> + Send;
 
-    /// Bumps the last accessed timestamp of an object.
-    fn bump_object_last_accessed(
+    /// Bumps the last accessed timestamp of multiple objects.
+    fn bump_objects_last_accessed(
         &self,
-        object_id: i64,
+        object_ids: &[i64],
     ) -> impl Future<Output = ServerResult<()>> + Send;
 }
 
@@ -311,17 +311,20 @@ impl AtticDatabase for DatabaseConnection {
         Ok(guard)
     }
 
-    async fn bump_object_last_accessed(&self, object_id: i64) -> ServerResult<()> {
-        let now = Utc::now();
+    async fn bump_objects_last_accessed(&self, object_ids: &[i64]) -> ServerResult<()> {
+        if object_ids.is_empty() {
+            return Ok(());
+        }
 
-        Object::update(object::ActiveModel {
-            id: Set(object_id),
-            last_accessed_at: Set(Some(now)),
-            ..Default::default()
-        })
-        .exec(self)
-        .await
-        .map_err(ServerError::database_error)?;
+        Object::update_many()
+            .col_expr(
+                object::Column::LastAccessedAt,
+                Expr::value(Some(Utc::now())),
+            )
+            .filter(object::Column::Id.is_in(object_ids.iter().copied()))
+            .exec(self)
+            .await
+            .map_err(ServerError::database_error)?;
 
         Ok(())
     }
@@ -398,5 +401,43 @@ impl Drop for ChunkGuard {
                 tracing::warn!("Failed to decrement holders count: {}", e);
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{Database, DatabaseBackend, Statement};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn bumps_multiple_object_access_timestamps() {
+        let database = Database::connect("sqlite::memory:").await.unwrap();
+        database
+            .execute_unprepared(
+                "CREATE TABLE object (id INTEGER PRIMARY KEY, last_accessed_at TEXT NULL);\
+                 INSERT INTO object (id) VALUES (1), (2), (3);",
+            )
+            .await
+            .unwrap();
+
+        database.bump_objects_last_accessed(&[1, 3]).await.unwrap();
+
+        let statement = Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT id, last_accessed_at IS NOT NULL AS accessed FROM object ORDER BY id",
+        );
+        let rows = database.query_all_raw(statement).await.unwrap();
+        let accessed = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.try_get::<i64>("", "id").unwrap(),
+                    row.try_get::<bool>("", "accessed").unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(vec![(1, true), (2, false), (3, true)], accessed);
     }
 }
