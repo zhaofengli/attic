@@ -16,6 +16,14 @@ To select the `foo` cache from server `central`, use one of the following:
 
 To configure the default server, set `default-server` in `~/.config/attic/config.toml`.
 
+Uploads are compressed when both the client configuration permits it and the server advertises support. This is enabled by default. It can be disabled for an individual server:
+
+```toml
+[servers.central]
+endpoint = "https://attic.domain.tld/"
+upload-compression = false
+```
+
 ## Enabling a cache
 
 To configure Nix to automatically use cache `foo`:

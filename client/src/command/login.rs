@@ -44,6 +44,7 @@ pub async fn run(opts: Opts) -> Result<()> {
             sub.name.to_owned(),
             ServerConfig {
                 endpoint: sub.endpoint.to_owned(),
+                upload_compression: true,
                 token: sub
                     .token
                     .to_owned()

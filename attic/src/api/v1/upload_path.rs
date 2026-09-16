@@ -11,6 +11,24 @@ pub const ATTIC_NAR_INFO: &str = "X-Attic-Nar-Info";
 /// Header containing the size of the upload info at the beginning of the body.
 pub const ATTIC_NAR_INFO_PREAMBLE_SIZE: &str = "X-Attic-Nar-Info-Preamble-Size";
 
+/// Header containing the compression applied to the upload body.
+pub const ATTIC_NAR_COMPRESSION: &str = "X-Attic-Nar-Compression";
+
+/// Compression applied to an upload body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UploadCompression {
+    Zstd,
+}
+
+impl UploadCompression {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Zstd => "zstd",
+        }
+    }
+}
+
 /// NAR information associated with a upload.
 ///
 /// There are two ways for the client to supply the NAR information:

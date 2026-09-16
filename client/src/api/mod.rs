@@ -2,6 +2,7 @@ use std::error::Error as StdError;
 use std::fmt;
 
 use anyhow::Result;
+use async_compression::tokio::bufread::ZstdEncoder;
 use bytes::Bytes;
 use const_format::formatcp;
 use displaydoc::Display;
@@ -14,13 +15,16 @@ use reqwest::{
     header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::Deserialize;
+use tokio::io::BufReader;
+use tokio_util::io::{ReaderStream, StreamReader};
 
 use crate::config::ServerConfig;
 use crate::version::ATTIC_DISTRIBUTOR;
 use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
 use attic::api::v1::upload_path::{
-    ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,
+    ATTIC_NAR_COMPRESSION, ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadCompression,
+    UploadPathNarInfo, UploadPathResult,
 };
 use attic::cache::CacheName;
 use attic::nix_store::StorePathHash;
@@ -174,6 +178,7 @@ impl ApiClient {
         nar_info: UploadPathNarInfo,
         stream: S,
         force_preamble: bool,
+        compression: Option<UploadCompression>,
     ) -> Result<Option<UploadPathResult>>
     where
         S: TryStream<Ok = Bytes> + Send + Sync + 'static,
@@ -184,20 +189,36 @@ impl ApiClient {
 
         let mut req = self.client.put(endpoint);
 
-        if force_preamble || upload_info_json.len() >= NAR_INFO_PREAMBLE_THRESHOLD {
-            let preamble = Bytes::from(upload_info_json);
-            let preamble_len = preamble.len();
-            let preamble_stream = stream::once(future::ok(preamble));
-
-            let chained = preamble_stream.chain(stream.into_stream());
-            req = req
-                .header(ATTIC_NAR_INFO_PREAMBLE_SIZE, preamble_len)
-                .body(Body::wrap_stream(chained));
+        let use_preamble = force_preamble || upload_info_json.len() >= NAR_INFO_PREAMBLE_THRESHOLD;
+        let preamble_len = upload_info_json.len();
+        let body_stream = if use_preamble {
+            let preamble_stream = stream::once(future::ok(Bytes::copy_from_slice(
+                upload_info_json.as_bytes(),
+            )));
+            preamble_stream.chain(stream.into_stream()).left_stream()
         } else {
-            req = req
-                .header(ATTIC_NAR_INFO, HeaderValue::from_str(&upload_info_json)?)
-                .body(Body::wrap_stream(stream));
+            stream.into_stream().right_stream()
+        };
+
+        if use_preamble {
+            req = req.header(ATTIC_NAR_INFO_PREAMBLE_SIZE, preamble_len);
+        } else {
+            req = req.header(ATTIC_NAR_INFO, HeaderValue::from_str(&upload_info_json)?);
         }
+
+        req = match compression {
+            Some(UploadCompression::Zstd) => {
+                let reader = StreamReader::new(
+                    body_stream.map_err(|e| std::io::Error::other(e.into().to_string())),
+                );
+                let encoder = ZstdEncoder::new(BufReader::new(reader));
+                let compressed = ReaderStream::new(encoder);
+
+                req.header(ATTIC_NAR_COMPRESSION, UploadCompression::Zstd.as_str())
+                    .body(Body::wrap_stream(compressed))
+            }
+            None => req.body(Body::wrap_stream(body_stream)),
+        };
 
         let res = req.send().await?;
 

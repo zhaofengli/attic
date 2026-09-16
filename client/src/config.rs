@@ -52,8 +52,15 @@ pub struct ConfigData {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
     pub endpoint: String,
+    #[serde(rename = "upload-compression")]
+    #[serde(default = "default_upload_compression")]
+    pub upload_compression: bool,
     #[serde(flatten)]
     pub token: Option<ServerTokenConfig>,
+}
+
+fn default_upload_compression() -> bool {
+    true
 }
 
 impl ServerConfig {
@@ -223,4 +230,36 @@ fn get_config_path() -> Result<PathBuf> {
     let config_path = xdg_dirs.place_config_file("config.toml")?;
 
     Ok(config_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upload_compression_defaults_to_enabled() {
+        let config: ConfigData = toml::from_str(
+            r#"
+            [servers.example]
+            endpoint = "https://attic.example/"
+            "#,
+        )
+        .unwrap();
+
+        assert!(config.servers.values().next().unwrap().upload_compression);
+    }
+
+    #[test]
+    fn upload_compression_can_be_disabled_per_server() {
+        let config: ConfigData = toml::from_str(
+            r#"
+            [servers.example]
+            endpoint = "https://attic.example/"
+            upload-compression = false
+            "#,
+        )
+        .unwrap();
+
+        assert!(!config.servers.values().next().unwrap().upload_compression);
+    }
 }

@@ -34,13 +34,28 @@ use tokio::time;
 
 use crate::api::ApiClient;
 use attic::api::v1::cache_config::CacheConfig;
-use attic::api::v1::upload_path::{UploadPathNarInfo, UploadPathResult, UploadPathResultKind};
+use attic::api::v1::upload_path::{
+    UploadCompression, UploadPathNarInfo, UploadPathResult, UploadPathResultKind,
+};
 use attic::cache::CacheName;
 use attic::error::AtticResult;
 use attic::nix_store::{NixStore, StorePath, StorePathHash, ValidPathInfo};
 
 type JobSender = channel::Sender<ValidPathInfo>;
 type JobReceiver = channel::Receiver<ValidPathInfo>;
+
+pub fn select_upload_compression(
+    enabled: bool,
+    supported: Option<&[UploadCompression]>,
+) -> Option<UploadCompression> {
+    if enabled
+        && supported.is_some_and(|compressions| compressions.contains(&UploadCompression::Zstd))
+    {
+        Some(UploadCompression::Zstd)
+    } else {
+        None
+    }
+}
 
 /// Configuration for pushing store paths.
 #[derive(Clone, Copy, Debug)]
@@ -50,6 +65,9 @@ pub struct PushConfig {
 
     /// Whether to always include the upload info in the PUT payload.
     pub force_preamble: bool,
+
+    /// Compression to apply to upload bodies.
+    pub upload_compression: Option<UploadCompression>,
 }
 
 /// Configuration for a push session.
@@ -251,6 +269,7 @@ impl Pusher {
                 &cache,
                 mp.clone(),
                 config.force_preamble,
+                config.upload_compression,
             )
             .await;
 
@@ -501,6 +520,7 @@ pub async fn upload_path(
     cache: &CacheName,
     mp: MultiProgress,
     force_preamble: bool,
+    upload_compression: Option<UploadCompression>,
 ) -> Result<()> {
     let path = &path_info.path;
     let upload_info = {
@@ -563,7 +583,7 @@ pub async fn upload_path(
 
     let start = Instant::now();
     match api
-        .upload_path(upload_info, nar_stream, force_preamble)
+        .upload_path(upload_info, nar_stream, force_preamble, upload_compression)
         .await
     {
         Ok(r) => {
@@ -641,4 +661,22 @@ impl<S: Stream<Item = AtticResult<Vec<u8>>> + Unpin> Stream for NarStreamProgres
 fn average_speed(bytes: u64, duration: Duration) -> String {
     let speed = bytes as f64 * 1000_f64 / duration.as_millis() as f64;
     format!("{}/s", HumanBytes(speed as u64))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compression_requires_client_opt_in_and_server_capability() {
+        assert_eq!(select_upload_compression(true, None), None);
+        assert_eq!(
+            select_upload_compression(false, Some(&[UploadCompression::Zstd])),
+            None
+        );
+        assert_eq!(
+            select_upload_compression(true, Some(&[UploadCompression::Zstd])),
+            Some(UploadCompression::Zstd)
+        );
+    }
 }

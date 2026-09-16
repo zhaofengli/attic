@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::v1::upload_path::UploadCompression;
 use crate::signing::NixKeypair;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,6 +96,10 @@ pub struct CacheConfig {
     /// The retention period of the cache.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retention_period: Option<RetentionPeriodConfig>,
+
+    /// Upload compression algorithms supported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload_compression: Option<Vec<UploadCompression>>,
 }
 
 /// Configuaration of a keypair.
@@ -131,6 +136,30 @@ impl CacheConfig {
             priority: None,
             upstream_cache_key_names: None,
             retention_period: None,
+            upload_compression: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_config_without_upload_compression_capability_is_supported() {
+        let config: CacheConfig = serde_json::from_str("{}").unwrap();
+
+        assert!(config.upload_compression.is_none());
+    }
+
+    #[test]
+    fn cache_config_parses_upload_compression_capabilities() {
+        let config: CacheConfig =
+            serde_json::from_str(r#"{"upload_compression":["zstd"]}"#).unwrap();
+
+        assert_eq!(
+            config.upload_compression.unwrap(),
+            vec![UploadCompression::Zstd]
+        );
     }
 }

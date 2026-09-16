@@ -1,12 +1,11 @@
 use std::io;
-
 use std::io::Cursor;
 use std::marker::Unpin;
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_compression::Level as CompressionLevel;
-use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdEncoder};
+use async_compression::tokio::bufread::{BrotliEncoder, XzEncoder, ZstdDecoder, ZstdEncoder};
 use axum::{
     body::Body,
     extract::{Extension, Json},
@@ -20,7 +19,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
 use sea_orm::{QuerySelect, TransactionTrait};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufRead, AsyncReadExt};
+use tokio::io::{AsyncBufRead, AsyncReadExt, BufReader};
 use tokio::sync::Semaphore;
 use tokio::task::spawn;
 use tokio_util::io::StreamReader;
@@ -34,8 +33,8 @@ use crate::narinfo::Compression;
 use crate::storage::StorageBackend;
 use crate::{RequestState, State};
 use attic::api::v1::upload_path::{
-    ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,
-    UploadPathResultKind,
+    ATTIC_NAR_COMPRESSION, ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadCompression,
+    UploadPathNarInfo, UploadPathResult, UploadPathResultKind,
 };
 use attic::chunking::chunk_stream;
 use attic::hash::Hash;
@@ -90,8 +89,23 @@ pub(crate) async fn upload_path(
     body: Body,
 ) -> ServerResult<Json<UploadPathResult>> {
     let stream = body.into_data_stream();
-    let mut stream =
-        StreamReader::new(stream.map(|r| r.map_err(|e| io::Error::other(e.to_string()))));
+    let stream = StreamReader::new(stream.map(|r| r.map_err(|e| io::Error::other(e.to_string()))));
+    let mut stream: Box<dyn AsyncBufRead + Send + Unpin> = match headers.get(ATTIC_NAR_COMPRESSION)
+    {
+        Some(value) if value == UploadCompression::Zstd.as_str() => {
+            Box::new(BufReader::new(ZstdDecoder::new(BufReader::new(stream))))
+        }
+        Some(value) => {
+            let compression = value.to_str().map_err(|_| {
+                ErrorKind::RequestError(anyhow!("{} has invalid encoding", ATTIC_NAR_COMPRESSION))
+            })?;
+            return Err(ErrorKind::RequestError(anyhow!(
+                "Unsupported upload compression: {compression}"
+            ))
+            .into());
+        }
+        None => Box::new(BufReader::new(stream)),
+    };
 
     let upload_info: UploadPathNarInfo = {
         if let Some(preamble_size_bytes) = headers.get(ATTIC_NAR_INFO_PREAMBLE_SIZE) {
@@ -749,5 +763,26 @@ impl UploadPathNarInfoExt for UploadPathNarInfo {
             ca: Set(self.ca.clone()),
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_compression::tokio::bufread::ZstdEncoder;
+    use tokio::io::{AsyncReadExt, BufReader};
+
+    #[tokio::test]
+    async fn decodes_zstd_upload_body() {
+        let input = b"nar payload that compresses nar payload that compresses";
+        let mut encoder = ZstdEncoder::new(BufReader::new(Cursor::new(input)));
+        let mut compressed = Vec::new();
+        encoder.read_to_end(&mut compressed).await.unwrap();
+
+        let mut decoder = ZstdDecoder::new(BufReader::new(Cursor::new(compressed)));
+        let mut decoded = Vec::new();
+        decoder.read_to_end(&mut decoded).await.unwrap();
+
+        assert_eq!(decoded, input);
     }
 }

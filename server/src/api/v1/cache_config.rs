@@ -15,6 +15,7 @@ use crate::{RequestState, State};
 use attic::api::v1::cache_config::{
     CacheConfig, CreateCacheRequest, KeypairConfig, RetentionPeriodConfig,
 };
+use attic::api::v1::upload_path::UploadCompression;
 use attic::cache::CacheName;
 use attic::signing::NixKeypair;
 
@@ -51,6 +52,7 @@ pub(crate) async fn get_cache_config(
         priority: Some(cache.priority),
         upstream_cache_key_names: Some(cache.upstream_cache_key_names.0),
         retention_period: Some(retention_period_config),
+        upload_compression: Some(vec![UploadCompression::Zstd]),
     }))
 }
 

@@ -6,7 +6,7 @@ let
 
   cmd = {
     atticadm = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64 && atticd-atticadm";
-    atticd = ". /etc/atticd.env && export ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64 && atticd -f ${serverConfigFile}";
+    atticd = ". /etc/atticd.env && systemd-run --wait --pipe --property=DynamicUser=yes --property=User=atticd --property=StateDirectory=atticd --setenv=ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64=\\\"$ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64\\\" atticd -f ${serverConfigFile}";
   };
 
   makeTestDerivation = pkgs.writeShellScript "make-drv" ''
@@ -66,7 +66,7 @@ let
         '';
 
         services.atticd.settings = {
-          database.url = "postgresql:///attic?host=/run/postgresql";
+          database.url = "postgresql://atticd@localhost/attic?host=/run/postgresql";
         };
       };
       testScriptPost = ''
@@ -188,11 +188,48 @@ in {
       };
 
       client = {
-        environment.systemPackages = [ pkgs.attic ];
+        environment.systemPackages = [ pkgs.attic pkgs.python3 ];
+      };
+
+      proxy = {
+        services.nginx = {
+          enable = true;
+          commonHttpConfig = ''
+            log_format upload '$request_method $uri $http_x_attic_nar_compression';
+          '';
+          virtualHosts = {
+            compressed = {
+              listen = [ { addr = "0.0.0.0"; port = 8081; } ];
+              locations."/" = {
+                proxyPass = "http://server:8080";
+                extraConfig = ''
+                  proxy_set_header Host $host:$server_port;
+                  access_log /var/log/nginx/compressed.log upload;
+                '';
+              };
+            };
+            legacy = {
+              listen = [ { addr = "0.0.0.0"; port = 8082; } ];
+              locations."/" = {
+                proxyPass = "http://server:8080";
+                extraConfig = ''
+                  proxy_set_header Host $host:$server_port;
+                  access_log /var/log/nginx/legacy.log upload;
+                  sub_filter '"upload_compression"' '"unknown_upload_compression"';
+                  sub_filter_types application/json;
+                  sub_filter_once off;
+                '';
+              };
+            };
+          };
+        };
+
+        networking.firewall.allowedTCPPorts = [ 8081 8082 ];
       };
     };
 
     testScript = ''
+      import shlex
       import time
 
       start_all()
@@ -201,12 +238,19 @@ in {
       ${storageModules.${config.storage}.testScript or ""}
 
       server.wait_for_unit('atticd.service')
+      proxy.wait_for_unit('nginx.service')
       client.wait_until_succeeds("curl -sL http://server:8080", timeout=40)
+      client.wait_until_succeeds("curl -sL http://proxy:8081", timeout=40)
+      client.wait_until_succeeds("curl -sL http://proxy:8082", timeout=40)
 
       root_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --push '*' --pull '*' --delete '*' --create-cache '*' --destroy-cache '*' --configure-cache '*' --configure-cache-retention '*' </dev/null").strip()
       readonly_token = server.succeed("${cmd.atticadm} make-token --sub 'e2e-root' --validity '1 month' --pull 'test' </dev/null").strip()
 
       client.succeed(f"attic login --set-default root http://server:8080 {root_token}")
+      client.succeed(f"attic login compressed http://proxy:8081 {root_token}")
+      client.succeed(f"attic login disabled http://proxy:8081 {root_token}")
+      client.succeed("sed -i '/\\[servers.disabled\\]/,/^\\[/{s/upload-compression = true/upload-compression = false/}' ~/.config/attic/config.toml")
+      client.succeed(f"attic login legacy http://proxy:8082 {root_token}")
       client.succeed(f"attic login readonly http://server:8080 {readonly_token}")
       client.succeed("attic login anon http://server:8080")
 
@@ -216,16 +260,17 @@ in {
       with subtest("Check that we can create a cache"):
           client.succeed("attic cache create test")
 
-      with subtest("Check that we can push a path"):
+      with subtest("Check that a negotiated upload is compressed"):
           client.succeed("${makeTestDerivation} test.nix")
           test_file = client.succeed("nix-build --no-out-link test.nix").strip()
           test_file_hash = test_file.removeprefix("/nix/store/")[:32]
 
-          client.succeed(f"attic push test {test_file}")
+          client.succeed(f"attic push compressed:test {test_file}")
+          proxy.succeed("grep -E '^PUT /_api/v1/upload-path zstd$' /var/log/nginx/compressed.log")
           client.succeed(f"nix-store --delete {test_file}")
           client.fail(f"ls {test_file}")
 
-      with subtest("Check that we can pull a path"):
+      with subtest("Check that we can pull a compressed upload"):
           client.succeed("attic use readonly:test")
           client.succeed(f"nix-store -r {test_file}")
           client.succeed(f"grep hello {test_file}")
@@ -233,6 +278,40 @@ in {
       with subtest("Check that we cannot push without required permissions"):
           client.fail(f"attic push readonly:test {test_file}")
           client.fail(f"attic push anon:test {test_file} 2>&1")
+
+      with subtest("Check that per-server compression can be disabled"):
+          client.succeed("${makeTestDerivation} disabled.nix")
+          disabled_file = client.succeed("nix-build --no-out-link disabled.nix").strip()
+          proxy.succeed("truncate -s 0 /var/log/nginx/compressed.log")
+          client.succeed(f"attic push disabled:test {disabled_file}")
+          proxy.succeed("grep -E '^PUT /_api/v1/upload-path -$' /var/log/nginx/compressed.log")
+
+      with subtest("Check that absent server capability uses a legacy upload"):
+          client.succeed("${makeTestDerivation} legacy.nix")
+          legacy_file = client.succeed("nix-build --no-out-link legacy.nix").strip()
+          client.succeed(f"attic push legacy:test {legacy_file}")
+          proxy.succeed("grep -E '^PUT /_api/v1/upload-path -$' /var/log/nginx/legacy.log")
+
+      with subtest("Check that an old-style uncompressed request remains accepted"):
+          client.succeed("${makeTestDerivation} raw.nix")
+          raw_file = client.succeed("nix-build --no-out-link raw.nix").strip()
+          client.succeed(f"nix-store --dump {raw_file} > raw.nar")
+          raw_hash = client.succeed("nix-hash --type sha256 --flat --base32 raw.nar").strip()
+          raw_size = int(client.succeed("stat -c %s raw.nar").strip())
+          raw_store_hash = raw_file.removeprefix("/nix/store/")[:32]
+          raw_info = client.succeed(f"python3 -c 'import json; print(json.dumps({{\"cache\":\"test\",\"store_path_hash\":\"{raw_store_hash}\",\"store_path\":\"{raw_file}\",\"references\":[],\"system\":None,\"deriver\":None,\"sigs\":[],\"ca\":None,\"nar_hash\":\"sha256:{raw_hash}\",\"nar_size\":{raw_size}}}))'").strip()
+          raw_info_header = shlex.quote(f"X-Attic-Nar-Info: {raw_info}")
+          client.succeed(f"curl --fail-with-body -X PUT -H 'Authorization: Bearer {root_token}' -H {raw_info_header} --data-binary @raw.nar http://server:8080/_api/v1/upload-path")
+
+      with subtest("Check that malformed compressed uploads fail cleanly"):
+          malformed_status = client.succeed(f"printf broken | curl -sS -o malformed-response.json -w '%{{http_code}}' -X PUT -H 'Authorization: Bearer {root_token}' -H 'X-Attic-Nar-Compression: zstd' -H 'X-Attic-Nar-Info: {{}}' --data-binary @- http://server:8080/_api/v1/upload-path").strip()
+          assert malformed_status == "400", f"expected HTTP 400, got {malformed_status}"
+          client.succeed("grep -F '\"code\":400' malformed-response.json")
+
+      with subtest("Check that unknown upload compression fails cleanly"):
+          unknown_status = client.succeed(f"printf broken | curl -sS -o unknown-response.json -w '%{{http_code}}' -X PUT -H 'Authorization: Bearer {root_token}' -H 'X-Attic-Nar-Compression: gzip' -H 'X-Attic-Nar-Info: {{}}' --data-binary @- http://server:8080/_api/v1/upload-path").strip()
+          assert unknown_status == "400", f"expected HTTP 400, got {unknown_status}"
+          client.succeed("grep -F '\"code\":400' unknown-response.json")
 
       with subtest("Check that we can push a list of paths from stdin"):
           paths = []
@@ -275,10 +354,12 @@ in {
           assert files.strip() == "", "Some files remain after GC: " + files
       ''}
 
-      with subtest("Check that we can include the upload info in the payload"):
+      with subtest("Check that compressed uploads can include the upload info in the payload"):
           client.succeed("${makeTestDerivation} test2.nix")
-          test2_file = client.succeed("nix-build --no-out-link test2.nix")
-          client.succeed(f"attic push --force-preamble test {test2_file}")
+          test2_file = client.succeed("nix-build --no-out-link test2.nix").strip()
+          proxy.succeed("truncate -s 0 /var/log/nginx/compressed.log")
+          client.succeed(f"attic push --force-preamble compressed:test {test2_file}")
+          proxy.succeed("grep -E '^PUT /_api/v1/upload-path zstd$' /var/log/nginx/compressed.log")
           client.succeed(f"nix-store --delete {test2_file}")
           client.succeed(f"nix-store -r {test2_file}")
 

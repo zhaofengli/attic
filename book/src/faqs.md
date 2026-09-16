@@ -65,7 +65,7 @@ The `atticadm` utility will have the functionality to kill/delete bad chunks.
 
 ## How is compression handled?
 
-Uploaded NARs are chunked then compressed on the server before being streamed to the storage backend.
+Clients can compress uploads when the server advertises support. The server decompresses the upload before validation and chunking. Uploaded NARs are then chunked and compressed using the server's storage configuration before being streamed to the storage backend.
 On the chunk level, we use the hash of the _uncompressed chunk_ to perform global deduplication.
 
 ```

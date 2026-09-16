@@ -11,7 +11,7 @@ use crate::api::ApiClient;
 use crate::cache::CacheRef;
 use crate::cli::Opts;
 use crate::config::Config;
-use crate::push::{PushConfig, PushSessionConfig, Pusher};
+use crate::push::{PushConfig, PushSessionConfig, Pusher, select_upload_compression};
 use attic::nix_store::{NixStore, StorePath};
 
 /// Watch the Nix Store for new paths and upload them to a binary cache.
@@ -62,9 +62,15 @@ pub async fn run(opts: Opts) -> Result<()> {
         api.set_endpoint(api_endpoint)?;
     }
 
+    let upload_compression = select_upload_compression(
+        server.upload_compression,
+        cache_config.upload_compression.as_deref(),
+    );
+
     let push_config = PushConfig {
         num_workers: sub.jobs,
         force_preamble: sub.force_preamble,
+        upload_compression,
     };
 
     let push_session_config = PushSessionConfig {
