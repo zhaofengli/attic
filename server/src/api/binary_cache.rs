@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::io::Error as IoError;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::http;
 use axum::{
@@ -27,6 +28,7 @@ use tracing::instrument;
 use crate::database::AtticDatabase;
 use crate::database::entity::chunk::ChunkModel;
 use crate::error::{ErrorKind, ServerResult};
+use crate::metrics;
 use crate::narinfo::NarInfo;
 use crate::nix_manifest;
 use crate::storage::{Download, StorageBackend, StorageBackendImpl};
@@ -172,6 +174,7 @@ async fn get_nar(
     Extension(req_state): Extension<RequestState>,
     Path((cache_name, path)): Path<(CacheName, String)>,
 ) -> ServerResult<Response> {
+    let started_at = Instant::now();
     let components: Vec<&str> = path.splitn(2, '.').collect();
 
     if components.len() != 2 {
@@ -192,7 +195,7 @@ async fn get_nar(
 
     let database = state.database().await?;
 
-    let (object, cache, _nar, chunks) = database
+    let (object, cache, nar, chunks) = database
         .find_object_and_chunks_by_store_path_hash(&cache_name, &store_path_hash, true)
         .await?;
 
@@ -210,6 +213,15 @@ async fn get_nar(
     }
 
     database.bump_object_last_accessed(object.id).await?;
+
+    metrics::record_operation("download", "success", started_at.elapsed());
+    metrics::add_bytes("download.nar", nar.nar_size as u64, &[]);
+    tracing::info!(
+        nar.size = nar.nar_size,
+        chunk.count = chunks.len(),
+        duration_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "NAR download prepared"
+    );
 
     if chunks.len() == 1 {
         // single chunk

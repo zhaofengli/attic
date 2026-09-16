@@ -20,16 +20,18 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod gc;
+mod metrics;
 mod middleware;
 mod narinfo;
 pub mod nix_manifest;
 pub mod oobe;
 mod storage;
+pub mod telemetry;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use axum::{
@@ -45,7 +47,8 @@ use tokio::sync::OnceCell;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 use tower_http::catch_panic::CatchPanicLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultOnRequest, TraceLayer};
+use tracing::Level;
 
 use access::http::{AuthState, apply_auth};
 use attic::cache::CacheName;
@@ -109,6 +112,7 @@ impl StateInner {
     async fn database(&self) -> ServerResult<&DatabaseConnection> {
         self.database
             .get_or_try_init(|| async {
+                let started_at = Instant::now();
                 let db = Database::connect(&self.config.database.url)
                     .await
                     .map_err(ServerError::database_error);
@@ -132,6 +136,11 @@ impl StateInner {
                         .await;
                 }
 
+                let outcome = if db.is_ok() { "success" } else { "error" };
+                metrics::record_operation("database.connect", outcome, started_at.elapsed());
+                if let Err(error) = &db {
+                    tracing::error!(%error, "Database connection failed");
+                }
                 db
             })
             .await
@@ -243,7 +252,33 @@ pub async fn run_api_server(
         .layer(axum::middleware::from_fn(init_request_state))
         .layer(axum::middleware::from_fn(restrict_host))
         .layer(Extension(state.clone()))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::http::Request<_>| {
+                    tracing::info_span!(
+                        "http.request",
+                        otel.name = %format!("{} {}", request.method(), request.uri().path()),
+                        http.request.method = %request.method(),
+                        url.path = %request.uri().path(),
+                        http.response.status_code = tracing::field::Empty,
+                    )
+                })
+                .on_request(DefaultOnRequest::new().level(Level::DEBUG))
+                .on_response(
+                    |response: &axum::http::Response<_>,
+                     latency: Duration,
+                     span: &tracing::Span| {
+                        span.record("http.response.status_code", response.status().as_u16());
+                        tracing::info!(
+                            parent: span,
+                            http.response.status_code = response.status().as_u16(),
+                            duration_ms = latency.as_secs_f64() * 1000.0,
+                            "HTTP request completed"
+                        );
+                    },
+                ),
+        )
+        .layer(axum::middleware::from_fn(track_http_metrics))
         .layer(CatchPanicLayer::new());
 
     eprintln!("Listening on {:?}...", listen);
@@ -275,13 +310,33 @@ pub async fn run_api_server(
     Ok(())
 }
 
+async fn track_http_metrics(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let request_metrics = metrics::start_http_request(request.method().as_str());
+    let response = next.run(request).await;
+    request_metrics.finish(response.status());
+    response
+}
+
 /// Runs database migrations.
 pub async fn run_migrations(config: Config) -> Result<()> {
-    eprintln!("Running migrations...");
+    tracing::info!("Running database migrations");
+    let started_at = Instant::now();
 
-    let state = StateInner::new(config).await;
-    let db = state.database().await?;
-    Migrator::up(db, None).await?;
+    let result = async {
+        let state = StateInner::new(config).await;
+        let db = state.database().await?;
+        Migrator::up(db, None).await?;
+        Result::<_, anyhow::Error>::Ok(())
+    }
+    .await;
 
-    Ok(())
+    let outcome = if result.is_ok() { "success" } else { "error" };
+    metrics::record_operation("database.migrate", outcome, started_at.elapsed());
+    if let Err(error) = &result {
+        tracing::error!(%error, "Database migration failed");
+    }
+    result
 }

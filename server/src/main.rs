@@ -3,15 +3,12 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use attic_server::config;
+use attic_server::telemetry;
 use clap::{Parser, ValueEnum};
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::task::spawn;
 use tokio_util::sync::CancellationToken;
-use tracing_error::ErrorLayer;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::prelude::*;
-
-use attic_server::config;
 
 /// Nix binary cache server.
 #[derive(Debug, Parser)]
@@ -64,50 +61,59 @@ enum ServerMode {
 async fn main() -> Result<()> {
     let opts = Opts::parse();
 
-    init_logging(opts.tokio_console);
+    let telemetry = telemetry::init(opts.tokio_console)?;
     dump_version();
 
-    let config =
-        config::load_config(opts.config.as_deref(), opts.mode == ServerMode::Monolithic).await?;
+    let result = async {
+        let config =
+            config::load_config(opts.config.as_deref(), opts.mode == ServerMode::Monolithic)
+                .await?;
 
-    match opts.mode {
-        ServerMode::Monolithic => {
-            attic_server::run_migrations(config.clone()).await?;
+        match opts.mode {
+            ServerMode::Monolithic => {
+                attic_server::run_migrations(config.clone()).await?;
 
-            let shutdown = run_shutdown_handler();
-            let gc_handle = spawn(attic_server::gc::run_garbage_collection(
-                config.clone(),
-                shutdown.clone(),
-            ));
+                let shutdown = run_shutdown_handler();
+                let gc_handle = spawn(attic_server::gc::run_garbage_collection(
+                    config.clone(),
+                    shutdown.clone(),
+                ));
 
-            let api_server =
-                attic_server::run_api_server(opts.listen, config.clone(), shutdown.clone()).await;
+                let api_server =
+                    attic_server::run_api_server(opts.listen, config.clone(), shutdown.clone())
+                        .await;
 
-            shutdown.cancel();
-            let _ = gc_handle.await;
+                shutdown.cancel();
+                let _ = gc_handle.await;
 
-            api_server?;
+                api_server?;
+            }
+            ServerMode::ApiServer => {
+                let shutdown = run_shutdown_handler();
+                attic_server::run_api_server(opts.listen, config, shutdown).await?;
+            }
+            ServerMode::GarbageCollector => {
+                let shutdown = run_shutdown_handler();
+                attic_server::gc::run_garbage_collection(config.clone(), shutdown).await;
+            }
+            ServerMode::DbMigrations => {
+                attic_server::run_migrations(config).await?;
+            }
+            ServerMode::GarbageCollectorOnce => {
+                attic_server::gc::run_garbage_collection_once(config).await?;
+            }
+            ServerMode::CheckConfig => {
+                // config is valid, let's just exit :)
+            }
         }
-        ServerMode::ApiServer => {
-            let shutdown = run_shutdown_handler();
-            attic_server::run_api_server(opts.listen, config, shutdown).await?;
-        }
-        ServerMode::GarbageCollector => {
-            let shutdown = run_shutdown_handler();
-            attic_server::gc::run_garbage_collection(config.clone(), shutdown).await;
-        }
-        ServerMode::DbMigrations => {
-            attic_server::run_migrations(config).await?;
-        }
-        ServerMode::GarbageCollectorOnce => {
-            attic_server::gc::run_garbage_collection_once(config).await?;
-        }
-        ServerMode::CheckConfig => {
-            // config is valid, let's just exit :)
-        }
+
+        Result::<_, anyhow::Error>::Ok(())
     }
+    .await;
 
-    Ok(())
+    let shutdown_result = telemetry.shutdown();
+    result?;
+    shutdown_result
 }
 
 fn run_shutdown_handler() -> CancellationToken {
@@ -140,31 +146,6 @@ fn run_shutdown_handler() -> CancellationToken {
     });
 
     shutdown
-}
-
-fn init_logging(tokio_console: bool) {
-    let env_filter = EnvFilter::from_default_env();
-    let fmt_layer = tracing_subscriber::fmt::layer().with_filter(env_filter);
-
-    let error_layer = ErrorLayer::default();
-
-    let console_layer = if tokio_console {
-        let (layer, server) = console_subscriber::ConsoleLayer::new();
-        spawn(server.serve());
-        Some(layer)
-    } else {
-        None
-    };
-
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(error_layer)
-        .with(console_layer)
-        .init();
-
-    if tokio_console {
-        eprintln!("Note: tokio-console is enabled");
-    }
 }
 
 fn dump_version() {

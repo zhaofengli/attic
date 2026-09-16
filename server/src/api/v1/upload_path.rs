@@ -3,6 +3,7 @@ use std::io;
 use std::io::Cursor;
 use std::marker::Unpin;
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::anyhow;
 use async_compression::Level as CompressionLevel;
@@ -30,6 +31,7 @@ use uuid::Uuid;
 use crate::compression::{CompressionStream, CompressorFn};
 use crate::config::CompressionType;
 use crate::error::{ErrorKind, ServerError, ServerResult};
+use crate::metrics;
 use crate::narinfo::Compression;
 use crate::storage::StorageBackend;
 use crate::{RequestState, State};
@@ -89,6 +91,7 @@ pub(crate) async fn upload_path(
     headers: HeaderMap,
     body: Body,
 ) -> ServerResult<Json<UploadPathResult>> {
+    let started_at = Instant::now();
     let stream = body.into_data_stream();
     let mut stream =
         StreamReader::new(stream.map(|r| r.map_err(|e| io::Error::other(e.to_string()))));
@@ -149,6 +152,8 @@ pub(crate) async fn upload_path(
 
     let username = req_state.auth.username().map(str::to_string);
 
+    let nar_size = upload_info.nar_size;
+
     // Try to acquire a lock on an existing NAR
     if let Some(existing_nar) = database.find_and_lock_nar(&upload_info.nar_hash).await? {
         // Deduplicate?
@@ -163,7 +168,7 @@ pub(crate) async fn upload_path(
 
         if missing_chunk.is_none() {
             // Can actually be deduplicated
-            return upload_path_dedup(
+            let result = upload_path_dedup(
                 username,
                 cache,
                 upload_info,
@@ -173,10 +178,44 @@ pub(crate) async fn upload_path(
                 existing_nar,
             )
             .await;
+            record_upload(&result, nar_size, "deduplicated", started_at);
+            return result;
         }
     }
 
-    upload_path_new(username, cache, upload_info, stream, database, &state).await
+    let result = upload_path_new(username, cache, upload_info, stream, database, &state).await;
+    let kind = result
+        .as_ref()
+        .map(|result| match result.kind {
+            UploadPathResultKind::Uploaded => "uploaded",
+            UploadPathResultKind::Deduplicated => "deduplicated",
+            _ => "unknown",
+        })
+        .unwrap_or("error");
+    record_upload(&result, nar_size, kind, started_at);
+    result
+}
+
+fn record_upload(
+    result: &ServerResult<Json<UploadPathResult>>,
+    nar_size: usize,
+    kind: &'static str,
+    started_at: Instant,
+) {
+    let outcome = if result.is_ok() { "success" } else { "error" };
+    metrics::record_operation("upload", outcome, started_at.elapsed());
+    metrics::add_bytes(
+        "upload.nar",
+        nar_size as u64,
+        &[opentelemetry::KeyValue::new("upload.kind", kind)],
+    );
+    tracing::info!(
+        upload.kind = kind,
+        nar.size = nar_size,
+        operation.outcome = outcome,
+        duration_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "Upload completed"
+    );
 }
 
 /// Uploads a path when there is already a matching NAR in the global cache.

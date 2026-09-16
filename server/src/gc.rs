@@ -1,7 +1,7 @@
 //! Garbage collection.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use chrono::{Duration as ChronoDuration, Utc};
@@ -22,6 +22,7 @@ use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object};
+use crate::metrics;
 use crate::storage::StorageBackend;
 
 #[derive(Debug, FromQueryResult)]
@@ -67,14 +68,21 @@ pub async fn run_garbage_collection(config: Config, shutdown: CancellationToken)
 /// Runs garbage collection once.
 #[instrument(skip_all)]
 pub async fn run_garbage_collection_once(config: Config) -> Result<()> {
-    tracing::info!("Running garbage collection...");
+    tracing::info!("Running garbage collection");
+    let started_at = Instant::now();
 
     let state = StateInner::new(config).await;
-    run_time_based_garbage_collection(&state).await?;
-    run_reap_orphan_nars(&state).await?;
-    run_reap_orphan_chunks(&state).await?;
+    let result = async {
+        run_time_based_garbage_collection(&state).await?;
+        run_reap_orphan_nars(&state).await?;
+        run_reap_orphan_chunks(&state).await?;
+        Result::<_, anyhow::Error>::Ok(())
+    }
+    .await;
 
-    Ok(())
+    let outcome = if result.is_ok() { "success" } else { "error" };
+    metrics::record_operation("garbage_collection", outcome, started_at.elapsed());
+    result
 }
 
 #[instrument(skip_all)]
@@ -133,7 +141,8 @@ async fn run_time_based_garbage_collection(state: &State) -> Result<()> {
         objects_deleted += deletion.rows_affected;
     }
 
-    tracing::info!("Deleted {} objects in total", objects_deleted);
+    tracing::info!(objects_deleted, "Deleted expired objects");
+    metrics::add_count("garbage_collection.objects_deleted", objects_deleted, &[]);
 
     Ok(())
 }
@@ -164,7 +173,12 @@ async fn run_reap_orphan_nars(state: &State) -> Result<()> {
         .exec(db)
         .await?;
 
-    tracing::info!("Deleted {} orphan NARs", deletion.rows_affected,);
+    tracing::info!(nars_deleted = deletion.rows_affected, "Deleted orphan NARs");
+    metrics::add_count(
+        "garbage_collection.nars_deleted",
+        deletion.rows_affected,
+        &[],
+    );
 
     Ok(())
 }
@@ -269,7 +283,15 @@ async fn run_reap_orphan_chunks(state: &State) -> Result<()> {
         .exec(db)
         .await?;
 
-    tracing::info!("Deleted {} orphan chunks", deletion.rows_affected);
+    tracing::info!(
+        chunks_deleted = deletion.rows_affected,
+        "Deleted orphan chunks"
+    );
+    metrics::add_count(
+        "garbage_collection.chunks_deleted",
+        deletion.rows_affected,
+        &[],
+    );
 
     Ok(())
 }
