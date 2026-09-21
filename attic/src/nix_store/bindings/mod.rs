@@ -43,10 +43,13 @@ pub unsafe fn open_nix_store() -> AtticResult<FfiNixStore> {
 // (tokio, crossbeam, flume)
 mod mpsc {
     // Tokio
-    pub use tokio::sync::mpsc::{
-        UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel,
-    };
+    pub use tokio::sync::mpsc::{Receiver, Sender, channel, error::SendError};
 }
+
+/// Maximum number of NAR chunks buffered between the C++ serializer and the uploader.
+const NAR_CHANNEL_CAPACITY: usize = 64;
+
+const NAR_CHUNK_SIZE: usize = 64 * 1024;
 
 /// Async write request.
 #[derive(Debug)]
@@ -59,44 +62,76 @@ enum AsyncWriteMessage {
 /// Async write request sender.
 #[derive(Clone)]
 pub struct AsyncWriteSender {
-    sender: mpsc::UnboundedSender<AsyncWriteMessage>,
+    sender: mpsc::Sender<AsyncWriteMessage>,
+    buf: Vec<u8>,
 }
 
 impl AsyncWriteSender {
     fn send(&mut self, data: &[u8]) -> Result<(), mpsc::SendError<AsyncWriteMessage>> {
-        let message = AsyncWriteMessage::Data(Vec::from(data));
-        self.sender.send(message)
+        let mut rest = data;
+
+        while !rest.is_empty() {
+            if self.buf.capacity() == 0 {
+                self.buf.reserve_exact(NAR_CHUNK_SIZE);
+            }
+
+            let take = (NAR_CHUNK_SIZE - self.buf.len()).min(rest.len());
+
+            self.buf.extend_from_slice(&rest[..take]);
+            rest = &rest[take..];
+
+            if self.buf.len() == NAR_CHUNK_SIZE {
+                self.flush()?;
+            }
+        }
+
+        Ok(())
     }
 
     fn eof(&mut self) -> Result<(), mpsc::SendError<AsyncWriteMessage>> {
-        let message = AsyncWriteMessage::Eof;
-        self.sender.send(message)
+        self.flush()?;
+        self.sender.blocking_send(AsyncWriteMessage::Eof)
     }
 
     pub(crate) fn rust_error(
         &mut self,
         error: impl std::error::Error,
     ) -> Result<(), impl std::error::Error> {
+        // No need to preserve buffered data when the consumer is about to abort.
         let message = AsyncWriteMessage::Error(error.to_string());
-        self.sender.send(message)
+        self.sender.blocking_send(message)
+    }
+
+    fn flush(&mut self) -> Result<(), mpsc::SendError<AsyncWriteMessage>> {
+        if self.buf.is_empty() {
+            return Ok(());
+        }
+
+        // This runs on the spawn_blocking thread driving the C++ serializer,
+        // so blocking here does not stall a Tokio runtime worker.
+        let chunk = std::mem::take(&mut self.buf);
+        self.sender.blocking_send(AsyncWriteMessage::Data(chunk))
     }
 }
 
 /// A wrapper of the `AsyncWrite` trait for the synchronous Nix C++ land.
 pub struct AsyncWriteAdapter {
-    receiver: mpsc::UnboundedReceiver<AsyncWriteMessage>,
+    receiver: mpsc::Receiver<AsyncWriteMessage>,
     eof: bool,
 }
 
 impl AsyncWriteAdapter {
     pub fn new() -> (Self, Box<AsyncWriteSender>) {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::channel(NAR_CHANNEL_CAPACITY);
 
         let r = Self {
             receiver,
             eof: false,
         };
-        let sender = Box::new(AsyncWriteSender { sender });
+        let sender = Box::new(AsyncWriteSender {
+            sender,
+            buf: Vec::new(),
+        });
 
         (r, sender)
     }
