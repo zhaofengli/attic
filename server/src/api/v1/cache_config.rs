@@ -15,6 +15,7 @@ use crate::{RequestState, State};
 use attic::api::v1::cache_config::{
     CacheConfig, CreateCacheRequest, KeypairConfig, RetentionPeriodConfig,
 };
+use attic::api::v1::upload_path::UploadChunkingConfig;
 use attic::cache::CacheName;
 use attic::signing::NixKeypair;
 
@@ -41,6 +42,15 @@ pub(crate) async fn get_cache_config(
         RetentionPeriodConfig::Global
     };
 
+    let upload_chunking = state
+        .config
+        .upload
+        .max_chunk_size
+        .filter(|max_part_size| *max_part_size > 0)
+        .map(|max_part_size| UploadChunkingConfig {
+            max_chunk_size: max_part_size,
+        });
+
     Ok(Json(CacheConfig {
         substituter_endpoint: Some(req_state.substituter_endpoint(cache_name)?),
         api_endpoint: Some(req_state.api_endpoint()?),
@@ -51,6 +61,7 @@ pub(crate) async fn get_cache_config(
         priority: Some(cache.priority),
         upstream_cache_key_names: Some(cache.upstream_cache_key_names.0),
         retention_period: Some(retention_period_config),
+        upload_chunking,
     }))
 }
 
@@ -169,6 +180,10 @@ pub(crate) async fn destroy_cache(
         }
     } else {
         // Perform hard deletion
+        crate::gc::delete_upload_sessions_for_cache(&state, cache.id)
+            .await
+            .map_err(|e| ServerError::from(ErrorKind::RequestError(e)))?;
+
         let deletion = Cache::delete_many()
             .filter(cache::Column::Id.eq(cache.id))
             .filter(cache::Column::DeletedAt.is_null()) // don't operate on soft-deleted caches

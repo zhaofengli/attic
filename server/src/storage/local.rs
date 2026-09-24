@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncRead};
+use tokio::sync::Mutex;
 
 use super::{Download, RemoteFile, StorageBackend};
 use crate::error::{ErrorKind, ServerError, ServerResult};
@@ -15,6 +16,7 @@ use crate::error::{ErrorKind, ServerError, ServerResult};
 #[derive(Debug)]
 pub struct LocalBackend {
     config: LocalStorageConfig,
+    directory_lock: Mutex<()>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -114,13 +116,46 @@ impl LocalBackend {
         }
         write_version(&config.path, 1).await?;
 
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            directory_lock: Mutex::new(()),
+        })
     }
 
     fn get_path(&self, p: &str) -> PathBuf {
         let level1 = &p[0..1];
         let level2 = &p[0..2];
         self.config.path.join(level1).join(level2).join(p)
+    }
+
+    async fn remove_empty_parent_dirs(&self, path: &Path) {
+        let mut current = path.parent();
+
+        while let Some(dir) = current {
+            if dir == self.config.path {
+                break;
+            }
+
+            match fs::remove_dir(dir).await {
+                Ok(()) => {
+                    current = dir.parent();
+                }
+                Err(e)
+                    if e.kind() == io::ErrorKind::NotFound
+                        || e.kind() == io::ErrorKind::DirectoryNotEmpty =>
+                {
+                    break;
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Failed to remove empty storage directory {}: {}",
+                        dir.display(),
+                        e
+                    );
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -131,22 +166,25 @@ impl StorageBackend for LocalBackend {
         mut stream: &mut (dyn AsyncRead + Unpin + Send),
     ) -> ServerResult<RemoteFile> {
         let path = self.get_path(&name);
-        fs::create_dir_all(path.parent().unwrap())
-            .await
-            .map_err(|e| {
+        let mut file = {
+            let _guard = self.directory_lock.lock().await;
+            fs::create_dir_all(path.parent().unwrap())
+                .await
+                .map_err(|e| {
+                    ErrorKind::StorageError(anyhow::anyhow!(
+                        "Failed to create directory {}: {}",
+                        path.parent().unwrap().display(),
+                        e
+                    ))
+                })?;
+            File::create(&path).await.map_err(|e| {
                 ErrorKind::StorageError(anyhow::anyhow!(
-                    "Failed to create directory {}: {}",
-                    path.parent().unwrap().display(),
+                    "Failed to create file {}: {}",
+                    path.display(),
                     e
                 ))
-            })?;
-        let mut file = File::create(self.get_path(&name)).await.map_err(|e| {
-            ErrorKind::StorageError(anyhow::anyhow!(
-                "Failed to create file {}: {}",
-                self.get_path(&name).display(),
-                e
-            ))
-        })?;
+            })?
+        };
 
         io::copy(&mut stream, &mut file)
             .await
@@ -156,9 +194,12 @@ impl StorageBackend for LocalBackend {
     }
 
     async fn delete_file(&self, name: String) -> ServerResult<()> {
-        fs::remove_file(self.get_path(&name))
+        let path = self.get_path(&name);
+        let _guard = self.directory_lock.lock().await;
+        fs::remove_file(&path)
             .await
             .map_err(ServerError::storage_error)?;
+        self.remove_empty_parent_dirs(&path).await;
 
         Ok(())
     }
@@ -173,9 +214,12 @@ impl StorageBackend for LocalBackend {
             .into());
         };
 
-        fs::remove_file(self.get_path(&file.name))
+        let path = self.get_path(&file.name);
+        let _guard = self.directory_lock.lock().await;
+        fs::remove_file(&path)
             .await
             .map_err(ServerError::storage_error)?;
+        self.remove_empty_parent_dirs(&path).await;
 
         Ok(())
     }

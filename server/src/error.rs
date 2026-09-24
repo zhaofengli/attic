@@ -2,6 +2,7 @@
 
 use std::error::Error as StdError;
 use std::fmt;
+use std::io;
 
 use anyhow::Error as AnyError;
 use axum::Json;
@@ -94,6 +95,15 @@ impl ServerError {
 
     pub fn request_error(error: impl StdError + Send + Sync + 'static) -> Self {
         ErrorKind::RequestError(AnyError::new(error)).into()
+    }
+
+    pub fn is_storage_not_found(&self) -> bool {
+        match &self.kind {
+            ErrorKind::StorageError(error) => error
+                .downcast_ref::<io::Error>()
+                .is_some_and(|e| e.kind() == io::ErrorKind::NotFound),
+            _ => false,
+        }
     }
 
     pub fn set_discovery_permission(&mut self, perm: bool) {

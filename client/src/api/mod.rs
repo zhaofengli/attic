@@ -1,5 +1,7 @@
 use std::error::Error as StdError;
 use std::fmt;
+use std::io;
+use std::sync::Arc;
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -20,7 +22,9 @@ use crate::version::ATTIC_DISTRIBUTOR;
 use attic::api::v1::cache_config::{CacheConfig, CreateCacheRequest};
 use attic::api::v1::get_missing_paths::{GetMissingPathsRequest, GetMissingPathsResponse};
 use attic::api::v1::upload_path::{
-    ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, UploadPathNarInfo, UploadPathResult,
+    ATTIC_NAR_INFO, ATTIC_NAR_INFO_PREAMBLE_SIZE, FinalizeUploadSessionResponse,
+    StartUploadPathSessionRequest, StartUploadPathSessionResponse, UploadPathNarInfo,
+    UploadPathResult,
 };
 use attic::cache::CacheName;
 use attic::nix_store::StorePathHash;
@@ -31,6 +35,7 @@ const ATTIC_USER_AGENT: &str =
 
 /// The size threshold to send the upload info as part of the PUT body.
 const NAR_INFO_PREAMBLE_THRESHOLD: usize = 4 * 1024; // 4 KiB
+const UPLOAD_PROGRESS_CHUNK_SIZE: usize = 128 * 1024;
 
 /// The Attic API client.
 #[derive(Debug, Clone)]
@@ -211,11 +216,128 @@ impl ApiClient {
             Err(api_error.into())
         }
     }
+
+    /// Starts a chunked transport upload session.
+    pub async fn start_upload_session(
+        &self,
+        nar_info: UploadPathNarInfo,
+        chunk_size: Option<usize>,
+    ) -> Result<StartUploadPathSessionResponse> {
+        let endpoint = self.endpoint.join("_api/v1/upload-path/sessions")?;
+        let payload = StartUploadPathSessionRequest {
+            nar_info,
+            chunk_size,
+        };
+
+        let res = self.client.post(endpoint).json(&payload).send().await?;
+        if res.status().is_success() {
+            Ok(res.json().await?)
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
+    /// Uploads a chunked transport upload session part, reporting body bytes as
+    /// they are sent to the HTTP client.
+    pub async fn upload_session_part_with_progress<F>(
+        &self,
+        session_id: uuid::Uuid,
+        seq: u32,
+        bytes: Bytes,
+        on_progress: F,
+    ) -> Result<()>
+    where
+        F: Fn(u64) + Send + Sync + 'static,
+    {
+        let endpoint = self.endpoint.join(&format!(
+            "_api/v1/upload-path/sessions/{}/parts/{}",
+            session_id, seq
+        ))?;
+
+        let body_len = bytes.len();
+        let on_progress = Arc::new(on_progress);
+        let body_stream = stream::unfold((bytes, 0), move |(bytes, offset)| {
+            let on_progress = on_progress.clone();
+            async move {
+                if offset >= body_len {
+                    return None;
+                }
+
+                let end = (offset + UPLOAD_PROGRESS_CHUNK_SIZE).min(body_len);
+                let chunk = bytes.slice(offset..end);
+                on_progress(chunk.len() as u64);
+                Some((Ok::<_, io::Error>(chunk), (bytes, end)))
+            }
+        });
+
+        let res = self
+            .client
+            .put(endpoint)
+            .body(Body::wrap_stream(body_stream))
+            .send()
+            .await?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
+    /// Finalizes a chunked transport upload session.
+    pub async fn finalize_upload_session(
+        &self,
+        session_id: uuid::Uuid,
+    ) -> Result<FinalizeUploadSessionResponse> {
+        let endpoint = self.endpoint.join(&format!(
+            "_api/v1/upload-path/sessions/{}/finalize",
+            session_id
+        ))?;
+
+        let res = self.client.post(endpoint).send().await?;
+        if res.status().is_success() {
+            Ok(res.json().await?)
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
+
+    /// Aborts a chunked transport upload session.
+    pub async fn abort_upload_session(&self, session_id: uuid::Uuid) -> Result<()> {
+        let endpoint = self
+            .endpoint
+            .join(&format!("_api/v1/upload-path/sessions/{}", session_id))?;
+
+        let res = self.client.delete(endpoint).send().await?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let api_error = ApiError::try_from_response(res).await?;
+            Err(api_error.into())
+        }
+    }
 }
 
 impl StdError for ApiError {}
 
 impl ApiError {
+    pub fn status_code(&self) -> Option<StatusCode> {
+        match self {
+            Self::Structured(error) => StatusCode::from_u16(error.code).ok(),
+            Self::Unstructured(status, _) => Some(*status),
+        }
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        self.status_code().is_some_and(|status| {
+            status == StatusCode::REQUEST_TIMEOUT
+                || status == StatusCode::TOO_MANY_REQUESTS
+                || status.is_server_error()
+        })
+    }
+
     async fn try_from_response(response: Response) -> Result<Self> {
         let status = response.status();
         let text = response.text().await?;

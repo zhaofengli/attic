@@ -113,6 +113,10 @@ pub struct Config {
     /// Storage.
     pub storage: StorageConfig,
 
+    /// Upload.
+    #[serde(default = "Default::default")]
+    pub upload: UploadConfig,
+
     /// Data chunking.
     pub chunking: ChunkingConfig,
 
@@ -227,6 +231,17 @@ pub enum StorageConfig {
     /// S3 storage.
     #[serde(rename = "s3")]
     S3(S3StorageConfig),
+}
+
+/// Upload configuration.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UploadConfig {
+    /// Maximum size of each chunked transport upload part, in bytes.
+    ///
+    /// If unconfigured, clients will use the non-chunked upload path by default.
+    #[serde(rename = "max-chunk-size")]
+    #[serde(default = "Default::default")]
+    pub max_chunk_size: Option<usize>,
 }
 
 /// Data chunking.
