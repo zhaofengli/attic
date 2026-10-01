@@ -156,11 +156,15 @@ impl StorageBackend for LocalBackend {
     }
 
     async fn delete_file(&self, name: String) -> ServerResult<()> {
-        fs::remove_file(self.get_path(&name))
-            .await
-            .map_err(ServerError::storage_error)?;
-
-        Ok(())
+        // A file that is already gone is a successful deletion: the GC
+        // retries chunks stuck in the Deleted state on every run, and
+        // erroring on ENOENT wedges it on the same rows forever while the
+        // per-run limit starves the deletable rest (issue #361).
+        match fs::remove_file(self.get_path(&name)).await {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(ServerError::storage_error(e)),
+        }
     }
 
     async fn delete_file_db(&self, file: &RemoteFile) -> ServerResult<()> {
@@ -173,11 +177,12 @@ impl StorageBackend for LocalBackend {
             .into());
         };
 
-        fs::remove_file(self.get_path(&file.name))
-            .await
-            .map_err(ServerError::storage_error)?;
-
-        Ok(())
+        // See delete_file for why NotFound counts as success (issue #361).
+        match fs::remove_file(self.get_path(&file.name)).await {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(ServerError::storage_error(e)),
+        }
     }
 
     async fn download_file_db(

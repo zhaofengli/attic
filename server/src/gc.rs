@@ -1,5 +1,6 @@
 //! Garbage collection.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use futures::future::join_all;
 use sea_orm::entity::prelude::*;
 use sea_orm::query::QuerySelect;
 use sea_orm::sea_query::{LockBehavior, LockType, Query};
-use sea_orm::{ConnectionTrait, ExprTrait, FromQueryResult};
+use sea_orm::{ConnectionTrait, DatabaseConnection, ExprTrait, FromQueryResult, Statement};
 use tokio::sync::Semaphore;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
@@ -22,7 +23,14 @@ use crate::database::entity::chunk::{self, ChunkState, Entity as Chunk};
 use crate::database::entity::chunkref::{self, Entity as ChunkRef};
 use crate::database::entity::nar::{self, Entity as Nar, NarState};
 use crate::database::entity::object::{self, Entity as Object};
+use crate::database::entity::pin::{self, Entity as Pin};
 use crate::storage::StorageBackend;
+
+/// Objects deleted per DELETE statement during the sweep.
+///
+/// Kept well below every backend's bind-parameter limit (see
+/// `run_reap_orphan_chunks` for the gory details).
+const SWEEP_CHUNK: usize = 500;
 
 #[derive(Debug, FromQueryResult)]
 struct CacheIdAndRetentionPeriod {
@@ -113,7 +121,19 @@ async fn run_time_based_garbage_collection(state: &State) -> Result<()> {
             )
         })?;
 
-        let deletion = Object::delete_many()
+        // Mark phase: everything reachable from this cache's pins is alive,
+        // regardless of age. Reachability follows the `references` list each
+        // object already carries.
+        let protected = find_pin_protected_object_ids(db, cache.id).await?;
+
+        // Sweep: select the age-based candidates, subtract the protected
+        // set, and delete in bounded chunks. Positive IN lists are used on
+        // purpose — a NOT IN over the whole protected set would blow the
+        // backends' bind-parameter limits, and chunking a NOT IN is unsound
+        // (each chunk would need the complete set).
+        let candidates: Vec<i64> = Object::find()
+            .select_only()
+            .column(object::Column::Id)
             .filter(object::Column::CacheId.eq(cache.id))
             .filter(object::Column::CreatedAt.lt(cutoff))
             .filter(
@@ -121,21 +141,110 @@ async fn run_time_based_garbage_collection(state: &State) -> Result<()> {
                     .is_null()
                     .or(object::Column::LastAccessedAt.lt(cutoff)),
             )
-            .exec(db)
+            .into_tuple()
+            .all(db)
             .await?;
 
+        let doomed: Vec<i64> = candidates
+            .into_iter()
+            .filter(|id| !protected.contains(id))
+            .collect();
+
+        let mut rows_affected = 0;
+        for chunk in doomed.chunks(SWEEP_CHUNK) {
+            let deletion = Object::delete_many()
+                .filter(object::Column::Id.is_in(chunk.iter().copied()))
+                .exec(db)
+                .await?;
+            rows_affected += deletion.rows_affected;
+        }
+
         tracing::info!(
-            "Deleted {} objects from {} (ID {})",
-            deletion.rows_affected,
+            "Deleted {} objects from {} (ID {}), {} objects protected by pins",
+            rows_affected,
             cache.name,
-            cache.id
+            cache.id,
+            protected.len(),
         );
-        objects_deleted += deletion.rows_affected;
+        objects_deleted += rows_affected;
     }
 
     tracing::info!("Deleted {} objects in total", objects_deleted);
 
     Ok(())
+}
+
+/// Collects the IDs of every object reachable from the cache's pins.
+///
+/// Reachability is computed inside the database with a recursive CTE over
+/// the `references` JSON array each object carries. Entries are store path
+/// basenames whose first 32 characters are the store path hash, which is
+/// indexed. Postgres and SQLite are supported natively; on other backends
+/// pins protect only the pinned objects themselves (with a warning), which
+/// is safe but not closure-complete.
+async fn find_pin_protected_object_ids(
+    db: &DatabaseConnection,
+    cache_id: i64,
+) -> Result<HashSet<i64>> {
+    let backend = db.get_database_backend();
+
+    let statement = match backend {
+        sea_orm::DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            backend,
+            r#"
+            WITH RECURSIVE reachable(id) AS (
+                SELECT p.object_id FROM pin p WHERE p.cache_id = $1
+                UNION
+                SELECT o2.id
+                FROM reachable r
+                JOIN object o ON o.id = r.id
+                CROSS JOIN LATERAL jsonb_array_elements_text(o."references"::jsonb) AS ref(name)
+                JOIN object o2
+                  ON o2.cache_id = $1
+                 AND o2.store_path_hash = left(ref.name, 32)
+            )
+            SELECT id FROM reachable
+            "#,
+            [cache_id.into()],
+        ),
+        sea_orm::DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            backend,
+            r#"
+            WITH RECURSIVE reachable(id) AS (
+                SELECT p.object_id FROM pin p WHERE p.cache_id = ?
+                UNION
+                SELECT o2.id
+                FROM reachable r
+                JOIN object o ON o.id = r.id
+                JOIN json_each(o."references") AS ref
+                JOIN object o2
+                  ON o2.cache_id = ?
+                 AND o2.store_path_hash = substr(ref.value, 1, 32)
+            )
+            SELECT id FROM reachable
+            "#,
+            [cache_id.into(), cache_id.into()],
+        ),
+        _ => {
+            tracing::warn!(
+                "Pin reachability is not implemented for {:?}; \
+                 pins protect only the pinned objects themselves",
+                backend
+            );
+            let pins = Pin::find()
+                .filter(pin::Column::CacheId.eq(cache_id))
+                .all(db)
+                .await?;
+            return Ok(pins.into_iter().map(|p| p.object_id).collect());
+        }
+    };
+
+    let rows = db.query_all_raw(statement).await?;
+    let mut ids = HashSet::with_capacity(rows.len());
+    for row in rows {
+        ids.insert(row.try_get::<i64>("", "id")?);
+    }
+    Ok(ids)
 }
 
 #[instrument(skip_all)]
