@@ -8,9 +8,13 @@ use anyhow::anyhow;
 use chrono::Utc;
 use sea_orm::entity::Iterable as EnumIterable;
 use sea_orm::entity::prelude::*;
+use sea_orm::query::Statement;
 use sea_orm::query::{JoinType, QueryOrder, QuerySelect, QueryTrait};
-use sea_orm::sea_query::{Expr, LockBehavior, LockType, Query, Value};
-use sea_orm::{ActiveValue::Set, ConnectionTrait, DatabaseConnection, ExprTrait, FromQueryResult};
+use sea_orm::sea_query::{Expr, IntoTableRef, LockBehavior, LockType, Query, Value};
+use sea_orm::{
+    ActiveValue::Set, ConnectionTrait, DatabaseBackend, DatabaseConnection, ExprTrait,
+    FromQueryResult,
+};
 use tokio::task;
 
 use crate::error::{ErrorKind, ServerError, ServerResult};
@@ -70,13 +74,32 @@ pub trait AtticDatabase: Send + Sync {
 }
 
 pub struct NarGuard {
-    database: DatabaseConnection,
+    database: Option<DatabaseConnection>,
     nar: NarModel,
 }
 
 pub struct ChunkGuard {
-    database: DatabaseConnection,
+    database: Option<DatabaseConnection>,
     chunk: ChunkModel,
+}
+
+/// Builds the statement releasing one hold on a row.
+fn decrement_holders<T: IntoTableRef, C: ColumnTrait>(
+    backend: DatabaseBackend,
+    table: T,
+    id_column: C,
+    holders_column: C,
+    id: i64,
+) -> Statement {
+    let one = Value::Unsigned(Some(1));
+    let decr_holders = Query::update()
+        .table(table)
+        .values([(holders_column, Expr::col(holders_column).sub(one))])
+        .and_where(Expr::col(id_column).eq(id))
+        .and_where(Expr::col(holders_column).gt(0))
+        .to_owned();
+
+    backend.build(&decr_holders)
 }
 
 fn prefix_column<E: EntityTrait, S: QuerySelect>(mut select: S, prefix: &str) -> S {
@@ -265,7 +288,7 @@ impl AtticDatabase for DatabaseConnection {
             .await
             .map_err(ServerError::database_error)?
             .map(|nar| NarGuard {
-                database: self.clone(),
+                database: Some(self.clone()),
                 nar,
             });
 
@@ -304,7 +327,7 @@ impl AtticDatabase for DatabaseConnection {
             .await
             .map_err(ServerError::database_error)?
             .map(|chunk| ChunkGuard {
-                database: self.clone(),
+                database: Some(self.clone()),
                 chunk,
             });
 
@@ -327,6 +350,31 @@ impl AtticDatabase for DatabaseConnection {
     }
 }
 
+impl NarGuard {
+    /// Releases the hold, which the caller must have already superseded with
+    /// a committed `object` row.
+    pub async fn release(mut self, database: &DatabaseConnection) {
+        let stmt = self.decrement(database.get_database_backend());
+
+        if let Err(e) = database.execute_raw(stmt).await {
+            tracing::warn!("Failed to decrement holders count: {}", e);
+            return;
+        }
+
+        self.database = None;
+    }
+
+    fn decrement(&self, backend: DatabaseBackend) -> Statement {
+        decrement_holders(
+            backend,
+            Nar,
+            nar::Column::Id,
+            nar::Column::HoldersCount,
+            self.nar.id,
+        )
+    }
+}
+
 impl Deref for NarGuard {
     type Target = NarModel;
 
@@ -337,22 +385,13 @@ impl Deref for NarGuard {
 
 impl Drop for NarGuard {
     fn drop(&mut self) {
-        let database = self.database.clone();
-        let nar_id = self.nar.id;
+        let Some(database) = self.database.take() else {
+            return;
+        };
+        let stmt = self.decrement(database.get_database_backend());
 
         task::spawn(async move {
             tracing::debug!("Unlocking NAR");
-
-            let one = Value::Unsigned(Some(1));
-            let decr_holders = Query::update()
-                .table(Nar)
-                .values([(
-                    nar::Column::HoldersCount,
-                    Expr::col(nar::Column::HoldersCount).sub(one),
-                )])
-                .and_where(nar::Column::Id.eq(nar_id))
-                .to_owned();
-            let stmt = database.get_database_backend().build(&decr_holders);
 
             if let Err(e) = database.execute_raw(stmt).await {
                 tracing::warn!("Failed to decrement holders count: {}", e);
@@ -363,7 +402,33 @@ impl Drop for NarGuard {
 
 impl ChunkGuard {
     pub fn from_locked(database: DatabaseConnection, chunk: ChunkModel) -> Self {
-        Self { database, chunk }
+        Self {
+            database: Some(database),
+            chunk,
+        }
+    }
+
+    /// Releases the hold, which the caller must have already superseded with
+    /// a committed `chunkref` row.
+    pub async fn release(mut self, database: &DatabaseConnection) {
+        let stmt = self.decrement(database.get_database_backend());
+
+        if let Err(e) = database.execute_raw(stmt).await {
+            tracing::warn!("Failed to decrement holders count: {}", e);
+            return;
+        }
+
+        self.database = None;
+    }
+
+    fn decrement(&self, backend: DatabaseBackend) -> Statement {
+        decrement_holders(
+            backend,
+            Chunk,
+            chunk::Column::Id,
+            chunk::Column::HoldersCount,
+            self.chunk.id,
+        )
     }
 }
 
@@ -377,22 +442,13 @@ impl Deref for ChunkGuard {
 
 impl Drop for ChunkGuard {
     fn drop(&mut self) {
-        let database = self.database.clone();
-        let chunk_id = self.chunk.id;
+        let Some(database) = self.database.take() else {
+            return;
+        };
+        let stmt = self.decrement(database.get_database_backend());
 
         task::spawn(async move {
             tracing::debug!("Unlocking chunk");
-
-            let one = Value::Unsigned(Some(1));
-            let decr_holders = Query::update()
-                .table(Chunk)
-                .values([(
-                    chunk::Column::HoldersCount,
-                    Expr::col(chunk::Column::HoldersCount).sub(one),
-                )])
-                .and_where(chunk::Column::Id.eq(chunk_id))
-                .to_owned();
-            let stmt = database.get_database_backend().build(&decr_holders);
 
             if let Err(e) = database.execute_raw(stmt).await {
                 tracing::warn!("Failed to decrement holders count: {}", e);
