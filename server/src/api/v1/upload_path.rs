@@ -70,6 +70,13 @@ struct UploadChunkResult {
     deduplicated: bool,
 }
 
+/// A chunk that has been uploaded and referenced by its NAR.
+struct LinkedChunk {
+    file_size: Option<i64>,
+    chunk_size: i64,
+    deduplicated: bool,
+}
+
 trait UploadPathNarInfoExt {
     fn to_active_model(&self) -> object::ActiveModel;
 }
@@ -210,7 +217,8 @@ async fn upload_path_dedup(
 
     // Finally...
 
-    // Create a mapping granting the local cache access to the NAR
+    // Create a mapping granting the local cache access to the NAR, which
+    // supersedes the hold
     Object::insert({
         let mut new_object = upload_info.to_active_model();
         new_object.cache_id = Set(cache.id);
@@ -224,8 +232,7 @@ async fn upload_path_dedup(
     .await
     .map_err(ServerError::database_error)?;
 
-    // Ensure it's not unlocked earlier
-    drop(existing_nar);
+    existing_nar.release(database).await;
 
     Ok(Json(UploadPathResult {
         kind: UploadPathResultKind::Deduplicated,
@@ -340,7 +347,10 @@ async fn upload_path_new_chunked(
             let require_proof_of_possession = state.config.require_proof_of_possession;
 
             spawn(async move {
-                let chunk = upload_chunk(
+                let UploadChunkResult {
+                    guard,
+                    deduplicated,
+                } = upload_chunk(
                     data,
                     compression_type,
                     compression_level,
@@ -350,19 +360,27 @@ async fn upload_path_new_chunked(
                 )
                 .await?;
 
-                // Create mapping from the NAR to the chunk
+                let linked = LinkedChunk {
+                    file_size: guard.file_size,
+                    chunk_size: guard.chunk_size,
+                    deduplicated,
+                };
+
+                // Create mapping from the NAR to the chunk, which supersedes the hold
                 ChunkRef::insert(chunkref::ActiveModel {
                     nar_id: Set(nar_id),
                     seq: Set(chunk_idx),
-                    chunk_id: Set(Some(chunk.guard.id)),
+                    chunk_id: Set(Some(guard.id)),
                     ..Default::default()
                 })
                 .exec(&database)
                 .await
                 .map_err(ServerError::database_error)?;
 
+                guard.release(&database).await;
+
                 drop(permit);
-                Ok(chunk)
+                Ok(linked)
             })
         });
 
@@ -379,7 +397,7 @@ async fn upload_path_new_chunked(
     }
 
     // Wait for all uploads to complete
-    let chunks: Vec<UploadChunkResult> = join_all(futures)
+    let chunks: Vec<LinkedChunk> = join_all(futures)
         .await
         .into_iter()
         .map(|join_result| join_result.unwrap())
@@ -390,9 +408,9 @@ async fn upload_path_new_chunked(
             .iter()
             .fold((0, 0), |(file_size, deduplicated_size), c| {
                 (
-                    file_size + c.guard.file_size.unwrap() as usize,
+                    file_size + c.file_size.unwrap() as usize,
                     if c.deduplicated {
-                        deduplicated_size + c.guard.chunk_size as usize
+                        deduplicated_size + c.chunk_size as usize
                     } else {
                         deduplicated_size
                     },
@@ -505,7 +523,7 @@ async fn upload_path_new_unchunked(
         insertion.last_insert_id
     };
 
-    // Create a mapping from the NAR to the chunk
+    // Create a mapping from the NAR to the chunk, which supersedes the hold
     ChunkRef::insert(chunkref::ActiveModel {
         nar_id: Set(nar_id),
         seq: Set(0),
@@ -531,6 +549,8 @@ async fn upload_path_new_unchunked(
     .map_err(ServerError::database_error)?;
 
     txn.commit().await.map_err(ServerError::database_error)?;
+
+    chunk.guard.release(database).await;
 
     Ok(Json(UploadPathResult {
         kind: UploadPathResultKind::Uploaded,
