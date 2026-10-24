@@ -44,4 +44,5 @@ let
     };
   }) (lib.cartesianProduct matrix));
 in {
+  https = runTest ./https;
 } // basicTests

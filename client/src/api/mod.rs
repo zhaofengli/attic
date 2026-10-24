@@ -1,7 +1,8 @@
 use std::error::Error as StdError;
 use std::fmt;
+use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result, ensure};
 use bytes::Bytes;
 use const_format::formatcp;
 use displaydoc::Display;
@@ -10,7 +11,7 @@ use futures::{
     stream::{self, StreamExt, TryStream, TryStreamExt},
 };
 use reqwest::{
-    Body, Client as HttpClient, Response, StatusCode, Url,
+    Body, Certificate, Client as HttpClient, Response, StatusCode, Url,
     header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT},
 };
 use serde::Deserialize;
@@ -62,7 +63,7 @@ pub struct StructuredApiError {
 
 impl ApiClient {
     pub fn from_server_config(config: ServerConfig) -> Result<Self> {
-        let client = build_http_client(config.token()?.as_deref());
+        let client = build_http_client(config.token()?.as_deref())?;
 
         Ok(Self {
             endpoint: Url::parse(&config.endpoint)?,
@@ -232,7 +233,7 @@ impl fmt::Display for StructuredApiError {
     }
 }
 
-fn build_http_client(token: Option<&str>) -> HttpClient {
+fn build_http_client(token: Option<&str>) -> Result<HttpClient> {
     let mut headers = HeaderMap::new();
 
     headers.insert(USER_AGENT, HeaderValue::from_str(ATTIC_USER_AGENT).unwrap());
@@ -242,8 +243,27 @@ fn build_http_client(token: Option<&str>) -> HttpClient {
         headers.insert(AUTHORIZATION, auth_header);
     }
 
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .unwrap()
+    let mut builder = HttpClient::builder().default_headers(headers);
+
+    if let Some(path) = std::env::var_os("NIX_SSL_CERT_FILE") {
+        let certificates = load_certificate_bundle(Path::new(&path))?;
+        builder = builder.tls_certs_only(certificates);
+    }
+
+    builder.build().context("Failed to build HTTP client")
+}
+
+fn load_certificate_bundle(path: &Path) -> Result<Vec<Certificate>> {
+    let pem = std::fs::read(path)
+        .with_context(|| format!("Failed to read NIX_SSL_CERT_FILE: {}", path.display()))?;
+    let certificates = Certificate::from_pem_bundle(&pem)
+        .with_context(|| format!("Failed to parse NIX_SSL_CERT_FILE: {}", path.display()))?;
+
+    ensure!(
+        !certificates.is_empty(),
+        "NIX_SSL_CERT_FILE contains no certificates: {}",
+        path.display()
+    );
+
+    Ok(certificates)
 }
