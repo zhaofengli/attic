@@ -16,6 +16,9 @@ To select the `foo` cache from server `central`, use one of the following:
 
 To configure the default server, set `default-server` in `~/.config/attic/config.toml`.
 
+Use `NIX_SSL_CERT_FILE` to select a PEM CA bundle for HTTPS, overriding the
+default trust roots and `SSL_CERT_FILE`.
+
 ## Enabling a cache
 
 To configure Nix to automatically use cache `foo`:
